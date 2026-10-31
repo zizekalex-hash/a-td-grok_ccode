@@ -19,6 +19,19 @@ left or needed.
 
 ## Notes
 
+### 2026-10-31 (evening) · Claude
+
+Gentle portrait polish in `src/game/court/portrait.ts`, same look:
+
+- The head's shadow on the hair behind it, and a ring of shine on the crown.
+- The fringe casts a soft shadow on the forehead, and the front locks have a lit edge.
+- Soft gradient blush, angled up to the cheekbones.
+- A shaded neck and a softer rim on the face.
+- Deeper eyeshadow near the lashes, a bright inner corner, a few fine lower lashes.
+- A finer lip gloss.
+
+Checked: Court tests, type check, lint, both builds, all 11 queens in several moods at 190 px and 1000 px.
+
 ### 2026-10-31 · Claude
 
 Built Grok's "live presence + emotional arcs" design into the real code:

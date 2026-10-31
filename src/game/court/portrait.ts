@@ -288,7 +288,10 @@ function mouth(kind: MouthKind, lips: string, skinDark: string): string {
   const out: string[] = [];
   // A full upper lip with a defined cupid's bow.
   const bow = `Q${f(50 - m.hw * 0.55)} 55.6 49 56.8 Q50 56.1 51 56.8 Q${f(50 + m.hw * 0.55)} 55.6 ${f(R)} ${f(cy)}`;
-  // A soft shadow under the lower lip.
+  // Light on the skin just above the cupid's bow, and a soft shadow under the lower lip.
+  out.push(
+    `<ellipse cx="50" cy="55" rx="1.3" ry="0.45" fill="#ffffff" opacity="0.18" filter="url(#glowSmall)"/>`,
+  );
   out.push(
     `<ellipse cx="50" cy="${f(bottom + 1)}" rx="${f(m.hw * 0.6)}" ry="0.8" fill="${skinDark}" opacity="0.28" filter="url(#soft)"/>`,
   );
@@ -318,7 +321,7 @@ function mouth(kind: MouthKind, lips: string, skinDark: string): string {
   // Gloss on the lower lip, a glint on the upper.
   const gy = (mid + m.open * 1.2 + bottom) / 2 + 0.2;
   out.push(
-    `<ellipse cx="50" cy="${f(gy)}" rx="${f(m.hw * 0.52)}" ry="0.9" fill="#ffffff" opacity="0.36" filter="url(#glowSmall)"/>`,
+    `<ellipse cx="50" cy="${f(gy)}" rx="${f(m.hw * 0.4)}" ry="0.75" fill="#ffffff" opacity="0.3" filter="url(#glowSmall)"/>`,
   );
   out.push(
     `<ellipse cx="49.2" cy="${f(gy - 0.2)}" rx="0.9" ry="0.32" fill="#ffffff" opacity="0.6"/>`,
@@ -511,6 +514,10 @@ function eyes(
     out.push(
       `<path d="M${ox} ${oy - 1.2} Q${ux} ${uy - 2.1} ${ix} ${iy - 1.3}" fill="none" stroke="${skinDark}" stroke-width="0.55" opacity="0.7"/>`,
     );
+    // Deeper colour close to the lashes, fading up the lid.
+    out.push(
+      `<path d="M${ox} ${oy - 0.3} Q${ux} ${uy - 1.6} ${ix} ${iy - 0.5}" fill="none" stroke="${shade(shadowCol, -0.25)}" stroke-width="1.3" opacity="0.32" filter="url(#glowSmall)"/>`,
+    );
     out.push(
       `<ellipse cx="${g.cx}" cy="49.2" rx="3.6" ry="0.9" fill="${skinDark}" opacity="0.16" filter="url(#soft)"/>`,
     );
@@ -620,6 +627,17 @@ function eyes(
     out.push(
       `<path d="M${ox - s * 0.3} ${oy + 0.6} Q${dx} ${dy + 0.3} ${ix} ${iy + 0.2}" fill="none" stroke="${lash}" stroke-width="0.35" opacity="0.4"/>`,
     );
+    // A bright inner corner, and a few fine lashes under the outer half.
+    out.push(
+      `<circle cx="${f(ix - s * 0.5)}" cy="${f(iy + 0.15)}" r="0.42" fill="#ffffff" opacity="0.55"/>`,
+    );
+    for (const t of [0.08, 0.2, 0.32]) {
+      const px = ox + (dx - ox) * t * 2;
+      const py = oy + (dy - oy) * t * 2 + 0.5;
+      out.push(
+        `<path d="M${f(px)} ${f(py)} l${f(s * 0.25)} 0.5" stroke="${lash}" stroke-width="0.22" stroke-linecap="round" opacity="0.4"/>`,
+      );
+    }
     if (tears && x.tear && s < 0) out.push(tear(ox + 1.6, oy + 3));
   }
   return out.join("");
@@ -837,6 +855,8 @@ export function portraitSvg(
     `<linearGradient id="gown" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${shade(accent, 0.15)}"/><stop offset="1" stop-color="${shade(accent, -0.45)}"/></linearGradient>`,
     `<radialGradient id="iris" cx="50%" cy="65%" r="60%"><stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/><stop offset="1" stop-color="#000000" stop-opacity="0.25"/></radialGradient>`,
     `<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff2b0"/><stop offset="1" stop-color="#c99212"/></linearGradient>`,
+    `<radialGradient id="blush" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ff5c8a"/><stop offset="0.55" stop-color="#ff6f96" stop-opacity="0.55"/><stop offset="1" stop-color="#ff7aa0" stop-opacity="0"/></radialGradient>`,
+    `<linearGradient id="neck" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${shade(skin, -0.34)}"/><stop offset="0.5" stop-color="${skinDark}"/><stop offset="1" stop-color="${shade(skin, -0.1)}"/></linearGradient>`,
     `<linearGradient id="lip" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${shade(lips, -0.18)}"/><stop offset="1" stop-color="${shade(lips, 0.12)}"/></linearGradient>`,
     `<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="1.7"/></filter>`,
     `<filter id="glowSmall" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="0.35"/></filter>`,
@@ -870,10 +890,17 @@ export function portraitSvg(
     style === "ponytail"
       ? `<path d="M64 24 C88 26 88 60 79 92 C76 70 75 48 62 34 Z" fill="url(#hair)"/><path d="M68 28 C82 34 82 58 78 80" fill="none" stroke="${sheen}" stroke-width="0.6" opacity="0.6"/>`
       : "",
+    // Depth in the hair: the head's shadow on the hair behind it, and a ring of shine on the crown.
+    `<g clip-path="url(#hairBack)">`,
+    `<path d="${face}" transform="translate(50 46) scale(1.16 1.1) translate(-50 -46)" fill="#000000" opacity="0.3" filter="url(#soft)"/>`,
+    `<path d="M30.5 25 C33.5 21.2 37 19.2 41 18.3 M44.8 17.4 C48.3 16.9 51.7 16.9 55.2 17.4 M59 18.3 C63 19.2 66.5 21.2 69.5 25" fill="none" stroke="${sheen}" stroke-width="2.2" stroke-linecap="round" opacity="0.28" filter="url(#glowSmall)"/>`,
+    `<path d="M33 22.4 C36 19.9 38.6 18.8 41.2 18.2 M46 17.3 C48.7 17 51.3 17 54 17.3 M58.8 18.2 C61.4 18.8 64 19.9 67 22.4" fill="none" stroke="#ffffff" stroke-width="0.45" stroke-linecap="round" opacity="0.3"/>`,
+    `</g>`,
     look.headpiece === "hood" ? hood(accent) : "",
     // A collar that stands behind the neck; the neck, shoulders and her outfit, with a pendant.
     outfitBack(outfit, accent),
-    `<path d="M44.2 58 C44.4 64 43.8 68.5 42.4 72 L57.6 72 C56.2 68.5 55.6 64 55.8 58 Z" fill="${skinDark}"/>`,
+    `<path d="M44.2 58 C44.4 64 43.8 68.5 42.4 72 L57.6 72 C56.2 68.5 55.6 64 55.8 58 Z" fill="url(#neck)"/>`,
+    `<path d="M45.6 63 Q45.2 68 44.2 71.4" fill="none" stroke="#ffffff" stroke-width="1.1" opacity="0.08" filter="url(#soft)"/>`,
     `<path d="M43 61 Q50 69 57 61 L57 65.5 Q50 71 43 65.5 Z" fill="#000000" opacity="0.14"/>`,
     `<path d="M12 100 C15 83 29 74.5 43 71.5 L57 71.5 C71 74.5 85 83 88 100 Z" fill="url(#skin)"/>`,
     `<path d="M39 80.6 Q44 82 47.6 80.8 M52.4 80.8 Q56 82 61 80.6" fill="none" stroke="${skinDark}" stroke-width="0.6" opacity="0.7"/>`,
@@ -892,11 +919,12 @@ export function portraitSvg(
     ear(1),
     `<path d="${face}" fill="url(#skin)"/>`,
     `<path d="${face}" fill="url(#warm)"/>`,
-    `<path d="${face}" fill="none" stroke="${rim}" stroke-width="0.6" opacity="0.22"/>`,
+    `<path d="${face}" fill="none" stroke="${rim}" stroke-width="0.5" opacity="0.13"/>`,
     // A soft glow over the skin, as if lit by candlelight.
     `<ellipse cx="47" cy="44" rx="12" ry="14" fill="#ffffff" opacity="0.07" filter="url(#soft)"/>`,
     `<g clip-path="url(#faceClip)">`,
     `<ellipse cx="50" cy="31.5" rx="9" ry="4.2" fill="#ffffff" opacity="0.13" filter="url(#soft)"/>`,
+    `<path d="${HAIR_FRONT[style]}" transform="translate(0.5 1.7)" fill="${shade(skin, -0.55)}" opacity="0.22" filter="url(#soft)"/>`,
     `<ellipse cx="43" cy="41.6" rx="5" ry="1.6" fill="${skinDark}" opacity="0.2" filter="url(#soft)"/><ellipse cx="57" cy="41.6" rx="5" ry="1.6" fill="${skinDark}" opacity="0.2" filter="url(#soft)"/>`,
     `<path d="M48.6 46 Q48 50.5 48.4 53" fill="none" stroke="${skinDark}" stroke-width="1.2" opacity="0.18" filter="url(#soft)"/>`,
     `<ellipse cx="39.5" cy="49.5" rx="3.2" ry="1.4" fill="#ffffff" opacity="0.14" filter="url(#soft)"/><ellipse cx="60.5" cy="49.5" rx="3.2" ry="1.4" fill="#ffffff" opacity="0.14" filter="url(#soft)"/>`,
@@ -905,8 +933,8 @@ export function portraitSvg(
     `</g>`,
     `<path d="M36.6 49.5 Q39.5 56.5 45 59.6 M63.4 49.5 Q60.5 56.5 55 59.6" fill="none" stroke="${skinDark}" stroke-width="1.6" opacity="0.12" filter="url(#soft)"/>`,
     // Blush, deeper as she warms to you; shy lines when she is flustered.
-    `<ellipse cx="40.5" cy="53" rx="${f(3.4 + x.blush * 0.9)}" ry="${f(1.8 + x.blush * 0.5)}" fill="#ff5c8a" opacity="${f(0.12 + x.blush * 0.42)}" filter="url(#soft)"/>`,
-    `<ellipse cx="59.5" cy="53" rx="${f(3.4 + x.blush * 0.9)}" ry="${f(1.8 + x.blush * 0.5)}" fill="#ff5c8a" opacity="${f(0.12 + x.blush * 0.42)}" filter="url(#soft)"/>`,
+    `<ellipse cx="40.6" cy="52.4" rx="${f(4.6 + x.blush * 1.1)}" ry="${f(2.5 + x.blush * 0.6)}" transform="rotate(-12 40.6 52.4)" fill="url(#blush)" opacity="${f(0.2 + x.blush * 0.5)}"/>`,
+    `<ellipse cx="59.4" cy="52.4" rx="${f(4.6 + x.blush * 1.1)}" ry="${f(2.5 + x.blush * 0.6)}" transform="rotate(12 59.4 52.4)" fill="url(#blush)" opacity="${f(0.2 + x.blush * 0.5)}"/>`,
     x.blushLines
       ? `<path d="M38.6 52.4 l-0.9 1.6 M40.4 52.4 l-0.9 1.6 M42.2 52.4 l-0.9 1.6 M57.8 52.4 l0.9 1.6 M59.6 52.4 l0.9 1.6 M61.4 52.4 l0.9 1.6" stroke="#e83e74" stroke-width="0.35" stroke-linecap="round" opacity="0.7"/>`
       : "",
@@ -924,6 +952,7 @@ export function portraitSvg(
     markings(look.marking, accent, rim),
     `<path d="${HAIR_FRONT[style]}" fill="url(#hair)"/>`,
     strands("hairFront", rand, 30, 30, 70, 18, 78, sheen, hairDark),
+    `<path d="${HAIR_FRONT[style]}" fill="none" stroke="${sheen}" stroke-width="0.35" opacity="0.4"/>`,
     `<path d="M36 34 C42 24 56 21 64 29" fill="none" stroke="${sheen}" stroke-width="0.7" opacity="0.75"/>`,
     // A soft band of shine across the crown of the hair.
     `<path d="M38 29.4 C42.5 24 57.5 24 62 29.4" fill="none" stroke="${sheen}" stroke-width="1.8" opacity="0.22" filter="url(#soft)"/>`,
