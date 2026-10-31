@@ -19,6 +19,17 @@ left or needed.
 
 ## Notes
 
+### 2026-10-31 (night) · Claude
+
+The owner asked for a dark fantasy look (references: dark purple painted art of Azshara and Xal'atath, WoW night elves with glowing eyes). New `src/game/court/darkstyle.ts`, switched by `court.portraits.style` ("dark" is the default, "classic" the earlier look):
+
+- A night scene lit from behind in her colour, and a rune circle round her head.
+- Glowing dust, and wild tapered locks of hair flowing out with glints in her colour.
+- Rim-lit, deeper skin, and glowing eyes.
+- A spiked crown for Azshara, filigree spikes on circlets, and gold chains with gems.
+
+Drawing a portrait takes about 1.5 times as long as the classic look (68 ms against 46 ms at 600 px on a desktop). They are drawn once per mood and size.
+
 ### 2026-10-31 (evening) · Claude
 
 Gentle portrait polish in `src/game/court/portrait.ts`, same look:

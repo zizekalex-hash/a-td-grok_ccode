@@ -15,6 +15,19 @@ import { CONFIG, type CourtQueenKey } from "../config.ts";
 import type { Mood } from "./hearts.ts";
 import { c, f, gem, heart, hex, rng, seedOf, shade, star, timing } from "./svgkit.ts";
 import {
+  arcaneCircle,
+  chains,
+  darkDefs,
+  darkScene,
+  dust,
+  eyeGlow,
+  filigree,
+  rimLight,
+  shoulderLight,
+  spikeCrown,
+  wildHair,
+} from "./darkstyle.ts";
+import {
   adornment,
   closedOutfit,
   outfitBack,
@@ -769,6 +782,8 @@ export interface PortraitOptions {
   /** The place she stands (its scenery is drawn behind her), and its region. */
   scene?: string;
   region?: string;
+  /** "dark" for the dark fantasy look (court.portraits.style); the classic look otherwise. */
+  style?: string;
 }
 
 /** Whether she can blink in a mood: not when her eyes are already closed. */
@@ -791,14 +806,20 @@ export function portraitSvg(
   const tier = Math.max(0, Math.min(5, Math.floor(o.tier ?? 0)));
   const air = o.air !== false;
   const outfit = outfitOf(look.outfit);
-  const skin = hex(look.skin, "#f2c9a5");
+  // The dark look sits in deeper shadow.
+  const skin =
+    o.style === "dark" ? shade(hex(look.skin, "#f2c9a5"), -0.16) : hex(look.skin, "#f2c9a5");
   const hair = hex(look.hair, "#5a3a2a");
   const iris = c(look.eyes, "#3a86ff");
   const accent = hex(look.accent, "#a855f7");
   const rim = c(ring, accent);
   const bg0 = hex(look.bg[0], "#2a1840");
   const bg1 = hex(look.bg[1], "#0b0614");
-  const lips = hex(look.lips, "#c2185b");
+  const dark = o.style === "dark";
+  // Deeper lips in the dark look.
+  const lips = dark ? shade(hex(look.lips, "#c2185b"), -0.12) : hex(look.lips, "#c2185b");
+  // The dark look's own random numbers, so her strands stay as they are in either look.
+  const darkRand = rng(seedOf(`${look.hair}|${look.skin}|dark`));
   const shadowCol = hex(look.shadow, shade(accent, -0.2));
   const sheen = hex(look.sheen, shade(hair, 0.35));
   const skinDark = shade(skin, -0.22);
@@ -865,6 +886,7 @@ export function portraitSvg(
     `<clipPath id="hairBack"><path d="${HAIR_BACK[style]}"/></clipPath>`,
     `<clipPath id="hairFront"><path d="${HAIR_FRONT[style]}"/></clipPath>`,
     `<clipPath id="faceClip"><path d="${face}"/></clipPath>`,
+    dark ? darkDefs(accent) : "",
     `<radialGradient id="vignette" cx="50%" cy="45%" r="60%"><stop offset="0.6" stop-color="#000000" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity="0.55"/></radialGradient>`,
     `<linearGradient id="horn" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${horn ? shade(horn, 0.35) : "#ffffff"}"/><stop offset="1" stop-color="${horn ? shade(horn, -0.35) : "#999999"}"/></linearGradient>`,
     `</defs>`,
@@ -872,15 +894,19 @@ export function portraitSvg(
     `<g clip-path="url(#disc)">`,
     o.scene ? scene(o.scene, o.region ?? "", bg0, accent) : "",
     backdrop(rand, bg0, accent, element),
+    dark ? darkScene() : "",
     moodTint(x),
     air ? moodMotes(x, moodRand, accent, true) : "",
     sparkles,
     `<circle cx="50" cy="44" r="40" fill="url(#halo)"/>`,
+    dark ? arcaneCircle(accent, darkRand) + dust(accent, darkRand) : "",
     tier >= 5
       ? `<circle cx="50" cy="40" r="27" fill="none" stroke="#ffe08a" stroke-width="1.2" opacity="0.55" filter="url(#glowSmall)"/>`
       : "",
     // The figure a little larger than the frame, so the face reads even as a small avatar.
     `<g transform="${FIGURE}">`,
+    // Dark look: wild locks flowing out from behind the hair.
+    dark ? wildHair(darkRand, hair, hairDark, sheen, accent) : "",
     `<path d="${HAIR_BACK[style]}" fill="url(#hair)"/>`,
     `<path d="${HAIR_BACK[style]}" fill="none" stroke="${sheen}" stroke-width="0.6" opacity="0.5"/>`,
     strands("hairBack", rand, 46, 16, 84, 8, 100, sheen, hairDark),
@@ -914,12 +940,16 @@ export function portraitSvg(
         gem(45.2, 76.6, 0.9, accent) +
         gem(54.8, 76.6, 0.9, accent) +
         tierJewels(tier, accent),
+    dark ? shoulderLight(accent) + chains(accent) : "",
+    // Dark look: a few locks falling forward over her shoulders.
+    dark ? wildHair(darkRand, hair, hairDark, sheen, accent, 6, true) : "",
     // Ears, then the face over them.
     ear(-1),
     ear(1),
     `<path d="${face}" fill="url(#skin)"/>`,
     `<path d="${face}" fill="url(#warm)"/>`,
     `<path d="${face}" fill="none" stroke="${rim}" stroke-width="0.5" opacity="0.13"/>`,
+    dark ? rimLight(face, accent) : "",
     // A soft glow over the skin, as if lit by candlelight.
     `<ellipse cx="47" cy="44" rx="12" ry="14" fill="#ffffff" opacity="0.07" filter="url(#soft)"/>`,
     `<g clip-path="url(#faceClip)">`,
@@ -940,6 +970,13 @@ export function portraitSvg(
       : "",
     brows(hairDark, x),
     eyes(look, iris, lash, shadowCol, skinDark, x, air),
+    dark
+      ? eyeGlow(
+          hex(iris, accent),
+          look.eyeStyle === "glow",
+          look.eyeStyle === "closed" || x.happy === true || x.shut === true,
+        )
+      : "",
     // The nose: a shadow down one side of the bridge, a lit ridge, the tip and nostrils.
     `<path d="M49.2 42.6 Q48.6 47 48.3 50.6" fill="none" stroke="${skinDark}" stroke-width="1.4" opacity="0.16" filter="url(#soft)"/>`,
     `<path d="M50.7 47.6 Q51.5 51.8 49.7 53.4" fill="none" stroke="${skinDark}" stroke-width="0.7" stroke-linecap="round" opacity="0.8"/>`,
@@ -969,10 +1006,12 @@ export function portraitSvg(
         `<path d="M35.2 27 q2.2 -0.6 3.2 0.8 M31.5 21.4 q2 -0.8 3 0.4 M27 16.6 q1.8 -0.8 2.6 0.2 M64.8 27 q-2.2 -0.6 -3.2 0.8 M68.5 21.4 q-2 -0.8 -3 0.4 M73 16.6 q-1.8 -0.8 -2.6 0.2" fill="none" stroke="${shade(horn, -0.5)}" stroke-width="0.4" opacity="0.8"/>` +
         `<path d="M37 26 C33 19 27 14 21 12.5 M63 26 C67 19 73 14 79 12.5" fill="none" stroke="${shade(horn, 0.4)}" stroke-width="0.6" opacity="0.8"/>`
       : "",
-    headpiece(look.headpiece, accent, rim),
+    dark && look.headpiece === "crown" ? spikeCrown(accent) : "",
+    dark && look.headpiece === "circlet" ? filigree(31.6) : "",
+    dark && look.headpiece === "crown" ? "" : headpiece(look.headpiece, accent, rim),
     air ? tierGlow(tier) : "",
     `</g>`,
-    `<circle cx="50" cy="50" r="48" fill="url(#vignette)"/>`,
+    `<circle cx="50" cy="50" r="48" fill="url(#${dark ? "vignetteDark" : "vignette"})"/>`,
     air ? moodFront(x, moodRand, accent) : "",
     `</g>`,
     `<circle cx="50" cy="50" r="48" fill="none" stroke="${rim}" stroke-width="3"/>`,
@@ -1032,12 +1071,13 @@ const cache = new Map<string, string>();
 /** A queen's portrait from config.json in a mood, made once. */
 export function queenPortrait(queen: CourtQueenKey, o: PortraitOptions = {}): string {
   const tier = Math.max(0, Math.min(5, Math.floor(o.tier ?? 0)));
-  const key = `${queen}|${o.mood ?? "smile"}|${tier}|${o.air !== false}|${o.blink === true}`;
+  const style = o.style ?? CONFIG.court.portraits.style;
+  const key = `${queen}|${o.mood ?? "smile"}|${tier}|${o.air !== false}|${o.blink === true}|${style}`;
   let url = cache.get(key);
   if (!url) {
     const q = CONFIG.court.queens[queen];
     const region = (CONFIG.court.places as Record<string, { region: string }>)[q.place]?.region;
-    url = portraitUrl(q.look, q.color, q.element, { ...o, tier, scene: q.place, region });
+    url = portraitUrl(q.look, q.color, q.element, { ...o, tier, scene: q.place, region, style });
     cache.set(key, url);
   }
   return url;

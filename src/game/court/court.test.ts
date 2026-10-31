@@ -1210,3 +1210,23 @@ describe("feelings and queens who come out to find you", () => {
     assert.equal(pairKey("ysera", "azshara"), pairKey("azshara", "ysera"));
   });
 });
+
+describe("portrait styles", () => {
+  it("draws the dark look by default from config, and the classic look on request", () => {
+    assert.ok(["dark", "classic"].includes(C.portraits.style));
+    for (const q of QUEEN_KEYS) {
+      const dark = queenPortrait(q, { mood: "smitten", tier: 4, style: "dark" });
+      const classic = queenPortrait(q, { mood: "smitten", tier: 4, style: "classic" });
+      assert.notEqual(dark, classic, q);
+      const svg = decodeURIComponent(dark.slice(dark.indexOf(",") + 1));
+      assert.ok(svg.includes('id="backlight"') && svg.includes('id="vignetteDark"'), q);
+      assert.ok(!/NaN|undefined/.test(svg), `${q}: nothing undrawable`);
+      assert.ok(!decodeURIComponent(classic).includes('id="backlight"'), `${q}: classic stays classic`);
+    }
+    assert.equal(
+      queenPortrait("azshara", { mood: "smile" }),
+      queenPortrait("azshara", { mood: "smile", style: C.portraits.style }),
+      "the style comes from config when not given",
+    );
+  });
+});

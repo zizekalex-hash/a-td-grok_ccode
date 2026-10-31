@@ -962,6 +962,10 @@
         "softened": {"name": "Softened", "copy": "She has just forgiven you.", "durationMinutes": 30, "mood": "blush", "affection": 1.25}
       }
     },
+    "portraits": {
+      "_about": "How the queens' portraits are drawn. style: \"dark\" for the dark fantasy look (a night scene lit from behind in her colour, a glowing rune circle, wild flowing hair, rim-lit skin, glowing eyes, a spiked crown and golden chains) or \"classic\" for the earlier, brighter look.",
+      "style": "dark"
+    },
     "presence": {
       "_about": "Queens come out to find you while you walk the map. Every tickSeconds (after firstSeconds), each queen in your region who knows you (tier minTier or more) may come out: chancePerMinute, times (0.5 + 0.25 per tier), times buzzBoost for the talk of the town and arcBoost when she is lonely or upset; at most maxOut at once. She walks at speed times your pace, stays near you for lingerMinutes, then goes home: happy (satisfied) if you talked to her, gave her a gift or recited for her, hurt (distant) if you ignored her. Two queens who meet on the way react if they are sisters, friends or rivals (once per pair every encounterMinutes). lines: what she says when she finds you or leaves; notices: what the Court notices.",
       "enabled": true,

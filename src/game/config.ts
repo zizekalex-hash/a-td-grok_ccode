@@ -631,6 +631,8 @@ export interface GameConfig {
       /** Feelings that last a while (see court.hearts.arcs._about). */
       arcs: Record<CourtArcKey, CourtArcSpec>;
     };
+    /** How the queens' portraits are drawn (see court.portraits._about). */
+    portraits: { style: string };
     /** Queens coming out to find you on the map (see court.presence._about). */
     presence: {
       enabled: boolean;
