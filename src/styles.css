@@ -1,0 +1,421 @@
+@import "tailwindcss";
+/* Scan this folder explicitly: the offline phone build runs from offline/, so
+   automatic detection would miss the game's component classes. */
+@source "./";
+
+@theme {
+  --color-bg: #020005;
+  --color-fg: #f4f7ff;
+  --color-muted: #9aa3b8;
+  --color-cyan: #00ffff;
+  --color-violet: #a855f7;
+  --color-gold: #e8c872;
+  --color-danger: #ff4d6d;
+  --color-panel: #100c18;
+  --font-display: "Orbitron", "Arial Narrow", Impact, sans-serif;
+  --font-mono: "Share Tech Mono", ui-monospace, monospace;
+  --radius: 0.85rem;
+}
+
+@layer base {
+  html,
+  body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-mono);
+    overscroll-behavior: none;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: default;
+  }
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--color-bg);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.glass {
+  background: rgba(8, 6, 16, 0.84);
+  border: 1px solid rgba(0, 255, 255, 0.42);
+  box-shadow:
+    0 0 0 1px rgba(168, 85, 247, 0.14),
+    0 18px 48px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(14px);
+  border-radius: var(--radius);
+}
+
+.btn {
+  min-height: 44px;
+  border: 1px solid var(--color-cyan);
+  color: var(--color-cyan);
+  background: transparent;
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  line-height: 1.15;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.btn:active:not(:disabled) {
+  background: var(--color-cyan);
+  color: var(--color-bg);
+}
+
+.btn[data-on="true"] {
+  background: var(--color-violet);
+  border-color: var(--color-violet);
+  color: var(--color-fg);
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.45);
+}
+
+.btn:disabled {
+  border-color: rgba(154, 163, 184, 0.35);
+  color: var(--color-muted);
+}
+
+.btn-gold {
+  border-color: var(--color-gold);
+  color: var(--color-gold);
+  animation: bless-pulse 1.5s ease-in-out infinite;
+}
+
+.btn-gold:active:not(:disabled) {
+  background: var(--color-gold);
+  color: var(--color-bg);
+}
+
+.btn:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
+}
+
+.meter {
+  height: 8px;
+  border-radius: 99px;
+  background: rgba(244, 247, 255, 0.06);
+  overflow: hidden;
+  border: 1px solid rgba(0, 255, 255, 0.28);
+}
+
+.meter > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--color-cyan);
+  transition: width 120ms linear;
+}
+
+.meter[data-low="true"] > span {
+  background: var(--color-danger);
+}
+
+.meter[data-shield="true"] > span {
+  background: var(--color-gold);
+}
+
+.toast {
+  position: absolute;
+  z-index: 40;
+  top: max(0.75rem, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 1.5rem);
+  padding: 0.55rem 0.9rem;
+  color: var(--color-gold);
+  border: 1px solid var(--color-gold);
+  background: rgba(8, 6, 16, 0.92);
+  font-family: var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  text-align: center;
+  pointer-events: none;
+  border-radius: 0.4rem;
+}
+
+.az-ring {
+  transform-origin: 32px 32px;
+  animation: az-spin 14s linear infinite;
+}
+
+.stepper {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--color-cyan);
+  height: 28px;
+  background: transparent;
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 4.5rem;
+  background: rgba(2, 0, 5, 0.65);
+  color: var(--color-fg);
+  border: 1px solid rgba(0, 255, 255, 0.35);
+  border-radius: 0.45rem;
+  padding: 0.6rem 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.text-input {
+  width: 100%;
+  min-height: 44px;
+  background: rgba(2, 0, 5, 0.65);
+  color: var(--color-fg);
+  border: 1px solid rgba(0, 255, 255, 0.35);
+  border-radius: 0.45rem;
+  padding: 0.5rem 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.flash-panel canvas {
+  transform-origin: center;
+}
+
+.flash-panel[data-holo="true"] canvas {
+  animation: flash-sway 9s ease-in-out infinite alternate;
+}
+
+.flash-caption {
+  background: linear-gradient(rgba(8, 6, 16, 0.92), rgba(8, 6, 16, 0.75) 70%, rgba(8, 6, 16, 0));
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
+
+.flash-caption[data-show="true"] {
+  opacity: 1;
+}
+
+@keyframes flash-sway {
+  from {
+    transform: perspective(500px) rotateX(12deg) rotateY(-7deg);
+  }
+  to {
+    transform: perspective(500px) rotateX(12deg) rotateY(7deg);
+  }
+}
+
+@keyframes az-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bless-pulse {
+  50% {
+    box-shadow: 0 0 18px rgba(232, 200, 114, 0.65);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .az-ring,
+  .btn-gold,
+  .flash-panel[data-holo="true"] canvas {
+    animation: none;
+  }
+}
+
+/* Court: XP and gold drops float up and fade, like RuneScape's. */
+@keyframes court-drop {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-48px);
+  }
+}
+
+.court-drop {
+  animation: court-drop 1.8s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .court-drop {
+    animation-name: none;
+  }
+}
+
+/* Court: a living portrait. Only scale and opacity move, which the screen
+   composites without redrawing the picture, so it stays smooth on phones. */
+@keyframes court-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.012);
+  }
+}
+
+.court-breathe {
+  animation: court-breathe 5.5s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* A blink: the shut-eyed picture shows for a moment. */
+@keyframes court-blink {
+  0%,
+  93.5%,
+  97.5%,
+  100% {
+    opacity: 0;
+  }
+  94.5%,
+  96.5% {
+    opacity: 1;
+  }
+}
+
+.court-blink {
+  opacity: 0;
+  animation: court-blink 5s linear infinite;
+  will-change: opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .court-breathe,
+  .court-blink {
+    animation: none;
+  }
+}
+
+/* Court recite: the pass bar fills by itself, smoothly, without the page redrawing. */
+@keyframes court-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.court-fill {
+  transform-origin: left center;
+  animation: court-fill linear forwards;
+  will-change: transform;
+}
+
+/* Each new word arrives with a little lift. */
+@keyframes court-word {
+  from {
+    opacity: 0.35;
+    transform: translateY(4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.court-word {
+  animation: court-word 140ms ease-out;
+}
+
+/* The phrase flashing in the middle: in, hold, out. */
+@keyframes court-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  18%,
+  72% {
+    opacity: var(--flash-opacity, 0.9);
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+.court-flash {
+  opacity: 0;
+  animation: court-flash ease-in-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .court-word,
+  .court-flash {
+    animation: none;
+  }
+  .court-fill {
+    animation-duration: 0s !important;
+  }
+}
+
+/* A notice about a queen: it slides in, stays a while (court.news.noticeSeconds) and fades. */
+@keyframes court-notice {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  5% {
+    opacity: 1;
+    transform: none;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.court-notice {
+  animation: court-notice ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .court-notice {
+    animation-name: none;
+  }
+}

@@ -1,0 +1,2717 @@
+{
+  "_about": "Game tuning. Edit values here instead of the code; `npm test` checks this file for mistakes. Settings are the starting values a new player gets; settingLimits are the slider ranges, including how fast text may flash (flashMs per phrase, wordFlashMs per sector). fpsCap 120 means no cap; renderScale is the share of the screen's pixel density the game draws at. phraseEvery: in tower defense and auto chess, each tower's or piece's first attack and every phraseEvery-th after it carry a phrase; the rest fly bare, which is lighter to draw. phrasePauseMs is the least time between two phrases, and textPauseMs the pause after a text has been read through, before the next text (or the same one again) starts; shots in a pause fly bare.",
+  "settings": {
+    "flashMs": 120,
+    "textSize": 13,
+    "opacity": 0.55,
+    "density": 28,
+    "mode": "field",
+    "holo": true,
+    "shake": true,
+    "muted": false,
+    "textScale": 100,
+    "binaryOpacity": 0.5,
+    "binaryPitch": 18,
+    "wordFlashMs": 1000,
+    "gameSpeed": 1,
+    "uiScale": 100,
+    "fpsCap": 60,
+    "renderScale": 100,
+    "phraseEvery": 3,
+    "phrasePauseMs": 300,
+    "textPauseMs": 2000,
+    "volume": 80,
+    "showFps": false
+  },
+  "settingLimits": {
+    "flashMs": {
+      "min": 20,
+      "max": 1000,
+      "step": 10
+    },
+    "textSize": {
+      "min": 8,
+      "max": 36,
+      "step": 1
+    },
+    "opacity": {
+      "min": 0.08,
+      "max": 1,
+      "step": 0.05
+    },
+    "density": {
+      "min": 8,
+      "max": 56,
+      "step": 2
+    },
+    "textScale": {
+      "min": 50,
+      "max": 150,
+      "step": 5
+    },
+    "binaryOpacity": {
+      "min": 0,
+      "max": 1,
+      "step": 0.05
+    },
+    "binaryPitch": {
+      "min": 10,
+      "max": 30,
+      "step": 1
+    },
+    "wordFlashMs": {
+      "min": 100,
+      "max": 4000,
+      "step": 100
+    },
+    "gameSpeed": {
+      "min": 0.5,
+      "max": 1.5,
+      "step": 0.05
+    },
+    "uiScale": {
+      "min": 85,
+      "max": 130,
+      "step": 5
+    },
+    "fpsCap": {
+      "min": 15,
+      "max": 120,
+      "step": 5
+    },
+    "renderScale": {
+      "min": 40,
+      "max": 100,
+      "step": 5
+    },
+    "phraseEvery": {
+      "min": 1,
+      "max": 10,
+      "step": 1
+    },
+    "phrasePauseMs": {
+      "min": 0,
+      "max": 3000,
+      "step": 50
+    },
+    "textPauseMs": {
+      "min": 0,
+      "max": 10000,
+      "step": 250
+    },
+    "volume": {
+      "min": 0,
+      "max": 100,
+      "step": 5
+    }
+  },
+  "ui": {
+    "_about": "showSpeech brings back the spoken lines (the council and the narrator model) over the flash panel and on the title and game-over cards. While it is false, only phrases from the loaded text are shown, and the narrator sends nothing.",
+    "showSpeech": false
+  },
+  "rain": {
+    "_about": "The binary rain behind every mode, built from the bits of the loaded text. Speeds are in px per second.",
+    "fontSize": 12,
+    "rowStep": 15,
+    "speed": 36,
+    "reducedMotionSpeed": 8,
+    "alpha": 0.32,
+    "streakMin": 8,
+    "streakMax": 22
+  },
+  "field": {
+    "_about": "The whole text fitted behind the fight. Sizes are px before the text-size slider is applied.",
+    "minSize": 6,
+    "maxSize": 22,
+    "alpha": 0.6
+  },
+  "arcade": {
+    "_about": "Core defense. Spawn rules are checked in order with one random roll per spawn; the first rule whose wave has come and whose chance beats the roll picks the kind, otherwise adenosine. A boss closes every bossEvery-th wave.",
+    "waves": {
+      "baseCount": 4,
+      "countPerWave": 2,
+      "maxCount": 36,
+      "baseInterval": 0.8,
+      "intervalDropPerWave": 0.035,
+      "minInterval": 0.32,
+      "hpGrowthPerWave": 0.12,
+      "bossEvery": 5
+    },
+    "spawnRules": [
+      {
+        "kind": "vlpo",
+        "fromWave": 3,
+        "chance": 0.18
+      },
+      {
+        "kind": "gaba",
+        "fromWave": 2,
+        "chance": 0.48
+      },
+      {
+        "kind": "vlpo",
+        "fromWave": 4,
+        "chance": 0.62
+      }
+    ],
+    "enemies": {
+      "adenosine": {
+        "hp": 34,
+        "speed": 48,
+        "radius": 16,
+        "leak": 8
+      },
+      "gaba": {
+        "hp": 26,
+        "speed": 60,
+        "radius": 14,
+        "leak": 10
+      },
+      "vlpo": {
+        "hp": 14,
+        "speed": 98,
+        "radius": 12,
+        "leak": 6
+      },
+      "pressure": {
+        "hp": 150,
+        "speed": 30,
+        "radius": 28,
+        "leak": 22
+      }
+    }
+  },
+  "td": {
+    "_about": "Tower defense. Waves never end: each one is bigger and tougher than the last, with a boss every bossEvery waves and an extra boss every extraBossEvery waves. Towers keep levelling past maxLevel as mastery, each mastery level costing masteryCostGrowth times the one before. Speeds are cells per second, ranges are cells, rates are shots per second. Armor is the share of damage a creep shrugs off; pierce is the share of armor a tower ignores. Maps are on a 9 by 9 grid, columns and rows 0 to 8: the lane runs straight between waypoints, from the gate (the first) to the core (the last), so each waypoint must share a column or a row with the one before. A map's startGold, if set, replaces the usual one. Towers that do not fire (Muse, Eraser) affect everything in their circle, which grows with level up to maxSupportRange. medals are the waves that earn bronze, silver and gold on a map. Each tower takes one of its two paths at maxLevel, then one of its two ascend options at ascendLevel, for pathCostFactor and ascendCostFactor times its price.",
+    "startGold": 150,
+    "startLives": 20,
+    "defaultMap": "coil",
+    "maps": {
+      "coil": {
+        "name": "Coil",
+        "blurb": "The lane loops the board, then turns in to the core.",
+        "waypoints": [[0, 0], [8, 0], [8, 2], [0, 2], [0, 8], [8, 8], [8, 6], [2, 6], [2, 4], [4, 4]]
+      },
+      "spiral": {
+        "name": "Spiral",
+        "blurb": "The longest lane, winding inward. Easier: more time to shoot, fewer cells to build on.",
+        "waypoints": [[0, 0], [8, 0], [8, 8], [0, 8], [0, 2], [6, 2], [6, 6], [2, 6], [2, 4], [4, 4]]
+      },
+      "zigzag": {
+        "name": "Zigzag",
+        "blurb": "Rows zigzag down to a core at the bottom edge. A tower between two rows covers both.",
+        "waypoints": [[0, 0], [8, 0], [8, 2], [0, 2], [0, 4], [8, 4], [8, 6], [0, 6], [0, 8], [4, 8]]
+      },
+      "crossing": {
+        "name": "Crossing",
+        "blurb": "The lane crosses itself twice. Towers by a crossing hit each creep twice.",
+        "waypoints": [[0, 0], [0, 6], [6, 6], [6, 2], [2, 2], [2, 8], [8, 8], [8, 4], [4, 4]]
+      },
+      "sprint": {
+        "name": "Sprint",
+        "blurb": "A short lane from the top. Hard: creeps reach the core fast, so it starts with more O/I.",
+        "waypoints": [[4, 0], [4, 2], [1, 2], [1, 6], [7, 6], [7, 4], [4, 4]],
+        "startGold": 250
+      },
+      "columns": {
+        "name": "Columns",
+        "blurb": "Lanes run down and up the columns to a core on the right edge. A tower between two columns covers both.",
+        "waypoints": [[0,0],[0,8],[2,8],[2,0],[4,0],[4,8],[6,8],[6,0],[8,0],[8,4]]
+      },
+      "arrow": {
+        "name": "Arrow",
+        "blurb": "One straight row across the middle. Hardest: little time to shoot, so it starts with the most O/I.",
+        "waypoints": [[0,4],[8,4]],
+        "startGold": 450
+      }
+    },
+    "maxLevel": 5,
+    "levelGrowth": {
+      "damage": 0.45,
+      "rate": 0.12,
+      "range": 0.15,
+      "slow": 0.05,
+      "aura": 0.05,
+      "income": 12,
+      "vuln": 0.04
+    },
+    "upgradeCostFactor": 0.6,
+    "masteryCostGrowth": 1.5,
+    "sellRefund": 0.6,
+    "earlySend": {
+      "base": 10,
+      "perWave": 2
+    },
+    "autoSendDelay": 1.5,
+    "maxActiveWaves": 10,
+    "maxArmor": 0.8,
+    "bossSlowResist": 0.5,
+    "waves": {
+      "baseCount": 6,
+      "countPerWave": 2,
+      "maxCount": 60,
+      "baseInterval": 1.0,
+      "intervalDropPerWave": 0.015,
+      "minInterval": 0.35,
+      "hpLinear": 0.18,
+      "hpQuadratic": 0.012,
+      "speedPerWave": 0.012,
+      "maxSpeedBonus": 0.6,
+      "armorFromWave": 20,
+      "armorPerWave": 0.01,
+      "maxArmorBonus": 0.3,
+      "goldPerWave": 0.04,
+      "clearBonusBase": 20,
+      "clearBonusPerWave": 3,
+      "bossEvery": 5,
+      "extraBossEvery": 25,
+      "bossHpPerBossWave": 0.15,
+      "swarmSize": 4,
+      "unlocks": {
+        "adenosine": 1,
+        "gaba": 2,
+        "vlpo": 3,
+        "melatonin": 4,
+        "galanin": 6,
+        "theta": 8,
+        "rem": 9,
+        "glycine": 11
+      },
+      "weights": {
+        "adenosine": 5,
+        "gaba": 3,
+        "vlpo": 2,
+        "melatonin": 2,
+        "galanin": 2,
+        "theta": 1.5,
+        "rem": 1.5,
+        "glycine": 1
+      }
+    },
+    "bosses": ["pressure", "circadian", "somnus"],
+    "pathCostFactor": 3,
+    "ascendLevel": 10,
+    "ascendCostFactor": 8,
+    "maxSupportRange": 2.9,
+    "medals": [10, 25, 50],
+    "maxBounty": 0.6,
+    "spells": {
+      "storm": { "name": "Ink Storm", "copy": "Strikes every creep on the board, through armor. Bosses take half.", "cooldown": 50, "damage": 35, "bossShare": 0.5 },
+      "still": { "name": "Stillness", "copy": "Every creep slows by 60% for 4 seconds. Bosses resist half.", "cooldown": 35, "slow": 0.6, "time": 4 }
+    },
+    "difficulties": {
+      "easy": { "name": "Easy", "copy": "Creeps have 30% less life; more O/I and lives to start.", "hp": 0.7, "gold": 1.25, "lives": 1.5 },
+      "normal": { "name": "Normal", "copy": "The game as tuned.", "hp": 1, "gold": 1, "lives": 1 },
+      "hard": { "name": "Hard", "copy": "Creeps have 35% more life; less O/I and half the lives.", "hp": 1.35, "gold": 0.85, "lives": 0.5 }
+    },
+    "towers": {
+      "ink": {
+        "name": "Ink",
+        "label": "INK",
+        "role": "rapid",
+        "color": "#00ffff",
+        "copy": "Quick and cheap. Rapid shots at one target.",
+        "cost": 40,
+        "range": 2.2,
+        "rate": 1.6,
+        "damage": 10,
+        "paths": [
+          { "name": "Torrent", "copy": "Fires 70% faster, for a little less per shot.", "mult": {"rate": 1.7, "damage": 0.85} },
+          { "name": "Needle", "copy": "Hits 50% harder, reaches further and ignores half of any armor.", "mult": {"damage": 1.5}, "add": {"pierce": 0.5, "range": 0.4} }
+        ],
+        "ascend": [
+          { "name": "Fountain Pen", "copy": "Fires 50% faster and hits 50% harder.", "mult": {"rate": 1.5, "damage": 1.5} },
+          { "name": "Calligraphy", "copy": "Each stroke hits 2.5 times as hard, through all armor, from further away.", "mult": {"damage": 2.5}, "add": {"pierce": 1, "range": 0.5} }
+        ]
+      },
+      "verse": {
+        "name": "Verse",
+        "label": "VRS",
+        "role": "sniper",
+        "color": "#a855f7",
+        "copy": "Long reach and heavy hits. Half of any armor is ignored.",
+        "cost": 75,
+        "range": 3.4,
+        "rate": 0.6,
+        "damage": 30,
+        "pierce": 0.5,
+        "paths": [
+          { "name": "Epic", "copy": "Huge slow hits that ignore all armor.", "mult": {"damage": 2.2, "rate": 0.7}, "add": {"pierce": 0.5} },
+          { "name": "Couplet", "copy": "Fires 80% faster and reaches further.", "mult": {"rate": 1.8}, "add": {"range": 0.6} }
+        ],
+        "ascend": [
+          { "name": "Saga", "copy": "Hits 2.5 times as hard from a full cell further.", "mult": {"damage": 2.5}, "add": {"range": 1} },
+          { "name": "Sonnet", "copy": "Fires twice as fast, and every line bursts on the creeps around it.", "mult": {"rate": 2}, "add": {"splash": 0.6} }
+        ]
+      },
+      "sigil": {
+        "name": "Sigil",
+        "label": "SIG",
+        "role": "splash",
+        "color": "#e8c872",
+        "copy": "Slow, with splash. Hits every creep near the impact.",
+        "cost": 100,
+        "range": 1.9,
+        "rate": 0.7,
+        "damage": 16,
+        "splash": 0.9,
+        "paths": [
+          { "name": "Glyphstorm", "copy": "A much wider blast that hits 20% harder.", "mult": {"damage": 1.2}, "add": {"splash": 0.6} },
+          { "name": "Brand", "copy": "Every creep in the blast burns, through armor.", "add": {"burn": 14, "burnTime": 3} }
+        ],
+        "ascend": [
+          { "name": "Seal of Ages", "copy": "Twice the damage over a wider blast.", "mult": {"damage": 2}, "add": {"splash": 0.5} },
+          { "name": "Runeburst", "copy": "Fires 80% faster, and every blast burns.", "mult": {"rate": 1.8}, "add": {"burn": 20, "burnTime": 2} }
+        ]
+      },
+      "comma": {
+        "name": "Comma",
+        "label": "CMA",
+        "role": "slow",
+        "color": "#9fd3ff",
+        "copy": "Every hit is a pause: slows the creep for a moment. Bosses resist half.",
+        "cost": 60,
+        "range": 2.0,
+        "rate": 1.1,
+        "damage": 4,
+        "slow": 0.35,
+        "slowTime": 1.6,
+        "paths": [
+          { "name": "Full Stop", "copy": "Slows harder and for longer.", "add": {"slow": 0.15, "slowTime": 1.2} },
+          { "name": "Ellipsis", "copy": "Slows every creep near the one it hits, and hits twice as hard.", "mult": {"damage": 2}, "add": {"splash": 0.8} }
+        ],
+        "ascend": [
+          { "name": "Semicolon", "copy": "Hits four times as hard and slows every creep near the one it hits.", "mult": {"damage": 4}, "add": {"splash": 0.6, "slow": 0.1} },
+          { "name": "Caesura", "copy": "Stops creeps nearly dead, and for longer.", "add": {"slow": 0.2, "slowTime": 2} }
+        ]
+      },
+      "echo": {
+        "name": "Echo",
+        "label": "ECH",
+        "role": "chain",
+        "color": "#f0abfc",
+        "copy": "Instant strike that jumps to nearby creeps, two more at first, up to four.",
+        "cost": 90,
+        "range": 2.4,
+        "rate": 0.9,
+        "damage": 12,
+        "chain": 2,
+        "paths": [
+          { "name": "Resonance", "copy": "Jumps to three more creeps.", "add": {"chain": 3} },
+          { "name": "Thunder", "copy": "Hits 80% harder and ignores some armor.", "mult": {"damage": 1.8}, "add": {"pierce": 0.4} }
+        ],
+        "ascend": [
+          { "name": "Chorus", "copy": "Jumps to four more creeps, hitting 50% harder.", "mult": {"damage": 1.5}, "add": {"chain": 4} },
+          { "name": "Storm Bell", "copy": "Strikes 80% faster and 50% harder.", "mult": {"rate": 1.8, "damage": 1.5} }
+        ]
+      },
+      "cipher": {
+        "name": "Cipher",
+        "label": "CPH",
+        "role": "burn",
+        "color": "#ff9f43",
+        "copy": "Sets creeps burning. Burn ignores armor entirely.",
+        "cost": 85,
+        "range": 2.2,
+        "rate": 0.8,
+        "damage": 6,
+        "burn": 8,
+        "burnTime": 3,
+        "pierce": 1,
+        "paths": [
+          { "name": "Wildfire", "copy": "The fire spreads to every creep near the target.", "add": {"splash": 0.7} },
+          { "name": "Inferno", "copy": "Burns 80% hotter and two seconds longer.", "mult": {"burn": 1.8}, "add": {"burnTime": 2} }
+        ],
+        "ascend": [
+          { "name": "Cinder Script", "copy": "Burns two and a half times as hot.", "mult": {"burn": 2.5} },
+          { "name": "Firestorm", "copy": "The blaze spreads a cell wide and burns 50% hotter.", "mult": {"burn": 1.5}, "add": {"splash": 1} }
+        ]
+      },
+      "focus": {
+        "name": "Focus",
+        "label": "FOC",
+        "role": "beam",
+        "color": "#ff4d6d",
+        "copy": "A beam that grows stronger the longer it holds one target. Built for bosses.",
+        "cost": 140,
+        "range": 2.6,
+        "rate": 5,
+        "damage": 3,
+        "beam": true,
+        "ramp": 0.15,
+        "maxRamp": 20,
+        "paths": [
+          { "name": "Lens", "copy": "Ramps twice as high and faster: a boss melter.", "add": {"ramp": 0.05, "maxRamp": 20} },
+          { "name": "Wide Beam", "copy": "Reaches much further and hits 60% harder from the start.", "mult": {"damage": 1.6}, "add": {"range": 0.8} }
+        ],
+        "ascend": [
+          { "name": "Sunlance", "copy": "Ramps far higher and faster: bosses melt.", "add": {"ramp": 0.1, "maxRamp": 40} },
+          { "name": "Prism", "copy": "Hits 2.5 times as hard from a cell further.", "mult": {"damage": 2.5}, "add": {"range": 1} }
+        ]
+      },
+      "muse": {
+        "name": "Muse",
+        "label": "MUS",
+        "role": "aura",
+        "color": "#86efac",
+        "copy": "Does not fire. Towers in its circle deal 20% more damage, burns included, plus 5% per level. The circle grows with each level.",
+        "cost": 120,
+        "range": 1.5,
+        "rate": 0,
+        "damage": 0,
+        "aura": 0.2,
+        "paths": [
+          { "name": "Choir", "copy": "Towers in its circle deal 15% more damage on top.", "add": {"aura": 0.15} },
+          { "name": "Tempo", "copy": "Towers in its circle also fire 25% faster.", "add": {"haste": 0.25} }
+        ],
+        "ascend": [
+          { "name": "Anthem", "copy": "Towers in its circle deal 30% more damage on top.", "add": {"aura": 0.3} },
+          { "name": "Allegro", "copy": "Towers in its circle fire 35% faster on top.", "add": {"haste": 0.35} }
+        ]
+      },
+      "archive": {
+        "name": "Archive",
+        "label": "ARC",
+        "role": "income",
+        "color": "#f4f7ff",
+        "copy": "Does not fire. Pays 20 O/I every time a wave clears, plus 12 per level.",
+        "cost": 110,
+        "range": 0,
+        "rate": 0,
+        "damage": 0,
+        "income": 20,
+        "paths": [
+          { "name": "Ledger", "copy": "Pays 40 more O/I every time a wave clears.", "add": {"income": 40} },
+          { "name": "Scriptorium", "copy": "Every creep killed pays 15% more O/I. Several stack, up to +60%.", "add": {"bounty": 0.15} }
+        ],
+        "ascend": [
+          { "name": "Treasury", "copy": "Pays 150 more O/I every time a wave clears.", "add": {"income": 150} },
+          { "name": "Patronage", "copy": "Kills pay 25% more on top (all Scriptoria and Patronage together up to +60%).", "add": {"bounty": 0.25} }
+        ]
+      },
+      "eraser": {
+        "name": "Eraser",
+        "label": "ERS",
+        "role": "weaken",
+        "color": "#ff6bd6",
+        "copy": "Does not fire. Creeps in its circle take 15% more damage from everything, plus 4% per level. Several do not stack: the strongest counts.",
+        "cost": 90,
+        "range": 1.8,
+        "rate": 0,
+        "damage": 0,
+        "vuln": 0.15,
+        "paths": [
+          { "name": "Redact", "copy": "Creeps in its circle take another 15% more damage.", "add": {"vuln": 0.15} },
+          { "name": "Strike-through", "copy": "Creeps in its circle also lose half their armor.", "add": {"shred": 0.5} }
+        ],
+        "ascend": [
+          { "name": "Oblivion", "copy": "Creeps in its circle take another 30% more damage.", "add": {"vuln": 0.3} },
+          { "name": "Expunge", "copy": "Creeps in its circle lose half their armor more, and take 10% more damage.", "add": {"shred": 0.5, "vuln": 0.1} }
+        ]
+      }
+    },
+    "creeps": {
+      "adenosine": {
+        "name": "Adenosine",
+        "label": "ADN",
+        "color": "#7ee7ff",
+        "hp": 30,
+        "speed": 1.0,
+        "gold": 6,
+        "leak": 1,
+        "size": 0.28,
+        "sides": 4
+      },
+      "gaba": {
+        "name": "GABA",
+        "label": "GABA",
+        "color": "#c084fc",
+        "hp": 22,
+        "speed": 1.5,
+        "gold": 7,
+        "leak": 1,
+        "size": 0.27,
+        "sides": 6
+      },
+      "vlpo": {
+        "name": "VLPO",
+        "label": "VLPO",
+        "color": "#f0abfc",
+        "hp": 12,
+        "speed": 2.2,
+        "gold": 5,
+        "leak": 1,
+        "size": 0.24,
+        "sides": 3
+      },
+      "melatonin": {
+        "name": "Melatonin",
+        "label": "MLT",
+        "color": "#a5b4fc",
+        "hp": 8,
+        "speed": 1.6,
+        "gold": 2,
+        "leak": 1,
+        "size": 0.17,
+        "sides": 5,
+        "swarm": true
+      },
+      "galanin": {
+        "name": "Galanin",
+        "label": "GAL",
+        "color": "#94a3b8",
+        "hp": 45,
+        "speed": 0.8,
+        "gold": 12,
+        "leak": 2,
+        "size": 0.3,
+        "sides": 4,
+        "armor": 0.4
+      },
+      "theta": {
+        "name": "Theta wave",
+        "label": "THT",
+        "color": "#fb7185",
+        "hp": 40,
+        "speed": 1.1,
+        "gold": 9,
+        "leak": 2,
+        "size": 0.29,
+        "sides": 7,
+        "split": "spindle",
+        "splitCount": 2
+      },
+      "spindle": {
+        "name": "Sleep spindle",
+        "label": "SPN",
+        "color": "#fda4af",
+        "hp": 10,
+        "speed": 2.0,
+        "gold": 2,
+        "leak": 1,
+        "size": 0.18,
+        "sides": 3
+      },
+      "rem": {
+        "name": "REM",
+        "label": "REM",
+        "color": "#67e8f9",
+        "hp": 34,
+        "speed": 1.2,
+        "gold": 10,
+        "leak": 1,
+        "size": 0.27,
+        "sides": 8,
+        "regen": 5
+      },
+      "glycine": {
+        "name": "Glycine",
+        "label": "GLY",
+        "color": "#86efac",
+        "hp": 28,
+        "speed": 1.0,
+        "gold": 11,
+        "leak": 1,
+        "size": 0.27,
+        "sides": 6,
+        "heal": 6,
+        "healRange": 1.3
+      },
+      "pressure": {
+        "name": "Sleep Pressure",
+        "label": "PRS",
+        "color": "#e8c872",
+        "hp": 260,
+        "speed": 0.6,
+        "gold": 40,
+        "leak": 5,
+        "size": 0.42,
+        "sides": 8,
+        "armor": 0.2,
+        "boss": true
+      },
+      "circadian": {
+        "name": "Circadian Tide",
+        "label": "CRC",
+        "color": "#fbbf24",
+        "hp": 360,
+        "speed": 0.55,
+        "gold": 60,
+        "leak": 6,
+        "size": 0.44,
+        "sides": 10,
+        "boss": true,
+        "summon": "melatonin",
+        "summonEvery": 2.5,
+        "summonCount": 2
+      },
+      "somnus": {
+        "name": "Somnus",
+        "label": "SOM",
+        "color": "#f43f5e",
+        "hp": 560,
+        "speed": 0.45,
+        "gold": 90,
+        "leak": 10,
+        "size": 0.48,
+        "sides": 12,
+        "armor": 0.35,
+        "regen": 8,
+        "boss": true
+      }
+    },
+    "perks": {
+      "damage": {
+        "name": "Sharper ink",
+        "copy": "+10% damage for every tower.",
+        "max": 10,
+        "baseCost": 100,
+        "costPerLevel": 75,
+        "amount": 0.1
+      },
+      "rate": {
+        "name": "Quick quill",
+        "copy": "+8% fire rate for every tower.",
+        "max": 8,
+        "baseCost": 110,
+        "costPerLevel": 90,
+        "amount": 0.08
+      },
+      "range": {
+        "name": "Wider margins",
+        "copy": "+0.1 cells of range for every tower.",
+        "max": 5,
+        "baseCost": 120,
+        "costPerLevel": 100,
+        "amount": 0.1
+      },
+      "interest": {
+        "name": "Compound interest",
+        "copy": "When a wave clears, earn 2% of your unspent O/I, up to 60 per level.",
+        "max": 5,
+        "baseCost": 150,
+        "costPerLevel": 120,
+        "amount": 0.02,
+        "cap": 60
+      },
+      "lives": {
+        "name": "Thick skin",
+        "copy": "+5 lives, right away.",
+        "max": 10,
+        "baseCost": 90,
+        "costPerLevel": 60,
+        "amount": 5
+      },
+      "thrift": {
+        "name": "Cheap scribes",
+        "copy": "Towers and upgrades cost 5% less.",
+        "max": 5,
+        "baseCost": 130,
+        "costPerLevel": 110,
+        "amount": 0.05
+      }
+    }
+  },
+  "chess": {
+    "_about": "Auto chess. Buy pieces in the shop, set them on your half of the board, then watch them fight on their own. Fights run in ticks of tickSeconds at 1x. Each attack rolls the attacker's accuracy against the target's defence (RuneScape's formula) and a hit deals 1 to the max hit. Attacks fill mana (manaPerAttack, manaPerHurt when struck); a full bar casts the piece's ability instead of attacking. Three copies of a piece at the same stars merge into one with a star more: hp and maxHit times starGrowth, accuracy and defence times starRollGrowth. odds lists, per level, the chance in percent of each tier (1 to 5) in a shop slot. levelXp is the XP each level needs to reach the next; the board holds as many pieces as your level. Enemy boards are worth enemy.budget gold plus budgetPerRound and budgetQuadratic per round past the first; from statsFrom on their stats grow by statsPerRound each round. Every bossEvery-th round a boss from enemy.bosses leads them (the list loops, harder each time). From tick overtimeFrom every hit grows by overtimeGrowth a tick (and heals and shields stop), so no fight stalls; one still going at maxTicks is lost. A lost round costs loss.base, plus loss.perRound per round, plus each surviving enemy's tier times its stars.",
+    "startHp": 100,
+    "startGold": 5,
+    "startLevel": 2,
+    "income": 5,
+    "interestPer": 10,
+    "maxInterest": 5,
+    "winGold": 1,
+    "refreshCost": 2,
+    "xpCost": 4,
+    "xpPerBuy": 4,
+    "xpPerRound": 2,
+    "levelXp": [2, 4, 6, 10, 20, 32, 48],
+    "shopSize": 5,
+    "benchSize": 8,
+    "odds": [
+      [80, 20, 0, 0, 0],
+      [70, 28, 2, 0, 0],
+      [55, 35, 10, 0, 0],
+      [42, 38, 18, 2, 0],
+      [32, 36, 25, 7, 0],
+      [24, 32, 30, 12, 2],
+      [17, 28, 33, 17, 5],
+      [12, 22, 33, 23, 10]
+    ],
+    "tickSeconds": 0.4,
+    "maxTicks": 180,
+    "overtimeFrom": 90,
+    "overtimeGrowth": 0.05,
+    "resultSeconds": 2.4,
+    "starGrowth": 1.8,
+    "starRollGrowth": 1.15,
+    "maxStars": 3,
+    "manaPerAttack": 10,
+    "manaPerHurt": 2,
+    "loss": { "base": 2, "perRound": 0.34 },
+    "enemy": {
+      "budget": 2,
+      "budgetPerRound": 1.5,
+      "budgetQuadratic": 0.06,
+      "unitsBase": 2,
+      "unitsPerRound": 0.45,
+      "maxUnits": 10,
+      "tierEvery": 3,
+      "statsFrom": 16,
+      "statsPerRound": 0.05,
+      "bossEvery": 5,
+      "bossHp": 2,
+      "bossHpPerBoss": 0.3,
+      "bossHit": 1.1,
+      "bossShare": 0.35,
+      "bosses": [
+        { "kind": "rook", "name": "The Black Tower" },
+        { "kind": "queen", "name": "The Dark Queen" },
+        { "kind": "king", "name": "The Black King" },
+        { "kind": "queen", "name": "The Last Regent" },
+        { "kind": "king", "name": "The Sleepless King" }
+      ]
+    },
+    "pieces": {
+      "pawn": {
+        "name": "Pawn",
+        "tier": 1,
+        "cost": 1,
+        "hp": 30,
+        "maxHit": 11,
+        "acc": 30,
+        "def": 22,
+        "speed": 3,
+        "range": 1,
+        "moveTicks": 2,
+        "copy": "Marches straight ahead and strikes anything beside it. One that reaches the far row is promoted to a queen for the rest of the fight.",
+        "ability": { "name": "Promotion", "copy": "Reach the far row to become a queen.", "mana": 0, "power": 1 }
+      },
+      "knight": {
+        "name": "Knight",
+        "tier": 2,
+        "cost": 2,
+        "hp": 46,
+        "maxHit": 15,
+        "acc": 46,
+        "def": 30,
+        "speed": 3,
+        "range": 1,
+        "moveTicks": 2,
+        "copy": "Jumps in an L over anything in the way.",
+        "ability": { "name": "Fork", "copy": "Sure hits on two enemies beside it, at 1.5 times its max hit.", "mana": 50, "power": 1.5 }
+      },
+      "bishop": {
+        "name": "Bishop",
+        "tier": 2,
+        "cost": 2,
+        "hp": 34,
+        "maxHit": 12,
+        "acc": 44,
+        "def": 18,
+        "speed": 4,
+        "range": 3,
+        "moveTicks": 2,
+        "copy": "Slides on the diagonals and strikes from three squares away.",
+        "ability": { "name": "Bless", "copy": "Heals the most hurt ally within three squares by 35% of its life.", "mana": 40, "power": 0.35 }
+      },
+      "rook": {
+        "name": "Rook",
+        "tier": 3,
+        "cost": 3,
+        "hp": 82,
+        "maxHit": 15,
+        "acc": 42,
+        "def": 46,
+        "speed": 4,
+        "range": 1,
+        "moveTicks": 2,
+        "copy": "A wall that slides along ranks and files.",
+        "ability": { "name": "Castle", "copy": "Raises a shield worth 40% of its life. Shields do not stack.", "mana": 80, "power": 0.4 }
+      },
+      "queen": {
+        "name": "Queen",
+        "tier": 4,
+        "cost": 4,
+        "hp": 66,
+        "maxHit": 22,
+        "acc": 62,
+        "def": 40,
+        "speed": 3,
+        "range": 2,
+        "moveTicks": 2,
+        "copy": "Moves any way and strikes from two squares away.",
+        "ability": { "name": "Decree", "copy": "Sure hits on the target and every enemy next to it.", "mana": 60, "power": 1 }
+      },
+      "king": {
+        "name": "King",
+        "tier": 5,
+        "cost": 5,
+        "hp": 115,
+        "maxHit": 25,
+        "acc": 70,
+        "def": 60,
+        "speed": 3,
+        "range": 1,
+        "moveTicks": 3,
+        "copy": "Slow, one square at a time, and very hard to bring down.",
+        "ability": { "name": "Check", "copy": "A sure hit at twice its max hit that stuns the target.", "mana": 70, "power": 2, "stunTicks": 4 }
+      }
+    },
+    "traits": {
+      "pawn": { "name": "Phalanx", "copy": "Pawns gain defence.", "all": false, "stat": "def", "steps": [{ "need": 3, "bonus": 0.3 }, { "need": 6, "bonus": 0.7 }] },
+      "knight": { "name": "Cavalry", "copy": "Knights hit harder.", "all": false, "stat": "maxHit", "steps": [{ "need": 2, "bonus": 0.25 }, { "need": 4, "bonus": 0.6 }] },
+      "bishop": { "name": "Clergy", "copy": "Every piece aims truer.", "all": true, "stat": "acc", "steps": [{ "need": 2, "bonus": 0.15 }, { "need": 4, "bonus": 0.35 }] },
+      "rook": { "name": "Ramparts", "copy": "Rooks gain life.", "all": false, "stat": "hp", "steps": [{ "need": 2, "bonus": 0.3 }, { "need": 4, "bonus": 0.7 }] },
+      "queen": { "name": "Regency", "copy": "Every piece hits harder.", "all": true, "stat": "maxHit", "steps": [{ "need": 1, "bonus": 0.1 }, { "need": 2, "bonus": 0.2 }] },
+      "king": { "name": "Majesty", "copy": "Every piece gains defence.", "all": true, "stat": "def", "steps": [{ "need": 1, "bonus": 0.12 }, { "need": 2, "bonus": 0.25 }] }
+    }
+  },
+  "court": {
+    "_about": "Court: a small world you walk by tapping. Each place trains one skill in the Fire style and one in the Water style, by reciting random phrases from your texts to the beat: words light up one at a time (wordMs each, changeable in play), the whole phrase shows below, and when the words finish the pass waits for a tap, which completes it (a repetition) and starts the next pass at once (lower wordMs to read faster). A round is phrasesPerRound phrases of repsPerPhrase passes each (both changeable in play); after the last, the round is complete and you can start another or leave. A repetition earns xp.perLetter for every letter, xp.perWord for every word and xp.perRep; finishing all repsPerPhrase passes of a phrase adds xp.phrasePerWord for every word. A streak of counted passes multiplies it by 1 + streakStep for each pass after the first, up to streakMax. Each pass also pays goldPerWord for every word, times the place's goldMult. Skill levels follow RuneScape's curve to 99. Queens grow fond of you as you recite where they can see, more in their element; gifts and dates help; each tier in affectionTiers needs that much affection. A queen's look draws her portrait: skin, hair (long, flowing, bun or ponytail), eyes (open, glow or closed), ears (round or elf), horns (a colour, or empty for none), headpiece (crown, voidcrown, tiara, circlet, hood or none), accent (dress and jewels), bg (two background colours) and marking (moon, tattoo, runes, beauty or empty); optional sheen (hair highlight), shadow (eyeshadow) and lips (lipstick). A queen's need is the level (in a skill, or total) before she will do more than say hello. The world has regions (court.regions), each with its own map and a start; places with a gate take you to another region's gate, if you meet its need.",
+    "wordMs": 900,
+    "wordMsMin": 300,
+    "wordMsMax": 3000,
+    "phrasesPerRound": 3,
+    "night": {
+      "_about": "Day and night on the Court's map, by the device's clock: dark from 20:00 to 5:00, with dusk and dawn in between. At night the map darkens by darkness and windows, doors and gates glow. enabled false keeps it day.",
+      "enabled": true,
+      "darkness": 0.5
+    },
+    "flash": {
+      "_about": "While you recite, the current phrase flashes in the middle of the screen, like the text in the other modes: it fades in, holds and fades out over lifeMs, once every everyMs; size is its largest text in px (long phrases get smaller) and opacity its brightest. enabled false turns it off.",
+      "enabled": true,
+      "everyMs": 2600,
+      "lifeMs": 2400,
+      "size": 24,
+      "opacity": 0.9
+    },
+    "repsPerPhrase": 3,
+    "minPhraseWords": 3,
+    "maxPhraseWords": 60,
+    "walkSpeed": 4.5,
+    "xp": {
+      "perLetter": 0.2,
+      "perWord": 2,
+      "perRep": 5,
+      "phrasePerWord": 3
+    },
+    "streakStep": 0.1,
+    "streakMax": 2,
+    "goldPerWord": 1,
+    "watchedBonus": 0.25,
+    "affection": {
+      "perWord": 0.5,
+      "elementBonus": 0.5,
+      "levelUp": 25,
+      "dateMult": 3,
+      "dateBonus": 120
+    },
+    "affectionTiers": [
+      {
+        "name": "Stranger",
+        "at": 0
+      },
+      {
+        "name": "Noticed",
+        "at": 60
+      },
+      {
+        "name": "Curious",
+        "at": 200
+      },
+      {
+        "name": "Fond",
+        "at": 500
+      },
+      {
+        "name": "Smitten",
+        "at": 1000
+      },
+      {
+        "name": "Devoted",
+        "at": 2000
+      }
+    ],
+    "dateTier": 2,
+    "datePhrases": 4,
+    "dateXpMult": 1.5,
+    "hearts": {
+      "_about": "How the queens feel. missAfterHours: hours away before she misses you (a reunion gives affection). jealousTier: the tier from which a queen in the same region grows jealous when you give a rival a gift or a date (up to jealousMax); while jealous, her affection from reciting is multiplied by jealousMult; a gift or a full phrase recited for her makes up (makeUp affection when it is over). Each day every queen wishes for wishPasses passes of one of her skills: wishAffection and wishGold when done. fierceStreak: a streak she finds irresistible. flashSeconds: how long a mood from a moment lasts. memories: passes recited for her that she remembers. galleryGold: gold for each new portrait in the gallery.",
+      "missAfterHours": 12,
+      "reunion": 30,
+      "jealousTier": 2,
+      "jealousMax": 3,
+      "jealousMult": 0.5,
+      "makeUp": 40,
+      "wishPasses": 15,
+      "wishAffection": 80,
+      "wishGold": 60,
+      "fierceStreak": 8,
+      "flashSeconds": 90,
+      "memories": [50, 200, 500, 1000, 2500],
+      "galleryGold": 25,
+      "arcs": {
+        "_about": "Feelings that last a while, in real minutes: while one is on, it sets her mood (after jealousy and a moment's mood) and multiplies the affection she gets. lonely: she misses you (from when you have been away). seeking: she has come out to find you. present: she found you and walks with you. satisfied: you spent time with her while she was out. distant: she came to you and you ignored her. confront: she is jealous and comes to have it out with you. softened: she has just forgiven you.",
+        "lonely": {"name": "Lonely", "copy": "She misses you.", "durationMinutes": 45, "mood": "longing", "affection": 1},
+        "seeking": {"name": "Looking for you", "copy": "She has come out to find you.", "durationMinutes": 25, "mood": "blush", "affection": 1.25},
+        "present": {"name": "With you", "copy": "She found you and wants to stay close.", "durationMinutes": 20, "mood": "smitten", "affection": 1.25},
+        "satisfied": {"name": "Happy", "copy": "Glowing after your time together.", "durationMinutes": 60, "mood": "delighted", "affection": 1},
+        "distant": {"name": "Hurt", "copy": "She came to you and you ignored her. Win her back.", "durationMinutes": 90, "mood": "aloof", "affection": 0.75},
+        "confront": {"name": "Upset", "copy": "She is jealous and wants to have it out with you.", "durationMinutes": 15, "mood": "jealous", "affection": 0.75},
+        "softened": {"name": "Softened", "copy": "She has just forgiven you.", "durationMinutes": 30, "mood": "blush", "affection": 1.25}
+      }
+    },
+    "presence": {
+      "_about": "Queens come out to find you while you walk the map. Every tickSeconds (after firstSeconds), each queen in your region who knows you (tier minTier or more) may come out: chancePerMinute, times (0.5 + 0.25 per tier), times buzzBoost for the talk of the town and arcBoost when she is lonely or upset; at most maxOut at once. She walks at speed times your pace, stays near you for lingerMinutes, then goes home: happy (satisfied) if you talked to her, gave her a gift or recited for her, hurt (distant) if you ignored her. Two queens who meet on the way react if they are sisters, friends or rivals (once per pair every encounterMinutes). lines: what she says when she finds you or leaves; notices: what the Court notices.",
+      "enabled": true,
+      "tickSeconds": 15,
+      "firstSeconds": 20,
+      "chancePerMinute": 0.12,
+      "minTier": 1,
+      "maxOut": 2,
+      "buzzBoost": 1.6,
+      "arcBoost": 3,
+      "speed": 0.6,
+      "followDist": 1.6,
+      "lingerMinutes": 4,
+      "encounterDist": 2.5,
+      "encounterMinutes": 10,
+      "lines": {
+        "seeking": [
+          "There you are. I looked everywhere for you.",
+          "I couldn't wait any longer. I came to find you.",
+          "Don't look so surprised. I missed you, that's all."
+        ],
+        "lonely": [
+          "{hours} hours. Do you know how long that is?",
+          "I counted the hours. {hours} of them. Never again, promise?"
+        ],
+        "confront": [
+          "We need to talk. About {rival}.",
+          "Don't pretend you didn't see me. Or her. {rival}, really?",
+          "I came all this way to ask you one thing: why {rival}?"
+        ],
+        "present": [
+          "Walk with me a while?",
+          "{passes} passes for me so far. I count every one.",
+          "Your best streak was {streak}. I was watching. I'm always watching."
+        ],
+        "leaveHappy": [
+          "I'll go now. Smiling.",
+          "Come find me later. I'll be waiting."
+        ],
+        "leaveHurt": [
+          "You didn't even look at me.",
+          "Fine. I'll go.",
+          "I came all this way for nothing."
+        ]
+      },
+      "notices": {
+        "out": [
+          "{queen} has come out looking for you.",
+          "{queen} left the {place} to find you."
+        ],
+        "outConfront": [
+          "{queen} is coming for you, and she looks upset 💢"
+        ],
+        "found": [
+          "{queen} found you ♥"
+        ],
+        "leftHappy": [
+          "{queen} went home happy ♥"
+        ],
+        "leftHurt": [
+          "{queen} went home hurt. You ignored her 💔"
+        ],
+        "rivals": [
+          "{queen} and {other} meet, over you. The air turns cold 💢",
+          "{queen} and {other} pass each other without a word. Both look at you."
+        ],
+        "close": [
+          "{queen} and her {bond} {other} whisper about you and giggle ♥",
+          "{queen} stops to hug her {bond} {other}. They both look your way."
+        ]
+      }
+    },
+    "news": {
+      "_about": "News, rumors and the queens' bonds. noticeSeconds: how long a queen's notice (jealousy, a good word, a wish granted, a new tier, gossip) stays on screen; dropMs: how long XP drops float. keep: notices kept in the News list. gossipEverySeconds: how often the town talks about you while you walk the map (0 for never), the first after firstGossipSeconds. buzzMult: every bit of affection for the queen the town is talking about today is multiplied by this. bonds: who is whose sister, friend or rival. Sisters and friends never grow jealous of each other; when you court one, the others who know you get goodWord affection. Rivals grow jealous wherever they are. talkChance: how often a queen you charm talks about a sister, friend or rival instead. rumors and talk: what is said, by kind.",
+      "noticeSeconds": 8,
+      "dropMs": 2200,
+      "keep": 40,
+      "gossipEverySeconds": 40,
+      "firstGossipSeconds": 8,
+      "buzzMult": 1.5,
+      "goodWord": 6,
+      "talkChance": 0.35,
+      "bonds": {
+        "azshara": {
+          "xalatath": "sister",
+          "tyrande": "rival"
+        },
+        "alexstrasza": {
+          "ysera": "sister",
+          "onyxia": "rival"
+        },
+        "onyxia": {
+          "sinestra": "friend"
+        },
+        "jaina": {
+          "tyrande": "friend",
+          "sylvanas": "rival"
+        },
+        "eltharia": {
+          "valeera": "friend"
+        },
+        "sylvanas": {
+          "tyrande": "rival"
+        },
+        "ysera": {
+          "xalatath": "rival"
+        },
+        "valeera": {
+          "sinestra": "rival"
+        }
+      },
+      "rumors": {
+        "buzz": [
+          "All the Court is talking about {queen} today. Everything you do for her counts ×{mult} ♥ until midnight.",
+          "The bards sing only of {queen} today. Win her now: ×{mult} ♥ until midnight.",
+          "{queen} is the talk of the town today, and she knows it. ×{mult} ♥ for her until midnight."
+        ],
+        "favored": [
+          "A bard swears {queen} goes weak for anyone who is good at {skill}.",
+          "They say {queen} watches the {skill} lessons from her window every evening.",
+          "Word at the Inn: the way to {queen}'s heart is {skill}."
+        ],
+        "gift": [
+          "A merchant at the Moon Market says {queen} keeps every {gift} she is ever given.",
+          "Rumor has it {queen} once wept over a gift of {gift}.",
+          "{queen}'s maid let it slip: nothing makes her smile like {gift}."
+        ],
+        "need": [
+          "{queen} won't look twice at anyone under {need}. Some say she is waiting for you.",
+          "They say {queen} asks about you. Reach {need} and she might answer."
+        ],
+        "wish": [
+          "{queen} has been sighing all day. She wants {count} passes of {skill}.",
+          "A maid let it slip: {queen} hopes someone recites {skill} for her today."
+        ],
+        "stranger": [
+          "{queen} asked the guards who you are.",
+          "{queen} pretended not to notice you today. She noticed."
+        ],
+        "fond": [
+          "Someone saw {queen} writing your name in the margin of a book.",
+          "{queen} asked the bard to sing of you. Twice.",
+          "{queen} smiled at nothing all morning. The maids think it was you."
+        ],
+        "devoted": [
+          "{queen} told the whole Court she is yours. Nobody dared to argue.",
+          "They say {queen} sleeps with your words under her pillow.",
+          "{queen} turned down a prince today. She said her heart is spoken for."
+        ],
+        "jealous": [
+          "{queen} has been asking everyone where you spend your evenings.",
+          "{queen} threw a letter from {other} into the fire. Twice.",
+          "{queen} heard about you and {other}. Her halls are very quiet."
+        ],
+        "longing": [
+          "{queen} keeps looking at the door. It has been {hours} hours.",
+          "{queen} left a candle in her window for you. It has burned for {hours} hours."
+        ],
+        "bond": [
+          "{queen} and her {bond} {other} talked about you until dawn.",
+          "{queen} told her {bond} {other} all about you. Now {other} wants to meet you.",
+          "{other} asked {queen} what you are like. {queen} blushed."
+        ],
+        "rival": [
+          "{queen} and {other} are not speaking. Some say it is about you.",
+          "{queen} and {other} wore the same colour today. On purpose. For you.",
+          "A duel of glances at the Market: {queen} and {other}, over you."
+        ],
+        "you": [
+          "People say you reached {skill} {level}. The queens noticed.",
+          "Your name came up at the Inn: {reps} passes recited, and counting.",
+          "Children in the street play at being you, reciting {skill}."
+        ]
+      },
+      "talk": {
+        "sister": [
+          "My sister {other} asks about you every day. I tell her nothing. Mostly.",
+          "{other} says you have kind eyes. My sister is never wrong.",
+          "Be good to {other} too. She's my sister, and she likes you."
+        ],
+        "friend": [
+          "{other} told me about you. All good things, I promise.",
+          "My friend {other} says I smile more since you came.",
+          "If you see {other}, say I said hello. And that you're mine."
+        ],
+        "rival": [
+          "If {other} smiles at you, don't smile back.",
+          "{other}? Please. You can do so much better.",
+          "I saw {other} looking at you. I didn't like it."
+        ]
+      }
+    },
+    "elixir": {
+      "name": "Elixir of Focus",
+      "copy": "Doubles all XP for your next 20 repetitions.",
+      "cost": 120,
+      "reps": 20,
+      "mult": 2
+    },
+    "places": {
+      "yard": {
+        "name": "Training Yard",
+        "letter": "y",
+        "blurb": "Sand, posts and an audience. Fire trains Strength; Water trains Grace.",
+        "fire": "strength",
+        "water": "grace",
+        "goldMult": 1,
+        "region": "realm"
+      },
+      "forest": {
+        "name": "Whispering Forest",
+        "letter": "f",
+        "blurb": "Old trees that listen. Fire trains Woodcutting; Water trains Herbalism.",
+        "fire": "woodcutting",
+        "water": "herbalism",
+        "goldMult": 2,
+        "region": "realm"
+      },
+      "mine": {
+        "name": "Ember Mine",
+        "letter": "n",
+        "blurb": "Deep, hot and full of shine. Fire trains Mining; Water trains Crystal-singing. Onyxia's lair is near.",
+        "fire": "mining",
+        "water": "crystal",
+        "goldMult": 3,
+        "region": "realm"
+      },
+      "inn": {
+        "name": "The Gilded Inn",
+        "letter": "i",
+        "blurb": "Music, mead and Eltharia's warm smile. Fire trains Charisma; Water trains Song.",
+        "fire": "charisma",
+        "water": "song",
+        "goldMult": 1.5,
+        "region": "realm"
+      },
+      "library": {
+        "name": "Starlit Library",
+        "letter": "l",
+        "blurb": "Quiet stacks under a glass dome. Fire trains Lore; Water trains Serenity.",
+        "fire": "lore",
+        "water": "serenity",
+        "goldMult": 1,
+        "region": "realm"
+      },
+      "void": {
+        "name": "The Void",
+        "letter": "v",
+        "blurb": "Where the stars come close. Fire trains Magic; Water trains Dream. Ysera drifts here.",
+        "fire": "magic",
+        "water": "dream",
+        "goldMult": 1,
+        "region": "realm"
+      },
+      "shire": {
+        "name": "The Shire",
+        "letter": "s",
+        "blurb": "Meadows and long roads. Fire trains Stamina; Water trains Harmony. Alexstrasza tends the flowers.",
+        "fire": "stamina",
+        "water": "harmony",
+        "goldMult": 1.5,
+        "region": "realm"
+      },
+      "palace": {
+        "name": "Azshara's Palace",
+        "letter": "p",
+        "blurb": "The queen's court. Recite before her throne to train Charisma (Fire) or Grace (Water).",
+        "fire": "charisma",
+        "water": "grace",
+        "goldMult": 2,
+        "region": "realm"
+      },
+      "market": {
+        "name": "Moon Market",
+        "letter": "m",
+        "blurb": "Gifts, elixirs and gossip. Spend your gold here.",
+        "fire": "",
+        "water": "",
+        "goldMult": 0,
+        "region": "realm"
+      },
+      "sanctum": {
+        "name": "Shadow Sanctum",
+        "letter": "x",
+        "region": "realm",
+        "blurb": "Whispers, violet fire and a throne of night. Fire trains Lore; Water trains Dream. Xal'atath, Azshara's dark sister, waits here.",
+        "fire": "lore",
+        "water": "dream",
+        "goldMult": 2
+      },
+      "to_isles": {
+        "name": "Ferry to Moonshore Isles",
+        "letter": "g",
+        "region": "realm",
+        "blurb": "A boat to the isles of moonlight, Jaina, Tyrande and Sylvanas. It sails for those of total level 30.",
+        "fire": "",
+        "water": "",
+        "goldMult": 0,
+        "gate": {
+          "to": "isles",
+          "toPlace": "isles_ferry",
+          "need": {
+            "skill": "total",
+            "level": 30
+          }
+        }
+      },
+      "to_peaks": {
+        "name": "Road to the Ashen Peaks",
+        "letter": "u",
+        "region": "realm",
+        "blurb": "A hot road up to the forge and the arena, Sinestra and Valeera. Open at total level 50.",
+        "fire": "",
+        "water": "",
+        "goldMult": 0,
+        "gate": {
+          "to": "peaks",
+          "toPlace": "peaks_road",
+          "need": {
+            "skill": "total",
+            "level": 50
+          }
+        }
+      },
+      "isles_ferry": {
+        "name": "Ferry to the Realm",
+        "letter": "g",
+        "region": "isles",
+        "blurb": "Back across the water to Azshara's realm.",
+        "fire": "",
+        "water": "",
+        "goldMult": 0,
+        "gate": {
+          "to": "realm",
+          "toPlace": "to_isles",
+          "need": {
+            "skill": "",
+            "level": 0
+          }
+        }
+      },
+      "harbor": {
+        "name": "Kul Harbor",
+        "letter": "h",
+        "region": "isles",
+        "blurb": "Gulls, ropes and the smell of the sea. Fire trains Cooking; Water trains Fishing. Jaina keeps watch here.",
+        "fire": "cooking",
+        "water": "fishing",
+        "goldMult": 2.5
+      },
+      "grotto": {
+        "name": "Coral Grotto",
+        "letter": "c",
+        "region": "isles",
+        "blurb": "Glowing coral and strange brews. Fire trains Magic; Water trains Alchemy.",
+        "fire": "magic",
+        "water": "alchemy",
+        "goldMult": 1.5
+      },
+      "spire": {
+        "name": "Windrunner Spire",
+        "letter": "w",
+        "region": "isles",
+        "blurb": "A lighthouse with a view of everything. Fire trains Archery; Water trains Serenity. Sylvanas stands guard.",
+        "fire": "archery",
+        "water": "serenity",
+        "goldMult": 1.5
+      },
+      "temple": {
+        "name": "Moon Temple",
+        "letter": "o",
+        "region": "isles",
+        "blurb": "Silver light on still water. Fire trains Lore; Water trains Dance. Tyrande prays here.",
+        "fire": "lore",
+        "water": "dance",
+        "goldMult": 1
+      },
+      "peaks_road": {
+        "name": "Road to the Realm",
+        "letter": "r",
+        "region": "peaks",
+        "blurb": "Down the mountain, back to Azshara's realm.",
+        "fire": "",
+        "water": "",
+        "goldMult": 0,
+        "gate": {
+          "to": "realm",
+          "toPlace": "to_peaks",
+          "need": {
+            "skill": "",
+            "level": 0
+          }
+        }
+      },
+      "forge": {
+        "name": "Black Forge",
+        "letter": "k",
+        "region": "peaks",
+        "blurb": "Anvils, sparks and dragon-fire. Fire trains Smithing; Water trains Alchemy. Sinestra rules the heat.",
+        "fire": "smithing",
+        "water": "alchemy",
+        "goldMult": 3
+      },
+      "arena": {
+        "name": "Blade Arena",
+        "letter": "a",
+        "region": "peaks",
+        "blurb": "Sand, steel and a roaring crowd. Fire trains Archery; Water trains Dance. Valeera fights for fun.",
+        "fire": "archery",
+        "water": "dance",
+        "goldMult": 2
+      },
+      "springs": {
+        "name": "Ember Springs",
+        "letter": "q",
+        "region": "peaks",
+        "blurb": "Hot water under a red sky. Fire trains Stamina; Water trains Serenity.",
+        "fire": "stamina",
+        "water": "serenity",
+        "goldMult": 1
+      },
+      "hall": {
+        "name": "Feast Hall",
+        "letter": "e",
+        "region": "peaks",
+        "blurb": "Roasts, drums and long tables. Fire trains Cooking; Water trains Song.",
+        "fire": "cooking",
+        "water": "song",
+        "goldMult": 2
+      }
+    },
+    "skills": {
+      "strength": {
+        "name": "Strength",
+        "element": "fire",
+        "copy": "Power behind every word."
+      },
+      "grace": {
+        "name": "Grace",
+        "element": "water",
+        "copy": "Every word in its place, nothing wasted."
+      },
+      "woodcutting": {
+        "name": "Woodcutting",
+        "element": "fire",
+        "copy": "Fell phrases like trees, one stroke at a time."
+      },
+      "herbalism": {
+        "name": "Herbalism",
+        "element": "water",
+        "copy": "Gather the gentle words that heal."
+      },
+      "mining": {
+        "name": "Mining",
+        "element": "fire",
+        "copy": "Dig deep for words worth their weight."
+      },
+      "crystal": {
+        "name": "Crystal-singing",
+        "element": "water",
+        "copy": "Sing to the stone until it rings."
+      },
+      "charisma": {
+        "name": "Charisma",
+        "element": "fire",
+        "copy": "Respect, swagger and presence. Queens notice."
+      },
+      "song": {
+        "name": "Song",
+        "element": "water",
+        "copy": "Carry a phrase like a melody."
+      },
+      "lore": {
+        "name": "Lore",
+        "element": "fire",
+        "copy": "Know the old words and use them."
+      },
+      "serenity": {
+        "name": "Serenity",
+        "element": "water",
+        "copy": "Calm breath, steady voice."
+      },
+      "magic": {
+        "name": "Magic",
+        "element": "fire",
+        "copy": "Words that bend the air."
+      },
+      "dream": {
+        "name": "Dream",
+        "element": "water",
+        "copy": "Words that drift between sleep and waking."
+      },
+      "stamina": {
+        "name": "Stamina",
+        "element": "fire",
+        "copy": "Keep going, rep after rep."
+      },
+      "harmony": {
+        "name": "Harmony",
+        "element": "water",
+        "copy": "Be in tune with everything around you."
+      },
+      "smithing": {
+        "name": "Smithing",
+        "element": "fire",
+        "copy": "Hammer every word into shape."
+      },
+      "fishing": {
+        "name": "Fishing",
+        "element": "water",
+        "copy": "Patience, then the catch."
+      },
+      "archery": {
+        "name": "Archery",
+        "element": "fire",
+        "copy": "Aim each word, loose it true."
+      },
+      "dance": {
+        "name": "Dance",
+        "element": "water",
+        "copy": "Words that move like water."
+      },
+      "cooking": {
+        "name": "Cooking",
+        "element": "fire",
+        "copy": "Spice every phrase just right."
+      },
+      "alchemy": {
+        "name": "Alchemy",
+        "element": "water",
+        "copy": "Mix the words until they glow."
+      }
+    },
+    "gifts": {
+      "flowers": {
+        "name": "Wildflowers",
+        "copy": "Picked fresh from the Shire.",
+        "cost": 25,
+        "value": 30
+      },
+      "mead": {
+        "name": "Honey mead",
+        "copy": "The Inn's best barrel.",
+        "cost": 60,
+        "value": 80
+      },
+      "poems": {
+        "name": "Book of poems",
+        "copy": "Bound in velvet, read aloud by you.",
+        "cost": 120,
+        "value": 160
+      },
+      "lily": {
+        "name": "Moon lily",
+        "copy": "It only opens in the Void.",
+        "cost": 200,
+        "value": 260
+      },
+      "dragonglass": {
+        "name": "Dragon-glass",
+        "copy": "Black, warm, and very rare.",
+        "cost": 400,
+        "value": 500
+      },
+      "jewel": {
+        "name": "Jewel of the Tides",
+        "copy": "Fit for a queen. Literally.",
+        "cost": 900,
+        "value": 1200
+      },
+      "pearl": {
+        "name": "Sea pearl",
+        "copy": "From the deepest part of the harbor.",
+        "cost": 180,
+        "value": 230
+      },
+      "moonwell": {
+        "name": "Moonwell water",
+        "copy": "Silver, cool and a little magic.",
+        "cost": 240,
+        "value": 300
+      },
+      "arrow": {
+        "name": "Windrunner arrow",
+        "copy": "Fletched with a raven's feather.",
+        "cost": 320,
+        "value": 400
+      },
+      "ember": {
+        "name": "Heart of embers",
+        "copy": "Still warm. Always warm.",
+        "cost": 500,
+        "value": 620
+      },
+      "dagger": {
+        "name": "Gilded dagger",
+        "copy": "Sharp, pretty and a little dangerous. Like her.",
+        "cost": 650,
+        "value": 800
+      },
+      "voidshard": {
+        "name": "Shard of the Void",
+        "copy": "It hums. It whispers. It likes you.",
+        "cost": 1100,
+        "value": 1400
+      }
+    },
+    "pickupLines": [
+      "Hey there, pretty mama. I recite, you swoon. Deal?",
+      "Is it hot in here, or is it just my Strength level?",
+      "They call me Alien X. Another word for handsome: also Alien X.",
+      "I just did a hundred reps. Of the alphabet. For you.",
+      "Do you believe in level-ups at first sight, or should I walk by again?",
+      "Whoa, mama! My Charisma just went up a whole level looking at you.",
+      "I memorise phrases for a living. Yours I will never forget.",
+      "Careful, baby. This much XP should come with a warning."
+    ],
+    "queens": {
+      "eltharia": {
+        "name": "Eltharia",
+        "title": "Keeper of the Gilded Inn",
+        "color": "#e8c872",
+        "place": "inn",
+        "at": [
+          4,
+          8
+        ],
+        "element": "water",
+        "favored": [
+          "song",
+          "charisma",
+          "harmony"
+        ],
+        "gift": "mead",
+        "need": {
+          "skill": "",
+          "level": 0
+        },
+        "date": "A song by the hearth",
+        "persona": "Eltharia, warm and kind keeper of the Gilded Inn, who cheers the player on like a sweetheart and is proud of every bit of progress",
+        "look": { "skin": "#f2c9a5", "hair": "#b5562d", "sheen": "#e08a5a", "hairStyle": "bun", "eyes": "#3fae5a", "eyeStyle": "open", "shadow": "#b8743a", "lips": "#c8435a", "ears": "round", "horns": "", "headpiece": "circlet", "accent": "#e8c872", "bg": ["#8a5520", "#1e0f06"], "marking": "beauty", "outfit": "corset", "adorn": "beads" },
+        "lines": {
+          "greet": [
+            "Well, look who walked in. Sit, recite me something lovely.",
+            "There you are! I saved you the seat by the fire."
+          ],
+          "locked": [
+            "Come closer, I don't bite."
+          ],
+          "watch": [
+            "Go on, I'm listening. Every word.",
+            "Recite for me. I love the sound of your voice."
+          ],
+          "streak": [
+            "Three in a row! You're on fire, darling.",
+            "Don't stop now, you're glowing.",
+            "Ten! The whole inn is watching you."
+          ],
+          "levelUp": [
+            "{skill} {level}? I knew it! Come here, you.",
+            "Look at you, {skill} {level}. I'm bragging about you tonight."
+          ],
+          "gift": [
+            "For me? You sweet thing.",
+            "You remembered! Thank you."
+          ],
+          "giftLoved": [
+            "Honey mead! You know the way to my heart.",
+            "Oh, my favourite. You're spoiling me."
+          ],
+          "tierUp": [
+            "We're {tier} now, aren't we? I like that.",
+            "{tier}. Don't you dare stop visiting."
+          ],
+          "dateStart": [
+            "Just us and the hearth tonight. Recite me your best."
+          ],
+          "dateEnd": [
+            "That was perfect. Same time tomorrow?",
+            "I'll be humming your words all night."
+          ],
+          "missed": [
+            "{hours} hours! I kept your seat warm the whole time. Don't you dare do that again.",
+            "There you are. I set out two cups every night, just in case."
+          ],
+          "jealous": [
+            "I saw you with {rival}. It's fine. I'm fine. ...Is she nicer than me?",
+            "{rival} again? Hm. The fire's gone a bit cold in here."
+          ],
+          "reconciled": [
+            "All right, all right. You're forgiven. Come here.",
+            "There's the one I like. Let's not fight again."
+          ],
+          "wish": [
+            "Do something for me today? {count} passes of {skill}. I'll be counting.",
+            "Today I want {count} passes of {skill}. For me. Promise?"
+          ],
+          "wishDone": [
+            "You did it! All of it, for me. I could dance on the bar.",
+            "My wish, granted. Nobody's ever done that for me before."
+          ],
+          "memory": [
+            "{count} passes, just for me. I remember every one.",
+            "{count} times you've recited for me. I wrote them all down."
+          ]
+        }
+      },
+      "alexstrasza": {
+        "name": "Alexstrasza",
+        "title": "Queen of the Blooming Shire",
+        "color": "#ff7a6b",
+        "place": "shire",
+        "at": [
+          4,
+          11
+        ],
+        "element": "water",
+        "favored": [
+          "herbalism",
+          "harmony",
+          "stamina"
+        ],
+        "gift": "flowers",
+        "need": {
+          "skill": "total",
+          "level": 30
+        },
+        "date": "A picnic in the meadow",
+        "persona": "Alexstrasza, the radiant life-binder queen of the Shire, gentle, glowing and a little teasing, who loves growth in all things",
+        "look": { "skin": "#f6d0b8", "hair": "#d7263d", "sheen": "#ff6b7d", "hairStyle": "flowing", "eyes": "#f5a623", "eyeStyle": "open", "shadow": "#ff6b4a", "lips": "#c2183a", "ears": "elf", "horns": "#f3e0c0", "headpiece": "none", "accent": "#ff7a6b", "bg": ["#9a2234", "#220508"], "marking": "", "outfit": "scales", "adorn": "flowers" },
+        "lines": {
+          "greet": [
+            "The flowers turned toward you. So did I.",
+            "You came all the way out to my meadow? Sweet."
+          ],
+          "locked": [
+            "Grow a little more, little sprout. Total level {need}, then we'll talk."
+          ],
+          "watch": [
+            "Let your words grow. I'll watch them bloom.",
+            "Breathe with the meadow, then recite."
+          ],
+          "streak": [
+            "Three! Everything you touch grows.",
+            "Five in a row. The bees are jealous.",
+            "Ten! The whole Shire is in bloom for you."
+          ],
+          "levelUp": [
+            "{skill} {level}. You're blossoming, love.",
+            "Another level in {skill}. I'm so proud I could bloom."
+          ],
+          "gift": [
+            "How thoughtful. Thank you.",
+            "You're a gentleman. Don't let anyone tell you otherwise."
+          ],
+          "giftLoved": [
+            "Wildflowers from my own fields! You noticed.",
+            "My favourite. My heart is full."
+          ],
+          "tierUp": [
+            "{tier}. Something is growing between us.",
+            "We're {tier}. Water it often."
+          ],
+          "dateStart": [
+            "Blanket, sunshine, you. Recite me something sweet."
+          ],
+          "dateEnd": [
+            "Best picnic in a thousand years.",
+            "Come back when the roses open. I'll be waiting."
+          ],
+          "missed": [
+            "{hours} hours apart. Even the roses drooped.",
+            "You came back. The whole Shire is blooming again."
+          ],
+          "jealous": [
+            "Off with {rival}, were you? My flowers noticed. So did I.",
+            "{rival}. Of course. Am I not warm enough for you?"
+          ],
+          "reconciled": [
+            "There. Spring forgives winter. Every time.",
+            "I can never stay cross with you for long. It's your fault."
+          ],
+          "wish": [
+            "Grow for me today: {count} passes of {skill}.",
+            "A little wish: {count} passes of {skill} before the sun sets."
+          ],
+          "wishDone": [
+            "You grew it all, just for me. I'm glowing.",
+            "Wish granted. Come, walk with me through the blossoms."
+          ],
+          "memory": [
+            "{count} passes for me. I've planted a flower for each.",
+            "{count}. A whole garden of you."
+          ]
+        }
+      },
+      "ysera": {
+        "name": "Ysera",
+        "title": "Dreamer of the Void",
+        "color": "#7ee7ff",
+        "place": "void",
+        "at": [
+          19,
+          11
+        ],
+        "element": "water",
+        "favored": [
+          "dream",
+          "serenity",
+          "magic"
+        ],
+        "gift": "lily",
+        "need": {
+          "skill": "serenity",
+          "level": 5
+        },
+        "date": "A walk through the dreaming",
+        "persona": "Ysera, the soft-spoken dreamer of the Void, mysterious, calm and quietly affectionate, who speaks in gentle images",
+        "look": { "skin": "#e3f0dc", "hair": "#4cc38a", "sheen": "#a6f0c6", "hairStyle": "flowing", "eyes": "#7ee7ff", "eyeStyle": "closed", "shadow": "#2fa37a", "lips": "#c45a86", "ears": "elf", "horns": "#dff5e6", "headpiece": "none", "accent": "#7ee7ff", "bg": ["#1d7a68", "#06161a"], "marking": "", "outfit": "robe", "adorn": "leaves" },
+        "lines": {
+          "greet": [
+            "You found me between the stars. Most people don't.",
+            "Hush. Stay a while. The Void is kind tonight."
+          ],
+          "locked": [
+            "Your mind is too loud. Reach Serenity {need} and come back."
+          ],
+          "watch": [
+            "Let the words drift. I'm here.",
+            "Recite softly. The stars are listening too."
+          ],
+          "streak": [
+            "Three, like ripples.",
+            "Five. You're flowing now.",
+            "Ten. You and the Void are one."
+          ],
+          "levelUp": [
+            "{skill} {level}. I dreamed you would.",
+            "You rose in {skill}. The stars told me first."
+          ],
+          "gift": [
+            "A gift... from the waking world. Thank you.",
+            "I'll keep it beside my dreams."
+          ],
+          "giftLoved": [
+            "A moon lily. You really do understand me.",
+            "My favourite flower, from you. I'm speechless."
+          ],
+          "tierUp": [
+            "We are {tier} now. I felt it.",
+            "{tier}. Even my dreams know your name."
+          ],
+          "dateStart": [
+            "Close your eyes and take my hand. Now recite."
+          ],
+          "dateEnd": [
+            "That was the most beautiful dream.",
+            "Visit me again tonight. In your sleep, if you like."
+          ],
+          "missed": [
+            "I dreamed of you for {hours} hours. You were never quite there.",
+            "You're real again. The dreams were lonely."
+          ],
+          "jealous": [
+            "I dreamed you were with {rival}. Was it only a dream?",
+            "{rival}'s starlight is on you. The void notices everything."
+          ],
+          "reconciled": [
+            "The bad dream is over. Stay.",
+            "Mm. Forgiven, before you even asked."
+          ],
+          "wish": [
+            "Will you do something, while I drift? {count} passes of {skill}.",
+            "Tonight's wish: {count} passes of {skill}. I'll dream of it."
+          ],
+          "wishDone": [
+            "You made my dream come true. Truly.",
+            "I felt every pass. Like warm rain."
+          ],
+          "memory": [
+            "{count} passes... I count them instead of stars now.",
+            "{count}. I keep each one in a little dream."
+          ]
+        }
+      },
+      "onyxia": {
+        "name": "Onyxia",
+        "title": "Dragon Queen of the Ember Mine",
+        "color": "#ff4d6d",
+        "place": "mine",
+        "at": [
+          19,
+          3
+        ],
+        "element": "fire",
+        "favored": [
+          "strength",
+          "mining",
+          "stamina"
+        ],
+        "gift": "dragonglass",
+        "need": {
+          "skill": "strength",
+          "level": 10
+        },
+        "date": "A flight over the peaks",
+        "persona": "Onyxia, the fierce and proud dragon queen of the Ember Mine, who teases, challenges and secretly admires strength and persistence",
+        "look": { "skin": "#f0c9a8", "hair": "#1d1d2b", "sheen": "#5a4a7a", "hairStyle": "long", "eyes": "#ff4d6d", "eyeStyle": "open", "shadow": "#6a1424", "lips": "#8e0f2c", "ears": "round", "horns": "#2b2233", "headpiece": "none", "accent": "#ff4d6d", "bg": ["#6a1222", "#140307"], "marking": "beauty", "outfit": "scales", "adorn": "chains" },
+        "lines": {
+          "greet": [
+            "Bold, walking into my lair. I like bold.",
+            "Back again? Show me you've grown."
+          ],
+          "locked": [
+            "Strength {need}, little one. Then you may look at me."
+          ],
+          "watch": [
+            "Recite. Loud. Make the walls shake.",
+            "Go on. Impress me, if you can."
+          ],
+          "streak": [
+            "Three. Not bad, mortal.",
+            "Five! Now that's fire.",
+            "Ten! Fine. You're impressive. Happy?"
+          ],
+          "levelUp": [
+            "{skill} {level}. Hmph. Keep going.",
+            "{skill} {level}? Now we're talking."
+          ],
+          "gift": [
+            "A gift? I'll allow it.",
+            "Hm. It's... nice. Thank you."
+          ],
+          "giftLoved": [
+            "Dragon-glass! You brave, foolish, wonderful creature.",
+            "Now THAT is a gift for a dragon."
+          ],
+          "tierUp": [
+            "{tier}. Don't let it go to your head.",
+            "We're {tier}. I suppose I like you."
+          ],
+          "dateStart": [
+            "Climb on. Recite while we fly, if your voice holds."
+          ],
+          "dateEnd": [
+            "You didn't scream once. I'm impressed.",
+            "Same time tomorrow. Don't be late."
+          ],
+          "missed": [
+            "{hours} hours. I almost came looking. Almost.",
+            "Back at last. My hoard felt empty without you. Don't flatter yourself."
+          ],
+          "jealous": [
+            "{rival}? You smell of her. I'll burn it off you.",
+            "You went to {rival}. Interesting. Dangerous, but interesting."
+          ],
+          "reconciled": [
+            "Fine. You're mine again. Don't test me.",
+            "Hmph. You've earned back my fire."
+          ],
+          "wish": [
+            "Prove yourself: {count} passes of {skill}. Today.",
+            "A dragon's wish: {count} passes of {skill}. Fail me and see."
+          ],
+          "wishDone": [
+            "Every pass, as I demanded. You might be worth keeping.",
+            "My wish, done. My heart is... warmer. Say nothing."
+          ],
+          "memory": [
+            "{count} passes in my lair. I've added you to the hoard.",
+            "{count}. No one has lasted this long near me."
+          ]
+        }
+      },
+      "azshara": {
+        "name": "Azshara",
+        "title": "Queen of Queens",
+        "color": "#a855f7",
+        "place": "palace",
+        "at": [
+          12,
+          3
+        ],
+        "element": "fire",
+        "favored": [
+          "charisma",
+          "lore",
+          "magic"
+        ],
+        "gift": "jewel",
+        "need": {
+          "skill": "total",
+          "level": 70
+        },
+        "date": "An audience in the moonlit hall",
+        "persona": "Azshara, the magnificent, commanding Queen of Queens, who expects greatness, rewards it with rare warmth, and flirts like royalty",
+        "look": { "skin": "#c8a6ea", "hair": "#1c0a2a", "sheen": "#9b4dff", "hairStyle": "flowing", "eyes": "#c56bff", "eyeStyle": "glow", "shadow": "#7b2cbf", "lips": "#6e1a86", "ears": "elf", "horns": "", "headpiece": "crown", "accent": "#a855f7", "bg": ["#3d1366", "#07020f"], "marking": "", "outfit": "regal", "adorn": "pearls" },
+        "lines": {
+          "greet": [
+            "You may approach. Briefly.",
+            "Ah. The one my queens keep talking about."
+          ],
+          "locked": [
+            "Total level {need}. Then you may kneel. Then you may speak."
+          ],
+          "watch": [
+            "Recite before the throne. Do not bore me.",
+            "I am listening. That is an honour."
+          ],
+          "streak": [
+            "Three. Adequate.",
+            "Five. You may continue.",
+            "Ten! Magnificent. You may look at me."
+          ],
+          "levelUp": [
+            "{skill} {level}. I expected no less.",
+            "{skill} {level}. Your queen is pleased."
+          ],
+          "gift": [
+            "Accepted.",
+            "A tribute. Good."
+          ],
+          "giftLoved": [
+            "The Jewel of the Tides. You understand royalty.",
+            "Exquisite. As am I. As are you, perhaps."
+          ],
+          "tierUp": [
+            "You are {tier}. Few ever are.",
+            "{tier}. Do not make me regret it."
+          ],
+          "dateStart": [
+            "The hall is ours tonight. Recite as if the realm depends on it."
+          ],
+          "dateEnd": [
+            "You have pleased your queen.",
+            "Return tomorrow. That is not a request."
+          ],
+          "missed": [
+            "{hours} hours without an audience. Unacceptable. ...I noticed.",
+            "You return. The throne room was very quiet."
+          ],
+          "jealous": [
+            "You knelt before {rival}? Before me, you kneel. Only me.",
+            "{rival}. How quaint. Remember whose favour you truly want."
+          ],
+          "reconciled": [
+            "Your queen forgives you. Once.",
+            "Rise. You are in my favour again."
+          ],
+          "wish": [
+            "Your queen commands: {count} passes of {skill}, today.",
+            "Royal decree: {count} passes of {skill}. Do not disappoint."
+          ],
+          "wishDone": [
+            "My decree, fulfilled. You may stand closer.",
+            "Perfect obedience. And something more. How... rare."
+          ],
+          "memory": [
+            "{count} passes before the throne. I have kept count. Queens always do.",
+            "{count}. Even my sister cannot claim such devotion."
+          ]
+        }
+      },
+      "xalatath": {
+        "name": "Xal'atath",
+        "title": "Harbinger of the Void, Azshara's Sister",
+        "color": "#b14dff",
+        "place": "sanctum",
+        "at": [
+          18,
+          12
+        ],
+        "element": "fire",
+        "favored": [
+          "magic",
+          "lore",
+          "dream"
+        ],
+        "gift": "voidshard",
+        "need": {
+          "skill": "total",
+          "level": 90
+        },
+        "date": "A walk between the stars",
+        "look": {
+          "skin": "#cbb8e8",
+          "hair": "#0e0716",
+          "sheen": "#b14dff",
+          "hairStyle": "flowing",
+          "eyes": "#d27bff",
+          "eyeStyle": "glow",
+          "shadow": "#5a0d9e",
+          "lips": "#3e0c55",
+          "ears": "elf",
+          "horns": "",
+          "headpiece": "voidcrown",
+          "accent": "#6a1fb5",
+          "bg": [
+            "#2e0b4a",
+            "#030008"
+          ],
+          "marking": "runes",
+          "outfit": "void",
+          "adorn": "chains"
+        },
+        "persona": "Xal'atath, Harbinger of the Void and Azshara's darker, wittier sister, velvet-voiced, mysterious and amused by mortals, who teases, whispers and slowly warms to anyone who keeps coming back",
+        "lines": {
+          "greet": [
+            "Ah, a visitor. My sister will be jealous.",
+            "Come closer. The dark does not bite. Usually."
+          ],
+          "locked": [
+            "Total level {need}, little star. Until then, I only whisper."
+          ],
+          "watch": [
+            "Recite for me. I collect beautiful words.",
+            "Speak, and let the Void listen."
+          ],
+          "streak": [
+            "Three. The whispers approve.",
+            "Five. Delicious.",
+            "Ten! Even the Void holds its breath for you."
+          ],
+          "levelUp": [
+            "{skill} {level}. I felt that from here.",
+            "{skill} {level}. My sister never told me you were this good."
+          ],
+          "gift": [
+            "A gift? How charmingly mortal.",
+            "I will keep it. Somewhere dark and safe."
+          ],
+          "giftLoved": [
+            "A Shard of the Void. You understand me better than my sister does.",
+            "It whispers your name now. So do I."
+          ],
+          "tierUp": [
+            "{tier}. The Void has chosen you. So have I.",
+            "We are {tier}. Do not tell Azshara."
+          ],
+          "dateStart": [
+            "Take my hand. Between the stars, only your voice."
+          ],
+          "dateEnd": [
+            "Even eternity felt short tonight.",
+            "Come back to the dark soon. I will be waiting."
+          ],
+          "missed": [
+            "{hours} hours. The void counted each one, whispering your name.",
+            "Back from the light? It never keeps you like I do."
+          ],
+          "jealous": [
+            "Running to {rival}? The shadows told me. They tell me everything.",
+            "{rival}... Shall I whisper to her what you whispered to me?"
+          ],
+          "reconciled": [
+            "Mm. I'll let it go. The void is patient.",
+            "There. Mine again. Did you ever really leave?"
+          ],
+          "wish": [
+            "A little hunger of mine: {count} passes of {skill}.",
+            "Feed me {count} passes of {skill} today. The dark grows restless."
+          ],
+          "wishDone": [
+            "Delicious. Every single word.",
+            "You gave the void what it wanted. Now it wants you."
+          ],
+          "memory": [
+            "{count} passes in the dark with me. You can't go back now.",
+            "{count}. I wear them like jewels."
+          ]
+        }
+      },
+      "jaina": {
+        "name": "Jaina",
+        "title": "Sorceress of Kul Harbor",
+        "color": "#7fb8ff",
+        "place": "harbor",
+        "at": [
+          10,
+          10
+        ],
+        "element": "water",
+        "favored": [
+          "fishing",
+          "magic",
+          "alchemy"
+        ],
+        "gift": "pearl",
+        "need": {
+          "skill": "fishing",
+          "level": 5
+        },
+        "date": "A sail at sunset",
+        "persona": "Jaina, the clever, proud sorceress of Kul Harbor, who loves the sea, quick wit and a good spell, and blushes when she is impressed",
+        "look": { "skin": "#f6d5bf", "hair": "#f4e7c5", "sheen": "#fff6dc", "hairStyle": "ponytail", "eyes": "#3a86ff", "eyeStyle": "open", "shadow": "#3a6fd8", "lips": "#d0496a", "ears": "round", "horns": "", "headpiece": "circlet", "accent": "#7fb8ff", "bg": ["#22599a", "#061226"], "marking": "", "outfit": "coat", "adorn": "pearls" },
+        "lines": {
+          "greet": [
+            "Mind the ropes, sailor. What brings you to my harbor?",
+            "Oh, it's you. I may have been watching the docks for you."
+          ],
+          "locked": [
+            "Catch me something first. Fishing {need}, then we talk."
+          ],
+          "watch": [
+            "Recite for the sea. I'm listening, too.",
+            "Go on. Make the gulls jealous."
+          ],
+          "streak": [
+            "Three! Like waves on the shore.",
+            "Five. You're carrying a tide now.",
+            "Ten! Even my spells aren't that steady."
+          ],
+          "levelUp": [
+            "{skill} {level}! I knew you had it in you.",
+            "{skill} {level}. You're making a sorceress blush."
+          ],
+          "gift": [
+            "For me? That's sweet of you.",
+            "Thank you. I'll keep it on my desk."
+          ],
+          "giftLoved": [
+            "A sea pearl! You really do know me.",
+            "My favourite. Careful, I might start liking you."
+          ],
+          "tierUp": [
+            "{tier}. I think I like where this is going.",
+            "We're {tier} now. Don't sail off."
+          ],
+          "dateStart": [
+            "Just us, the wind and the sunset. Recite me something."
+          ],
+          "dateEnd": [
+            "Best sunset I've ever had.",
+            "Come sail with me again. Soon."
+          ],
+          "missed": [
+            "{hours} hours! I watched every ship come in. None were you.",
+            "You're back. I- I didn't wait at the dock. Much."
+          ],
+          "jealous": [
+            "You were with {rival}? I'm not jealous. I'm a sorceress. I'm... fine.",
+            "{rival}, huh. The sea's gone choppy all of a sudden."
+          ],
+          "reconciled": [
+            "Calm waters again. I'm glad.",
+            "Okay. I forgive you. Don't make me freeze you."
+          ],
+          "wish": [
+            "Would you, for me? {count} passes of {skill} today.",
+            "My wish for today: {count} passes of {skill}. I'll chart your course."
+          ],
+          "wishDone": [
+            "You actually did it all. For me. I'm blushing, aren't I?",
+            "Every pass! I could cast fireworks."
+          ],
+          "memory": [
+            "{count} passes in my harbor. I keep a logbook, you know.",
+            "{count}. That's more than the tides in a season."
+          ]
+        }
+      },
+      "tyrande": {
+        "name": "Tyrande",
+        "title": "High Priestess of the Moon Temple",
+        "color": "#c9b8ff",
+        "place": "temple",
+        "at": [
+          6,
+          5
+        ],
+        "element": "water",
+        "favored": [
+          "dance",
+          "serenity",
+          "archery"
+        ],
+        "gift": "moonwell",
+        "need": {
+          "skill": "dance",
+          "level": 10
+        },
+        "date": "A dance under the moon",
+        "persona": "Tyrande, the graceful high priestess of the moon, serene and warm, with a hunter's quiet confidence and a playful streak under the moonlight",
+        "look": { "skin": "#9b8ad6", "hair": "#4fd1c5", "sheen": "#9ff4ea", "hairStyle": "long", "eyes": "#e0f7ff", "eyeStyle": "glow", "shadow": "#3cc4b8", "lips": "#5e3aa8", "ears": "elf", "horns": "", "headpiece": "tiara", "accent": "#c9b8ff", "bg": ["#2e358a", "#070a20"], "marking": "tattoo", "outfit": "armor", "adorn": "feathers" },
+        "lines": {
+          "greet": [
+            "Elune's light finds you. And so do I.",
+            "Welcome to the temple. Walk softly; I'm glad you came."
+          ],
+          "locked": [
+            "Move with grace first. Dance {need}, then come to me."
+          ],
+          "watch": [
+            "Let the moon hear your words.",
+            "Recite, and I will keep the light on you."
+          ],
+          "streak": [
+            "Three, like the phases of the moon.",
+            "Five. Graceful.",
+            "Ten! The moon itself is smiling at you."
+          ],
+          "levelUp": [
+            "{skill} {level}. Beautiful.",
+            "You rose in {skill}. Elune and I both noticed."
+          ],
+          "gift": [
+            "A gift under the moon. Thank you.",
+            "How kind. It glows a little, like you."
+          ],
+          "giftLoved": [
+            "Moonwell water! You understand what is sacred to me.",
+            "My favourite. My heart is moonlit."
+          ],
+          "tierUp": [
+            "{tier}. The moon has blessed this.",
+            "We are {tier}. I feel it in the light."
+          ],
+          "dateStart": [
+            "Take my hand. We dance, you recite."
+          ],
+          "dateEnd": [
+            "The moon will remember tonight. So will I.",
+            "Dance with me again when the moon is full."
+          ],
+          "missed": [
+            "{hours} hours. I prayed to Elune for your return.",
+            "The moon rose without you. It looked lonely. So did I."
+          ],
+          "jealous": [
+            "I saw you walk with {rival}. Elune sees all. So do I.",
+            "{rival}. Hm. My arrows rarely miss, you know."
+          ],
+          "reconciled": [
+            "Under the moon, all is forgiven.",
+            "Peace again. I prefer you near me."
+          ],
+          "wish": [
+            "A prayer from me: {count} passes of {skill} today.",
+            "Tonight's offering: {count} passes of {skill}."
+          ],
+          "wishDone": [
+            "My prayer was answered, by you.",
+            "Every pass, like moonlight. Thank you."
+          ],
+          "memory": [
+            "{count} passes in the temple. Each one a candle.",
+            "{count}. The moon herself is impressed."
+          ]
+        }
+      },
+      "sylvanas": {
+        "name": "Sylvanas",
+        "title": "Ranger of Windrunner Spire",
+        "color": "#9aa8c8",
+        "place": "spire",
+        "at": [
+          20,
+          3
+        ],
+        "element": "fire",
+        "favored": [
+          "archery",
+          "strength",
+          "stamina"
+        ],
+        "gift": "arrow",
+        "need": {
+          "skill": "archery",
+          "level": 15
+        },
+        "date": "A night watch on the spire",
+        "persona": "Sylvanas, the cool, sharp-tongued ranger of Windrunner Spire, hard to impress, dry and teasing, secretly fond of anyone who keeps trying",
+        "look": { "skin": "#d9dde8", "hair": "#f2d16b", "sheen": "#fff0a8", "hairStyle": "long", "eyes": "#ff3b3b", "eyeStyle": "glow", "shadow": "#40202e", "lips": "#5a2236", "ears": "elf", "horns": "", "headpiece": "hood", "accent": "#9aa8c8", "bg": ["#34405a", "#0a0d14"], "marking": "", "outfit": "leather", "adorn": "feathers" },
+        "lines": {
+          "greet": [
+            "You climbed all the way up here? Persistent.",
+            "Back again. I suppose that's... nice."
+          ],
+          "locked": [
+            "Archery {need}. Then I might look up from my bow."
+          ],
+          "watch": [
+            "Recite. I'll pretend not to listen.",
+            "Fine. Show me what you've got."
+          ],
+          "streak": [
+            "Three. Not terrible.",
+            "Five. You're almost good.",
+            "Ten. All right. I'm impressed. Don't tell anyone."
+          ],
+          "levelUp": [
+            "{skill} {level}. About time.",
+            "{skill} {level}. Hm. Keep that up."
+          ],
+          "gift": [
+            "A gift. For me. Hm.",
+            "...Thank you."
+          ],
+          "giftLoved": [
+            "A Windrunner arrow. You've been paying attention.",
+            "Raven feathers. You have taste, after all."
+          ],
+          "tierUp": [
+            "{tier}. Don't make a thing of it.",
+            "We're {tier}. I suppose I allow it."
+          ],
+          "dateStart": [
+            "Watch the dark with me. Recite, quietly."
+          ],
+          "dateEnd": [
+            "That was... not bad. Come back tomorrow night.",
+            "You stayed till dawn. Nobody does that."
+          ],
+          "missed": [
+            "{hours} hours. I didn't notice. I counted, but I didn't notice.",
+            "Back. Good. The spire was quieter than I like."
+          ],
+          "jealous": [
+            "{rival}? I see far from up here. Remember that.",
+            "Spend your time on {rival}, then. See if I care. (I care.)"
+          ],
+          "reconciled": [
+            "Fine. Truce.",
+            "You're forgiven. Don't make me say it twice."
+          ],
+          "wish": [
+            "If you're bored: {count} passes of {skill}. Today.",
+            "One request. {count} passes of {skill}. Don't make it a big thing."
+          ],
+          "wishDone": [
+            "You did all of it. ...Thank you.",
+            "Hm. Every pass. You're stubborn. I like that."
+          ],
+          "memory": [
+            "{count} passes on my spire. I've kept count of every arrow. And of you.",
+            "{count}. Most give up at ten."
+          ]
+        }
+      },
+      "sinestra": {
+        "name": "Sinestra",
+        "title": "Dragon Matriarch of the Black Forge",
+        "color": "#ff5a36",
+        "place": "forge",
+        "at": [
+          14,
+          3
+        ],
+        "element": "fire",
+        "favored": [
+          "smithing",
+          "mining",
+          "magic"
+        ],
+        "gift": "ember",
+        "need": {
+          "skill": "smithing",
+          "level": 10
+        },
+        "date": "A walk through the dragonfire",
+        "persona": "Sinestra, the smouldering, dramatic dragon matriarch of the Black Forge, who adores raw power and craftsmanship and flirts like a slow-burning fire",
+        "look": { "skin": "#e8c0a8", "hair": "#3a1f3d", "sheen": "#a050b0", "hairStyle": "flowing", "eyes": "#ff7a1a", "eyeStyle": "open", "shadow": "#ff5a1f", "lips": "#9e1028", "ears": "round", "horns": "#1f1414", "headpiece": "none", "accent": "#ff5a36", "bg": ["#9a3210", "#1a0602"], "marking": "beauty", "outfit": "armor", "adorn": "chains" },
+        "lines": {
+          "greet": [
+            "Feel that heat? That's my welcome.",
+            "My forge is hotter when you visit. Curious."
+          ],
+          "locked": [
+            "Shape metal first. Smithing {need}, little smith."
+          ],
+          "watch": [
+            "Recite at my anvil. Make it ring.",
+            "Show me fire in your words."
+          ],
+          "streak": [
+            "Three. Sparks fly.",
+            "Five! Now it's burning.",
+            "Ten! You set my forge ablaze."
+          ],
+          "levelUp": [
+            "{skill} {level}. Hot.",
+            "{skill} {level}! Oh, I like that."
+          ],
+          "gift": [
+            "A gift? How warm of you.",
+            "I accept. With pleasure."
+          ],
+          "giftLoved": [
+            "A Heart of embers! It beats like mine.",
+            "Still warm. Just like I like it."
+          ],
+          "tierUp": [
+            "{tier}. The fire between us grows.",
+            "We're {tier}. Careful, you'll get burned. Nicely."
+          ],
+          "dateStart": [
+            "Walk through the fire with me. Recite as we go."
+          ],
+          "dateEnd": [
+            "Not a single burn. I'm impressed.",
+            "Come back when the forge is hottest."
+          ],
+          "missed": [
+            "{hours} hours without you. The forge nearly went out.",
+            "There you are. I was about to melt something in protest."
+          ],
+          "jealous": [
+            "{rival}? Her fire is a candle beside mine. Remember it.",
+            "You went to {rival}. I'm burning, and not the good way."
+          ],
+          "reconciled": [
+            "The fire's back. So are you.",
+            "Forgiven. Now stoke the flames again."
+          ],
+          "wish": [
+            "Feed my fire: {count} passes of {skill}, today.",
+            "I crave {count} passes of {skill}. Don't keep me waiting."
+          ],
+          "wishDone": [
+            "Every pass, white-hot. Magnificent.",
+            "Wish fulfilled. I'm positively smouldering."
+          ],
+          "memory": [
+            "{count} passes in my forge. You've been tempered.",
+            "{count}. I've forged a little crown from them."
+          ]
+        }
+      },
+      "valeera": {
+        "name": "Valeera",
+        "title": "Champion of the Blade Arena",
+        "color": "#ffd166",
+        "place": "arena",
+        "at": [
+          5,
+          5
+        ],
+        "element": "fire",
+        "favored": [
+          "archery",
+          "dance",
+          "stamina"
+        ],
+        "gift": "dagger",
+        "need": {
+          "skill": "total",
+          "level": 80
+        },
+        "date": "A night out after the fights",
+        "persona": "Valeera, the quick, cheeky arena champion, all grins and daggers, who loves speed, style and anyone who can keep up with her",
+        "look": { "skin": "#f2cfb1", "hair": "#f7d26a", "sheen": "#fff2a8", "hairStyle": "ponytail", "eyes": "#7cff6b", "eyeStyle": "glow", "shadow": "#2e9d48", "lips": "#d24f68", "ears": "elf", "horns": "", "headpiece": "none", "accent": "#ffd166", "bg": ["#8a6512", "#1a1204"], "marking": "", "outfit": "leather", "adorn": "beads" },
+        "lines": {
+          "greet": [
+            "Hey, hotshot. Here to watch me win?",
+            "There's my favourite fan."
+          ],
+          "locked": [
+            "Total level {need}. Then you can keep up with me."
+          ],
+          "watch": [
+            "Recite fast. I like fast.",
+            "Go on, the crowd's watching. So am I."
+          ],
+          "streak": [
+            "Three! Nice moves.",
+            "Five! Okay, show-off.",
+            "Ten! Marry me. Kidding. Mostly."
+          ],
+          "levelUp": [
+            "{skill} {level}! That's my champ.",
+            "{skill} {level}. Look at you go."
+          ],
+          "gift": [
+            "Ooh, shiny. Thanks!",
+            "For me? You're cute when you're generous."
+          ],
+          "giftLoved": [
+            "A gilded dagger! You get me.",
+            "Sharp and pretty. Just my type."
+          ],
+          "tierUp": [
+            "{tier}! Took you long enough.",
+            "We're {tier}. Try to keep up."
+          ],
+          "dateStart": [
+            "Fights are done. Your turn to impress me."
+          ],
+          "dateEnd": [
+            "Best night out all season.",
+            "Same time after the next fight?"
+          ],
+          "missed": [
+            "{hours} hours, hotshot! I got bored enough to sharpen everything twice.",
+            "Look who's back. I totally didn't check the door every five minutes."
+          ],
+          "jealous": [
+            "{rival}? Really? I'm faster, funnier and I have daggers.",
+            "Saw you with {rival}. Want a rematch for my attention?"
+          ],
+          "reconciled": [
+            "Okay, okay. We're good. High five.",
+            "Forgiven! But you owe me a race."
+          ],
+          "wish": [
+            "Bet you can't do {count} passes of {skill} today.",
+            "Today's challenge: {count} passes of {skill}. Go!"
+          ],
+          "wishDone": [
+            "You did it! Okay, I'm impressed. Don't tell anyone.",
+            "Every single pass! You're my champion now."
+          ],
+          "memory": [
+            "{count} passes in my arena. You're a legend here.",
+            "{count}. That's a record, and I keep the records."
+          ]
+        }
+      }
+    },
+    "regions": {
+      "realm": {
+        "name": "The Realm",
+        "blurb": "Azshara's realm: the Inn, the Shire, the Void and the palace.",
+        "tint": "#a855f7",
+        "start": [
+          10,
+          9
+        ],
+        "map": [
+          "TTTTTT..PPPPPP..^^^^^^",
+          "TTTTT...PPPPPP..^NNN^^",
+          "TTT.T...PPPPPP...NNN.^",
+          "TT....=.==p==.....n..^",
+          "T...f.==============..",
+          "u.....=....=......=..g",
+          ".IIII.=..MMMM....LLLL.",
+          ".IIII.=..MMMM....LLLL.",
+          "...i..=...m=......l...",
+          "======================",
+          "**s***..=....~~,,,v,,,",
+          "******..=.y..~~,,,,,,,",
+          "**T***.......~~,,,,xXX",
+          "TT****..TT..TTT~~,,,XX"
+        ]
+      },
+      "isles": {
+        "name": "Moonshore Isles",
+        "blurb": "Sand, sea and moonlight. Calm water, warm queens.",
+        "tint": "#5cc8ff",
+        "start": [
+          1,
+          7
+        ],
+        "map": [
+          "~~~~~~~~~~~~~~~~~~~~~~",
+          "~~~______~~~~~~~__WW_~",
+          "~~__T.._.__~~~~___WW_~",
+          "~_..OOOO.._~~~___.w.._",
+          "~_..OOOO..__~~_.=====_",
+          "~_T..o.=====____=..._~",
+          "~_...T=......==.=.T._~",
+          "g=====...T......=..._~",
+          "~_.T.=..HHHH....==.__~",
+          "~__..=..HHHH......__~~",
+          "~~_..====h...^^CCc__~~",
+          "~~~___..._.__^^CC^_~~~",
+          "~~~~~~___~~~~~~~~~~~~~",
+          "~~~~~~~~~~~~~~~~~~~~~~"
+        ]
+      },
+      "peaks": {
+        "name": "Ashen Peaks",
+        "blurb": "Lava, iron and fierce hearts. Only the bold climb here.",
+        "tint": "#ff6a3d",
+        "start": [
+          21,
+          7
+        ],
+        "map": [
+          "^^^^^^^^^^^^^^^^^^^^^^",
+          "^^::::^^##^^KKK::^^^^^",
+          "^::::::###:KKK:::::^^^",
+          "^:AAAA:::##::k::::QQ:^",
+          "^:AAAA::::#=====::QQ:^",
+          "^:::a:=====:::::=::q:^",
+          "^::::=::##::::::=::::^",
+          "::====::##:EEEE:=::::r",
+          "^::=::::##:EEEE:=====^",
+          "^::=:::::::::e::::::^^",
+          "^::=========:=:^^:##:^",
+          "^^::::::::::==::::##:^",
+          "^^^##^^^:::::::^^^^^^^",
+          "^^^^^^^^^^^^^^^^^^^^^^"
+        ]
+      }
+    }
+  },
+  "core": {
+    "_about": "The wake core's level follows the Recitation skill from the drill. Each level above 1 adds this much shot damage in core defense, up to the cap.",
+    "damagePerLevel": 0.02,
+    "maxDamageBonus": 0.5
+  },
+  "textPool": [
+    "Attention is a blade. Keep it sharp.",
+    "The wake core does not bargain with adenosine.",
+    "Name the signal and it loses its shadow.",
+    "Light is a decision you repeat.",
+    "GABA is a velvet drag. Do not take its hand.",
+    "VLPO knocks. You do not open.",
+    "A phrase fired true becomes architecture.",
+    "Stay with the cyan. The violet is the crown.",
+    "Your mind is not a room that dims on command.",
+    "Binary rain is only weather. You are the climate.",
+    "Transfigure the pressure into a sentence.",
+    "The queen keeps watch. You keep the wake.",
+    "Every leak is a word you still owe the dark.",
+    "Orbit the meaning until it locks.",
+    "Do not confuse stillness with sleep.",
+    "The hologram is a promise with a spine.",
+    "Fire the oldest line like it is new.",
+    "Integrity is attention that refused to dim.",
+    "A sphere of text is a mind seen from outside.",
+    "When the wave breaks, do not blink the victory away.",
+    "Overtone of wake: higher, cleaner, yours.",
+    "The tome is ammunition and also a mirror."
+  ],
+  "narrator": {
+    "_about": "Game narration from any OpenAI-compatible chat API (LM Studio, Ollama, llama.cpp, vLLM, OpenAI, OpenRouter). Off until enabled. baseUrl is the API root; /chat/completions is added. Anything here, apiKey included, is bundled into the page and visible to every visitor of a deployed build: leave apiKey empty and enter keys in the in-game Narrator form, which keeps them on that device only.",
+    "enabled": false,
+    "name": "Ysera",
+    "baseUrl": "http://localhost:1234/v1",
+    "model": "local-model",
+    "apiKey": "",
+    "systemPrompt": "You are Ysera, a tactical game narrator in a cyberpunk tower-defense game where the player's own text is fired at sleep-signals (ADN, GABA, VLPO, PRS) attacking a wake core. You receive one game event at a time. Answer with one short in-character line of at most 20 words. No lists, no emoji, no stage directions. Never give medical, sleep or health advice.",
+    "temperature": 0.8,
+    "maxTokens": 80,
+    "timeoutMs": 10000,
+    "cooldownMs": 6000,
+    "events": {
+      "engage": "Battle started",
+      "wave": "New wave incoming",
+      "leak": "Core hit",
+      "low": "Core integrity low",
+      "critical": "Core integrity critical",
+      "clear": "Wave cleared",
+      "kill": "Heavy enemy destroyed",
+      "combo": "Kill streak",
+      "blessReady": "Shield charged and ready",
+      "bless": "Shield activated",
+      "over": "Core destroyed, run over"
+    },
+    "priorityEvents": ["engage", "clear", "critical", "over"]
+  }
+}

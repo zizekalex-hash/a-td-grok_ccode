@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.output/
+.nitro/
+.vercel/
+.tanstack/
+.node_modules.lock
+*.log
+.env
+.env.*
+mobile/www/
+mobile/android/app/src/main/assets/
+mobile/android/capacitor-cordova-android-plugins/
+
+# Local preview server state
+.grok/preview.pid
