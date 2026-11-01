@@ -67,11 +67,12 @@ Recitation drill (on the title screen), tab Reps: count reps of your own words a
 - **Add:** write a word or phrase and tap Add. Each one keeps a running total.
 - **Set size:** pick 10, 50 or 100, or type any number.
 - **A set:** tap the play button on a phrase and recite it that many times.
-  - A set takes at least a second a rep (100 reps: 1:40). A countdown shows when Done opens. Nothing counts on screen meanwhile.
+  - A stopwatch runs from the start of the set. Done opens after at least a second a rep (100 reps: 1:40), and nothing counts on screen meanwhile.
   - The time runs by the clock, so the screen can be off. A set in progress is still there if the app is closed and opened again.
-  - Then one tap of Done adds the whole set to the total: 100, then 200 after another set. Another starts the next set at once.
-  - Cancel asks first and adds nothing.
-- **Reset all to 0:** asks yes or no first, sets every total back to 0 and keeps the words and phrases (for a fresh start after sleep).
+  - Then one tap of Done adds the whole set to the total, with its time: "Completed 100 xyz in 5:33 (333 s)".
+  - Totals add up: 100 in 5:33, then 200 in 10:00 after another set. The list shows each phrase's reps, time, sets, seconds a rep and last set, and the time for all of them.
+  - Another starts the next set at once. Cancel asks first and adds nothing.
+- **Reset all to 0:** asks yes or no first, sets every count and time back to 0 and keeps the words and phrases (for a fresh start after sleep).
 - **Saving and XP:** everything is saved on the device. Each finished set gives Recitation XP.
 - **Tuning:** `reps` in config.json (`secondsPerRep` is the least time per rep).
 

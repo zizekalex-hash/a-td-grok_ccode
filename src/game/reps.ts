@@ -1,7 +1,8 @@
 /**
  * The Reps tab of the Recitation drill: your own words and phrases, each with a
- * running total of reps. A set of N reps takes at least N seconds
- * (reps.secondsPerRep each); then one tap of Done adds all N to the total.
+ * running total of reps and of the time they took. A set of N reps takes at
+ * least N seconds (reps.secondsPerRep each); a stopwatch runs from its start,
+ * and one tap of Done adds all N to the total, with the time.
  * The time runs by the clock, so it goes on while the screen is off, and a set
  * in progress is saved. Resetting sets every total back to 0 and keeps the
  * words and phrases. Saved in this browser (or phone). Pure, with relative
@@ -17,9 +18,11 @@ export const REPS_KEY = "azshara-reps-v1";
 export interface RepItem {
   id: string;
   text: string;
-  /** Reps since the last reset, and sets finished. */
+  /** Reps since the last reset, sets finished, the time they took in all and the last set's time (ms). */
   total: number;
   sets: number;
+  ms: number;
+  last: number;
   /** When it was added (ms since 1970). */
   at: number;
 }
@@ -62,9 +65,10 @@ export function timeLeft(a: ActiveSet, now: number): number {
   return Math.max(0, a.since + setMs(a.target) - now);
 }
 
-/** "1:40", "0:05", "1:02:03". */
-export function clock(ms: number): string {
-  const total = Math.ceil(Math.max(0, ms) / 1000);
+/** "1:40", "0:04", "1:02:03": whole seconds, rounded down (a stopwatch), or up for a countdown. */
+export function clock(ms: number, up = false): string {
+  const t = Math.max(0, ms) / 1000;
+  const total = up ? Math.ceil(t) : Math.floor(t);
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const sec = String(total % 60).padStart(2, "0");
@@ -83,7 +87,10 @@ export function addItem(
   const same = s.items.find((i) => i.text.toLowerCase() === clean.toLowerCase());
   if (same) return { state: s, id: same.id };
   return {
-    state: { ...s, items: [{ id, text: clean, total: 0, sets: 0, at: now }, ...s.items] },
+    state: {
+      ...s,
+      items: [{ id, text: clean, total: 0, sets: 0, ms: 0, last: 0, at: now }, ...s.items],
+    },
     id,
   };
 }
@@ -106,30 +113,55 @@ export function cancelSet(s: RepsState): RepsState {
   return { ...s, active: null };
 }
 
-/** Adds reps to a phrase; 0 changes nothing. */
-export function addReps(s: RepsState, id: string, count: number): RepsState {
+/** Adds a set's reps to a phrase, and the time it took (ms); 0 reps changes nothing. */
+export function addReps(s: RepsState, id: string, count: number, ms = 0): RepsState {
   const n = Math.max(0, Math.floor(count));
   if (!n) return s;
+  const t = Math.max(0, Math.round(ms));
   return {
     ...s,
-    items: s.items.map((i) => (i.id === id ? { ...i, total: i.total + n, sets: i.sets + 1 } : i)),
+    items: s.items.map((i) =>
+      i.id === id
+        ? { ...i, total: i.total + n, sets: i.sets + 1, ms: i.ms + t, last: t || i.last }
+        : i,
+    ),
   };
+}
+
+/** How long the set in progress has taken so far (ms): a stopwatch by the clock. */
+export function setTime(a: ActiveSet, now: number): number {
+  return Math.max(0, now - a.since);
 }
 
 /** Finishes the set in progress once its time is up: all its reps go to the phrase. Unchanged before then. */
 export function finishSet(s: RepsState, now: number): RepsState {
   const a = s.active;
   if (!a || timeLeft(a, now) > 0) return s;
-  return { ...addReps(s, a.id, a.target), active: null };
+  return { ...addReps(s, a.id, a.target, setTime(a, now)), active: null };
 }
 
-/** Every count back to 0; the words and phrases stay. */
+/** Every count and time back to 0; the words and phrases stay. */
 export function resetAll(s: RepsState): RepsState {
-  return { ...s, items: s.items.map((i) => ({ ...i, total: 0, sets: 0 })) };
+  return { ...s, items: s.items.map((i) => ({ ...i, total: 0, sets: 0, ms: 0, last: 0 })) };
 }
 
 export function grandTotal(s: RepsState): number {
   return s.items.reduce((n, i) => n + i.total, 0);
+}
+
+/** All the time the finished sets took (ms). */
+export function grandTime(s: RepsState): number {
+  return s.items.reduce((n, i) => n + i.ms, 0);
+}
+
+/** Seconds a rep took on average, to one decimal; 0 before any. */
+export function perRep(i: RepItem): number {
+  return i.total > 0 ? Math.round(i.ms / i.total / 100) / 10 : 0;
+}
+
+/** Whole seconds, for "in 333 s" (rounded down, as the stopwatch). */
+export function seconds(ms: number): number {
+  return Math.floor(Math.max(0, ms) / 1000);
 }
 
 /** Recitation XP for a finished set: each rep of each word (reps.xpPerWordRep). */
@@ -156,6 +188,8 @@ export function loadReps(data: unknown): RepsState {
       text: i.text.trim().slice(0, 300),
       total: whole(i.total),
       sets: whole(i.sets),
+      ms: whole(i.ms),
+      last: whole(i.last),
       at: whole(i.at),
     });
   }

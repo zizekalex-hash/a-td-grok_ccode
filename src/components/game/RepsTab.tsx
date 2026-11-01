@@ -9,11 +9,15 @@ import {
   clampSet,
   clock,
   finishSet,
+  grandTime,
   grandTotal,
+  perRep,
   readReps,
   removeItem,
   resetAll,
+  seconds,
   setMs,
+  setTime,
   setXp,
   startSet,
   timeLeft,
@@ -82,7 +86,14 @@ export function RepsTab() {
     null | { kind: "reset" } | { kind: "delete"; id: string } | { kind: "cancel" }
   >(null);
   /** The set just finished: what it added and the new total. */
-  const [saved, setSaved] = useState<null | { id: string; added: number; total: number }>(null);
+  const [saved, setSaved] = useState<null | {
+    id: string;
+    added: number;
+    total: number;
+    /** How long the set took, and all the time for this phrase (ms). */
+    took: number;
+    time: number;
+  }>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const save = (next: RepsState) => {
@@ -138,10 +149,13 @@ export function RepsTab() {
       if (after > before) flashToast(`Recitation level ${after}`);
     }
     buzz(30);
+    const after = next.items.find((i) => i.id === a.id);
     setSaved({
       id: a.id,
       added: a.target,
-      total: next.items.find((i) => i.id === a.id)?.total ?? 0,
+      total: after?.total ?? 0,
+      took: setTime(a, t),
+      time: after?.ms ?? 0,
     });
   };
 
@@ -158,6 +172,8 @@ export function RepsTab() {
     const left = timeLeft(active, now);
     const ready = left <= 0;
     const elapsed = Math.min(full, Math.max(0, now - active.since));
+    // The stopwatch: from the set's start until Done.
+    const watch = setTime(active, now);
     return (
       <div>
         <p className="text-xs tracking-wider text-muted uppercase">
@@ -167,10 +183,14 @@ export function RepsTab() {
         <div className="glass mt-2 p-4 text-center">
           <p className="text-xl leading-snug break-words text-fg">{text}</p>
           <p
-            className={`mt-3 font-display text-5xl leading-none ${ready ? "text-gold" : "text-cyan"}`}
+            className={`mt-3 font-display text-5xl leading-none tabular-nums ${ready ? "text-gold" : "text-cyan"}`}
             aria-live="off"
+            aria-label={`Stopwatch ${clock(watch)}`}
           >
-            {ready ? "✓" : clock(left)}
+            {clock(watch)}
+          </p>
+          <p className="mt-1 text-xs tracking-wider text-muted uppercase">
+            {ready ? "Ready: tap Done when you finish" : `Done opens in ${clock(left, true)}`}
           </p>
           {/* The bar fills by itself over the set's time, from wherever it is now. */}
           <div className="mt-3 h-1.5 overflow-hidden rounded bg-cyan/10" aria-hidden>
@@ -186,8 +206,8 @@ export function RepsTab() {
           </div>
           <p className="mt-2 text-xs text-muted">
             {ready
-              ? `Done when you have said it ${active.target.toLocaleString()} times.`
-              : `Recite it ${active.target.toLocaleString()} times. Done opens after ${clock(full)} (${R.secondsPerRep} s a rep); the time runs with the screen off too.`}
+              ? `The stopwatch runs until you tap Done, after ${active.target.toLocaleString()} reps.`
+              : `Recite it ${active.target.toLocaleString()} times. Done opens after ${clock(full)} (${R.secondsPerRep} s a rep); the stopwatch runs with the screen off too.`}
           </p>
         </div>
         <button
@@ -198,10 +218,13 @@ export function RepsTab() {
         >
           <span className="flex items-center gap-2">
             <Check className="size-5" aria-hidden />
-            {ready ? `Done: +${active.target.toLocaleString()}` : `Done in ${clock(left)}`}
+            {ready
+              ? `Done: +${active.target.toLocaleString()} in ${clock(watch)}`
+              : `Done in ${clock(left, true)}`}
           </span>
           <span className="text-[0.7rem] tracking-normal normal-case opacity-90">
-            {(item(active.id)?.total ?? 0) + active.target} in all
+            {((item(active.id)?.total ?? 0) + active.target).toLocaleString()} in{" "}
+            {clock((item(active.id)?.ms ?? 0) + watch)} all told
           </span>
         </button>
         {asking?.kind === "cancel" ? (
@@ -290,10 +313,15 @@ export function RepsTab() {
 
       {saved && item(saved.id) && (
         <div className="mt-3 rounded-md border border-gold/60 p-3 text-center" role="status">
-          <p className="font-display text-lg text-gold">
-            +{saved.added.toLocaleString()} → {saved.total.toLocaleString()}
+          <p className="text-sm">
+            Completed {saved.added.toLocaleString()}{" "}
+            <span className="break-words">{item(saved.id)?.text}</span> in{" "}
+            <span className="font-display text-gold">{clock(saved.took)}</span>{" "}
+            <span className="text-muted">({seconds(saved.took).toLocaleString()} s)</span>
           </p>
-          <p className="mt-1 text-sm break-words">{item(saved.id)?.text}</p>
+          <p className="mt-1 font-display text-lg text-gold">
+            {saved.total.toLocaleString()} · {clock(saved.time)}
+          </p>
           <button
             type="button"
             className="btn btn-gold mt-2 min-h-12 w-full"
@@ -320,7 +348,14 @@ export function RepsTab() {
                   <span className="text-fg">{it.text}</span>
                 </p>
                 <p className="text-xs text-muted">
-                  {it.sets} set{it.sets === 1 ? "" : "s"}
+                  {it.total > 0 ? (
+                    <>
+                      <span className="text-cyan">{clock(it.ms)}</span> · {it.sets} set
+                      {it.sets === 1 ? "" : "s"} · {perRep(it)} s a rep · last set {clock(it.last)}
+                    </>
+                  ) : (
+                    "No sets yet"
+                  )}
                 </p>
               </div>
               <button
@@ -362,11 +397,12 @@ export function RepsTab() {
         <div className="mt-4 border-t border-cyan/20 pt-3">
           <p className="text-sm">
             All reps:{" "}
-            <span className="font-display text-gold">{grandTotal(state).toLocaleString()}</span>
+            <span className="font-display text-gold">{grandTotal(state).toLocaleString()}</span> in{" "}
+            <span className="text-cyan">{clock(grandTime(state))}</span>
           </p>
           {asking?.kind === "reset" ? (
             <Confirm
-              text="Set every count back to 0? Your words and phrases stay."
+              text="Set every count and time back to 0? Your words and phrases stay."
               yes="Yes, reset to 0"
               no="No, keep them"
               onYes={() => {
