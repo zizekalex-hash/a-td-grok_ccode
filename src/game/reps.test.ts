@@ -7,6 +7,7 @@ import {
   addReps,
   phraseIndex,
   pickBonus,
+  nextPart,
   estimateReps,
   clampMinutes,
   phrasesFromText,
@@ -292,12 +293,35 @@ describe("reps", () => {
     assert.equal(s.items[0]!.ms, 180_000, "just its own three minutes, however late Done was");
     assert.equal(s.items[0]!.sets, 1);
     assert.deepEqual([s.log[0]!.reps, s.log[0]!.ms, s.log[0]!.timed], [0, 180_000, true]);
-    // Both: the reps too, estimated or as counted.
-    s = finishSet(startSet(s, "a", T, { mode: "both", minutes: 2 }), T + 120_000);
-    assert.equal(s.items[0]!.total, estimateReps(120_000));
-    s = finishSet(startSet(s, "a", T, { mode: "both", minutes: 1 }), T + 60_000, 42);
-    assert.equal(s.items[0]!.total, estimateReps(120_000) + 42);
-    assert.equal(s.items[0]!.ms, 180_000 + 120_000 + 60_000);
+    // Both: the reps, then the timer, one after the other.
+    let b = startSet({ ...s, set: 10 }, "a", T, { mode: "both", minutes: 2 });
+    assert.equal(b.active!.part, 0);
+    assert.equal(timeLeft(b.active!, T), 10_000, "the reps first: a second a rep");
+    assert.equal(finishSet(b, T + 999_999), b, "not finished in the first part");
+    assert.equal(nextPart(b, T + 9_000), b, "on to the timer only when the reps' time is up");
+    b = nextPart(b, T + 15_000);
+    assert.deepEqual(
+      [b.active!.part, b.active!.partSince, b.active!.doneMs],
+      [1, T + 15_000, 15_000],
+    );
+    assert.equal(timeLeft(b.active!, T + 15_000), 120_000, "then the timer");
+    assert.equal(finishSet(b, T + 100_000), b, "not before the timer is up");
+    const before = b.items[0]!;
+    b = finishSet(b, T + 200_000);
+    assert.equal(b.items[0]!.total, before.total + 10, "the reps count");
+    assert.equal(b.items[0]!.ms, before.ms + 15_000 + 120_000, "the reps' time, then the timer's");
+    assert.deepEqual([b.log[0]!.reps, b.log[0]!.ms, b.log[0]!.timed], [10, 135_000, true]);
+    // The timer first, if chosen.
+    let f = startSet({ ...s, set: 5, first: "timer" as const }, "a", T, {
+      mode: "both",
+      minutes: 1,
+    });
+    assert.equal(timeLeft(f.active!, T), 60_000, "the timer first");
+    f = nextPart(f, T + 61_000);
+    assert.equal(timeLeft(f.active!, T + 61_000), 5_000, "then the reps");
+    f = finishSet(f, T + 70_000);
+    assert.equal(f.log[0]!.ms, 60_000 + 9_000);
+    assert.equal(estimateReps(120_000), 60);
     // A count set as given, whatever the mode.
     const c = startSet(s, "a", T, { mode: "count", target: 7 });
     assert.deepEqual(c.active, { id: "a", target: 7, since: T, mode: "count" });

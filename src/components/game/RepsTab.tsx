@@ -131,8 +131,22 @@ export function RepsTab() {
   };
 
   /** What a set is now, in words: "100" or "3 min". */
+  /** A timer in the set (Timer or Both), and reps in it (Reps or Both). */
   const timed = state.mode !== "count";
-  const setLabel = timed ? `${state.minutes} min` : state.set.toLocaleString();
+  const counts = state.mode !== "timer";
+  const setLabel =
+    state.mode === "both"
+      ? `${state.set.toLocaleString()} + ${state.minutes} min`
+      : timed
+        ? `${state.minutes} min`
+        : state.set.toLocaleString();
+  /** "a set of 100 reps", "3 min", "100 reps + 3 min". */
+  const setWords =
+    state.mode === "both"
+      ? `${state.set} reps + ${state.minutes} min`
+      : timed
+        ? `${state.minutes} min`
+        : `a set of ${state.set} reps`;
 
   // ---- A set in progress: the rest screen, over everything ----
   if (active) {
@@ -293,7 +307,7 @@ export function RepsTab() {
           [
             ["count", "Reps", "a number of reps"],
             ["timer", "Timer", "a time, repeating nonstop"],
-            ["both", "Both", "a time, with its reps counted"],
+            ["both", "Both", "reps, then a timer"],
           ] as const
         ).map(([mode, label, hint]) => (
           <button
@@ -340,12 +354,33 @@ export function RepsTab() {
               aria-label="Minutes in a timed set"
             />
           </div>
+          {state.mode === "both" && (
+            <div className="mt-2 grid grid-cols-2 gap-1.5" role="group" aria-label="Which first">
+              {(
+                [
+                  ["reps", "Reps first, then timer"],
+                  ["timer", "Timer first, then reps"],
+                ] as const
+              ).map(([first, label]) => (
+                <button
+                  key={first}
+                  type="button"
+                  className="btn min-h-10 text-[0.6rem]"
+                  data-on={state.first === first}
+                  aria-pressed={state.first === first}
+                  onClick={() => save({ ...state, first })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </>
       )}
-      <p className={`mt-3 text-xs tracking-wider text-muted uppercase ${timed ? "hidden" : ""}`}>
+      <p className={`mt-3 text-xs tracking-wider text-muted uppercase ${counts ? "" : "hidden"}`}>
         Reps in a set
       </p>
-      <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${timed ? "hidden" : ""}`}>
+      <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${counts ? "" : "hidden"}`}>
         {R.setSizes.map((n) => (
           <button
             key={n}
@@ -432,7 +467,7 @@ export function RepsTab() {
                 type="button"
                 className="min-w-0 flex-1 rounded-md p-1 text-left hover:bg-cyan/5 active:bg-cyan/10"
                 onClick={() => start(it.id)}
-                aria-label={`${it.total} ${it.text}, ${clock(it.ms)}. ${timed ? `Start ${state.minutes} min` : `Start a set of ${state.set} reps`}`}
+                aria-label={`${it.total} ${it.text}, ${clock(it.ms)}. Start ${setWords}`}
               >
                 <span className="block break-words">
                   <span className="font-display text-xl text-gold">
@@ -444,18 +479,14 @@ export function RepsTab() {
                 <span className="block text-xs text-muted">
                   {it.sets > 0
                     ? `${it.sets} set${it.sets === 1 ? "" : "s"} · ${perRep(it)} s a rep · last set ${clock(it.last)}`
-                    : `Tap to start ${timed ? `${state.minutes} min` : `a set of ${setLabel}`}`}
+                    : `Tap to start ${setWords}`}
                 </span>
               </button>
               <button
                 type="button"
                 className="btn btn-gold shrink-0"
                 onClick={() => start(it.id)}
-                aria-label={
-                  timed
-                    ? `Start ${state.minutes} min of ${it.text}`
-                    : `Start a set of ${state.set} reps of ${it.text}`
-                }
+                aria-label={`Start ${setWords} of ${it.text}`}
               >
                 <Play className="size-4" aria-hidden />
                 {setLabel}

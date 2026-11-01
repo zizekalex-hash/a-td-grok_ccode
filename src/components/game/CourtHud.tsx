@@ -62,7 +62,6 @@ import { xpForLevel } from "@/game/recite";
 import {
   clock,
   estimateReps,
-  isTimed,
   pickBonus,
   readReps,
   startSet,
@@ -1386,14 +1385,13 @@ function BonusRound({ v, color }: { v: CourtView; color: string }) {
 
   const going = reps.active?.id === item.id;
   // The set follows the drill's choice: a number of reps, or a timer (reckoned in reps for the reward).
-  const timedSet = going && reps.active ? isTimed(reps.active) : reps.mode !== "count";
+  const mode = going && reps.active ? (reps.active.mode ?? "count") : reps.mode;
+  const timedSet = mode !== "count";
   const minutes =
     going && reps.active?.duration ? Math.round(reps.active.duration / 60_000) : reps.minutes;
-  const size = timedSet
-    ? estimateReps(minutes * 60_000)
-    : going && reps.active
-      ? reps.active.target
-      : reps.set;
+  const count = going && reps.active ? reps.active.target : reps.set;
+  // For the reward, a timer is reckoned in reps; Both adds its reps and its timer.
+  const size = (mode === "timer" ? 0 : count) + (timedSet ? estimateReps(minutes * 60_000) : 0);
   const would = bonusReward(item.text, size, s.place, s.queen !== null);
   const start = () => {
     let next = readReps();
@@ -1408,7 +1406,14 @@ function BonusRound({ v, color }: { v: CourtView; color: string }) {
     <div className="mt-3 rounded-md border border-cyan/50 p-2 text-left">
       <p className="font-display text-xs tracking-[0.14em] text-cyan">BONUS +1 · FROM YOUR REPS</p>
       <p className="mt-1 text-base leading-snug break-words">
-        {timedSet ? (
+        {mode === "both" ? (
+          <>
+            <span className="font-display text-gold">
+              {count.toLocaleString()} reps + {minutes} min
+            </span>{" "}
+            of {item.text}
+          </>
+        ) : timedSet ? (
           <>
             <span className="font-display text-gold">{minutes} min</span> of {item.text}
           </>
@@ -1449,7 +1454,7 @@ function BonusRound({ v, color }: { v: CourtView; color: string }) {
           onDone={(d) => {
             const r = game()?.courtBonus(
               d.text,
-              d.added || (d.timed ? estimateReps(d.took) : 0),
+              d.added + (d.timed ? estimateReps(minutes * 60_000) : 0),
               d.timed ? d.took : 0,
             );
             setPaid({

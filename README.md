@@ -109,7 +109,7 @@ Recitation drill (on the title screen), tab Reps: count reps of your own words a
   - Tick the ones you want, or Pick all new, then Add.
   - Only the added phrases are kept, not the text.
   - Phrases already on your list show their reps and time and cannot be added twice. Ones done before (in the history) say so. Load the same text again to see what is already taken.
-- **A set is:** **Reps** (a number of reps: pick 10, 50 or 100, or type any number), **Timer** (a time, 1 to 9 minutes or typed: repeat it nonstop until the time is up; a long buzz, then Done adds the time) or **Both** (a timer, and at the end the reps too: estimated at 2 s a rep, or type how many you did). Timed sets show ⏱ in the History, and their XP counts the estimated reps (`reps.timer`).
+- **A set is:** **Reps** (a number of reps: pick 10, 50 or 100, or type any number), **Timer** (a time, 1 to 9 minutes or typed: repeat it nonstop until the time is up; a long buzz, then Done adds the time) or **Both**: the two one after the other, never at once: first the reps (Done opens after a second a rep; tap "Reps done: on to the timer"), then the timer (repeat nonstop until it is up), then Done adds the reps and the time of both parts. "Timer first, then reps" turns the order round. Timed sets show ⏱ in the History, and a timer's XP counts the reps it is reckoned at (2 s a rep; `reps.timer`).
 - **Start sets on a blank screen:** every set opens all black (tap to see the clock and Done).
 - **A set:** tap a phrase (or its play button) and recite it that many times.
   - **Blank the screen** on the rest screen turns it pure black (pixels off on most phones): nothing drawn, nothing updating, until you tap anywhere; a buzz when Done opens. No need to cover it with the notification shade.

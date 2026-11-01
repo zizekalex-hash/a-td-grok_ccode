@@ -29,17 +29,29 @@ export interface RepItem {
 
 /**
  * How a set is done: a number of reps (Done opens after a second a rep), a
- * time (repeat nonstop until it is up), or both (a time, and the reps counted).
+ * time (repeat nonstop until it is up), or both, one after the other: the reps,
+ * then the timer (or the timer first, if chosen).
  */
 export type SetMode = "count" | "timer" | "both";
 
-/** A set in progress: of which phrase, how many reps, and when it began (ms since 1970); a timed set's length (ms). */
+/** The two parts of a set in Both mode, in the order chosen. */
+export type Part = "reps" | "timer";
+
+/**
+ * A set in progress: of which phrase, how many reps, and when it began (ms
+ * since 1970); a timed set's length (ms). In Both mode: which part is going
+ * (0 or 1), when it began, the order, and the time of the part already done.
+ */
 export interface ActiveSet {
   id: string;
   target: number;
   since: number;
   mode?: SetMode;
   duration?: number;
+  part?: 0 | 1;
+  partSince?: number;
+  first?: Part;
+  doneMs?: number;
 }
 
 /** A line in the history: a finished set (its phrase as it was, reps and time), or a reset (what it cleared). */
@@ -58,9 +70,10 @@ export interface RepsState {
   items: RepItem[];
   /** Reps in a set. */
   set: number;
-  /** Count, timer or both; a timed set's minutes; and whether sets start on a blank screen. */
+  /** Count, timer or both; a timed set's minutes; which part comes first in Both; and whether sets start on a blank screen. */
   mode: SetMode;
   minutes: number;
+  first: Part;
   blank: boolean;
   active: ActiveSet | null;
   /** Every finished set and reset, newest first, up to reps.historyKeep. Resets do not clear it. */
@@ -73,6 +86,7 @@ export function newReps(): RepsState {
     set: clampSet(R.set),
     mode: "count",
     minutes: clampMinutes(R.timer.minutes),
+    first: "reps",
     blank: false,
     active: null,
     log: [],
@@ -90,9 +104,27 @@ export function isSetMode(v: unknown): v is SetMode {
   return v === "count" || v === "timer" || v === "both";
 }
 
-/** A timed set (timer or both). */
+/** A set with a timer in it (timer, or both). */
 export function isTimed(a: ActiveSet): boolean {
   return a.mode === "timer" || a.mode === "both";
+}
+
+/** The part going now: the reps or the timer. */
+export function partOf(a: ActiveSet): Part {
+  if (a.mode === "timer") return "timer";
+  if (a.mode !== "both") return "reps";
+  const first = a.first ?? "reps";
+  return (a.part ?? 0) === 0 ? first : first === "reps" ? "timer" : "reps";
+}
+
+/** The last (or only) part is going: its Done finishes the set. */
+export function lastPart(a: ActiveSet): boolean {
+  return a.mode !== "both" || a.part === 1;
+}
+
+/** When the part going now began. */
+function partStart(a: ActiveSet): number {
+  return a.partSince ?? a.since;
 }
 
 /** Reps a timed set is reckoned at, at reps.timer.estimateSeconds a rep. */
@@ -120,14 +152,19 @@ export function setMs(target: number): number {
   return Math.max(0, target) * R.secondsPerRep * 1000;
 }
 
-/** How long before Done opens (ms): a second a rep, or a timed set's whole time. */
+/** How long the part going now lasts before its Done opens (ms): a second a rep, or the timer's whole time. */
 export function doneAfter(a: ActiveSet): number {
-  return isTimed(a) ? Math.max(0, a.duration ?? 0) : setMs(a.target);
+  return partOf(a) === "timer" ? Math.max(0, a.duration ?? 0) : setMs(a.target);
 }
 
 /** Time left before Done can be tapped (ms; 0 when it can). */
 export function timeLeft(a: ActiveSet, now: number): number {
-  return Math.max(0, a.since + doneAfter(a) - now);
+  return Math.max(0, partStart(a) + doneAfter(a) - now);
+}
+
+/** How long the part going now has taken (ms): a timer part counts its own length once it is up. */
+function partTime(a: ActiveSet, now: number): number {
+  return partOf(a) === "timer" ? Math.max(0, a.duration ?? 0) : Math.max(0, now - partStart(a));
 }
 
 /** "1:40", "0:04", "1:02:03": whole seconds, rounded down (a stopwatch), or up for a countdown. */
@@ -182,8 +219,24 @@ export function startSet(
   const mode = how.mode ?? s.mode;
   if (mode === "count")
     return { ...s, active: { id, target: clampSet(how.target ?? s.set), since: now, mode } };
-  const minutes = clampMinutes(how.minutes ?? s.minutes);
-  return { ...s, active: { id, target: 0, since: now, mode, duration: minutes * 60_000 } };
+  const duration = clampMinutes(how.minutes ?? s.minutes) * 60_000;
+  if (mode === "timer") return { ...s, active: { id, target: 0, since: now, mode, duration } };
+  // Both: the reps and the timer, one after the other.
+  const target = clampSet(how.target ?? s.set);
+  return {
+    ...s,
+    active: {
+      id,
+      target,
+      since: now,
+      mode,
+      duration,
+      part: 0,
+      partSince: now,
+      first: s.first,
+      doneMs: 0,
+    },
+  };
 }
 
 export function cancelSet(s: RepsState): RepsState {
@@ -225,25 +278,39 @@ function addSet(s: RepsState, id: string, reps: number, ms: number): RepsState {
   };
 }
 
-/** The reps a finished set adds: its target, none for a timer, or (both) as counted or estimated. */
-export function repsOf(a: ActiveSet, counted?: number): number {
-  if (a.mode === "timer") return 0;
-  if (a.mode === "both") return Math.max(0, Math.floor(counted ?? estimateReps(a.duration ?? 0)));
-  return a.target;
+/** The reps a finished set adds: its target, or none for a timer set. */
+export function repsOf(a: ActiveSet): number {
+  return a.mode === "timer" ? 0 : a.target;
+}
+
+/** All the time of the set so far (ms): parts done, and the one going (a timer part counts its own length once up). */
+export function totalTime(a: ActiveSet, now: number): number {
+  return (a.doneMs ?? 0) + partTime(a, now);
+}
+
+/** Both mode: the first part done, the second begins now. Unchanged before the first part's time is up. */
+export function nextPart(s: RepsState, now: number): RepsState {
+  const a = s.active;
+  if (!a || lastPart(a) || timeLeft(a, now) > 0) return s;
+  return {
+    ...s,
+    active: { ...a, part: 1, partSince: now, doneMs: (a.doneMs ?? 0) + partTime(a, now) },
+  };
 }
 
 /**
- * Finishes the set in progress once its time is up: all its reps go to the
- * phrase, with the time (a timed set counts its own length, however long after
- * Done was tapped). Unchanged before then. `counted`: reps in both mode.
+ * Finishes the set in progress once its (last part's) time is up: all its reps
+ * go to the phrase, with the time (a timer counts its own length, however long
+ * after Done was tapped). Unchanged before then, and in Both mode before the
+ * second part.
  */
-export function finishSet(s: RepsState, now: number, counted?: number): RepsState {
+export function finishSet(s: RepsState, now: number): RepsState {
   const a = s.active;
-  if (!a || timeLeft(a, now) > 0) return s;
+  if (!a || !lastPart(a) || timeLeft(a, now) > 0) return s;
   const text = s.items.find((i) => i.id === a.id)?.text ?? "";
   const timed = isTimed(a);
-  const ms = timed ? (a.duration ?? 0) : setTime(a, now);
-  const reps = repsOf(a, counted);
+  const ms = totalTime(a, now);
+  const reps = repsOf(a);
   return logged(
     { ...addSet(s, a.id, reps, ms), active: null },
     { kind: "set", at: now, text, reps, ms, ...(timed ? { timed: true } : {}) },
@@ -458,6 +525,7 @@ export function loadReps(data: unknown): RepsState {
   if (Number.isFinite(num(d.set))) s.set = clampSet(num(d.set));
   if (isSetMode(d.mode)) s.mode = d.mode;
   if (Number.isFinite(num(d.minutes))) s.minutes = clampMinutes(num(d.minutes));
+  if (d.first === "timer") s.first = "timer";
   s.blank = d.blank === true;
   const seen = new Set<string>();
   for (const raw of Array.isArray(d.items) ? d.items : []) {
@@ -497,9 +565,23 @@ export function loadReps(data: unknown): RepsState {
     if (mode === "count") {
       const target = Number.isFinite(num(a.target)) ? clampSet(num(a.target)) : s.set;
       s.active = { id: a.id, target, since: whole(a.since), mode };
-    } else {
+    } else if (mode === "timer") {
       const duration = clampMinutes(whole(a.duration) / 60_000) * 60_000;
       s.active = { id: a.id, target: 0, since: whole(a.since), mode, duration };
+    } else {
+      const duration = clampMinutes(whole(a.duration) / 60_000) * 60_000;
+      const target = Number.isFinite(num(a.target)) ? clampSet(num(a.target)) : s.set;
+      s.active = {
+        id: a.id,
+        target,
+        since: whole(a.since),
+        mode,
+        duration,
+        part: a.part === 1 ? 1 : 0,
+        partSince: whole(a.partSince ?? a.since),
+        first: a.first === "timer" ? "timer" : "reps",
+        doneMs: whole(a.doneMs),
+      };
     }
   }
   return s;

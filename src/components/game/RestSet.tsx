@@ -14,10 +14,13 @@ import {
   estimateReps,
   finishSet,
   isTimed,
+  lastPart,
+  nextPart,
+  partOf,
   repsOf,
-  setTime,
   setXp,
   timeLeft,
+  totalTime,
   type RepsState,
 } from "@/game/reps";
 import { holdRest } from "@/game/rest";
@@ -70,8 +73,6 @@ export function RestSet({
   const [asking, setAsking] = useState(false);
   /** Blank: the screen is all black, nothing drawn or updated, until tapped (from the start, if chosen in Reps). */
   const [blank, setBlank] = useState(() => state.blank);
-  /** Both mode: the reps to add, as counted (empty: the estimate). */
-  const [counted, setCounted] = useState("");
 
   // The rest lasts while the set runs.
   const on = !!active;
@@ -84,7 +85,7 @@ export function RestSet({
     const left = timeLeft(active, Date.now());
     if (blank) {
       if (left <= 0) return;
-      const id = window.setTimeout(() => buzz(isTimed(active) ? 400 : 80), left);
+      const id = window.setTimeout(() => buzz(partOf(active) === "timer" ? 400 : 80), left);
       return () => window.clearTimeout(id);
     }
     let wasReady = left <= 0;
@@ -92,7 +93,7 @@ export function RestSet({
       const t = Date.now();
       setNow(t);
       const ready = timeLeft(active, t) <= 0;
-      if (ready && !wasReady) buzz(isTimed(active) ? 400 : 80);
+      if (ready && !wasReady) buzz(partOf(active) === "timer" ? 400 : 80);
       wasReady = ready;
     }, 1000);
     return () => window.clearInterval(timer);
@@ -102,21 +103,33 @@ export function RestSet({
   const text = item.text;
   const left = timeLeft(active, now);
   const ready = left <= 0;
-  const watch = setTime(active, now);
-  const timed = isTimed(active);
+  const part = partOf(active);
+  const last = lastPart(active);
+  const both = active.mode === "both";
   const length = doneAfter(active);
-  const estimate = estimateReps(length);
-  const typed = Number.parseInt(counted, 10);
-  const reps = repsOf(active, Number.isFinite(typed) ? typed : undefined);
+  const timerLength = active.duration ?? 0;
+  const reps = repsOf(active);
+  /** The clock of the part going now: a countdown for a timer, a stopwatch for reps. */
+  const partWatch = Math.max(0, now - (active.partSince ?? active.since));
+  const all = totalTime(active, now);
+  // A set with a timer earns XP for the reps its timer is reckoned at, too.
+  const xpReps = reps + (isTimed(active) ? estimateReps(timerLength) : 0);
+
+  /** Both mode: the first part is done, the second begins. */
+  const onward = () => {
+    const next = nextPart(state, Date.now());
+    if (next === state) return;
+    buzz(30);
+    onChange(next);
+  };
 
   const done = () => {
     const t = Date.now();
-    const next = finishSet(state, t, Number.isFinite(typed) ? typed : undefined);
+    const next = finishSet(state, t);
     if (next === state) return;
     onChange(next);
     const before = levelForXp(useGame.getState().skills.recitation);
-    // A timer set's XP counts the reps it is reckoned at.
-    grantSkillXp("recitation", setXp(text, reps || (timed ? estimate : 0)));
+    grantSkillXp("recitation", setXp(text, xpReps));
     const after = levelForXp(useGame.getState().skills.recitation);
     if (after > before) flashToast(`Recitation level ${after}`);
     buzz(30);
@@ -127,8 +140,8 @@ export function RestSet({
       added: reps,
       total: now?.total ?? 0,
       time: now?.ms ?? 0,
-      took: timed ? length : setTime(active, t),
-      timed,
+      took: totalTime(active, t),
+      timed: isTimed(active),
     });
   };
 
@@ -151,15 +164,17 @@ export function RestSet({
     <div
       className="rest-screen fixed inset-0 z-[80] flex flex-col items-center justify-center bg-black p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] text-fg"
       role="dialog"
-      aria-label={`${title}: ${timed ? clock(length) : active.target} ${text}`}
+      aria-label={`${title}: ${text}`}
     >
       <BinaryWall text={text} color={color} spec={R.wall} />
       <div className="relative w-full max-w-md rounded-xl bg-black/85 p-4 text-center">
         <p className="text-xs tracking-wider text-muted uppercase">
           {title} ·{" "}
-          {timed
-            ? `${clock(length)} timer${active.mode === "both" ? " + reps" : ""}`
-            : `set of ${active.target.toLocaleString()}`}{" "}
+          {both
+            ? `${active.target.toLocaleString()} reps + ${clock(timerLength)} timer · part ${(active.part ?? 0) + 1} of 2`
+            : part === "timer"
+              ? `${clock(timerLength)} timer`
+              : `set of ${active.target.toLocaleString()}`}{" "}
           · {item.total.toLocaleString()} so far
         </p>
         <p className="mt-2 text-2xl leading-snug break-words" style={{ color }}>
@@ -168,35 +183,25 @@ export function RestSet({
         <p
           className={`mt-3 font-display text-5xl leading-none tabular-nums ${ready ? "text-gold" : "text-fg"}`}
           aria-live="off"
-          aria-label={timed ? `Time left ${clock(left, true)}` : `Stopwatch ${clock(watch)}`}
+          aria-label={
+            part === "timer" ? `Time left ${clock(left, true)}` : `Stopwatch ${clock(partWatch)}`
+          }
         >
-          {timed ? clock(left, true) : clock(watch)}
+          {part === "timer" ? clock(left, true) : clock(partWatch)}
         </p>
         <p className="mt-1 text-xs tracking-wider text-muted uppercase">
-          {timed
+          {part === "timer"
             ? ready
-              ? "Time's up: tap Done"
+              ? last
+                ? "Time's up: tap Done"
+                : "Time's up: on to the reps"
               : "Repeat it nonstop until the time is up"
             : ready
-              ? "Ready: tap Done when you finish"
-              : `Done opens in ${clock(left, true)}`}
+              ? last
+                ? "Ready: tap Done when you finish"
+                : "Ready: tap when the reps are done, then the timer"
+              : `${active.target.toLocaleString()} reps · Done opens in ${clock(left, true)}`}
         </p>
-        {active.mode === "both" && ready && (
-          <label className="mt-3 flex items-center justify-center gap-2 text-sm">
-            Reps
-            <input
-              type="number"
-              inputMode="numeric"
-              min={0}
-              className="w-24 rounded-md border border-cyan/40 bg-black px-2 py-1 text-center text-fg"
-              placeholder={String(estimate)}
-              value={counted}
-              onChange={(e) => setCounted(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
-              aria-label={`Reps done, about ${estimate}`}
-            />
-            <span className="text-xs text-muted">about {estimate.toLocaleString()}</span>
-          </label>
-        )}
         {reward && <p className="mt-2 text-xs text-gold">{reward}</p>}
         <button type="button" className="btn mt-4 min-h-14 w-full" onClick={() => setBlank(true)}>
           <EyeOff className="size-5" aria-hidden />
@@ -206,19 +211,22 @@ export function RestSet({
           type="button"
           className={`btn mt-2 min-h-20 w-full flex-col gap-0 text-lg ${ready ? "btn-gold" : "opacity-70"}`}
           disabled={!ready}
-          onClick={done}
+          onClick={last ? done : onward}
         >
           <span className="flex items-center gap-2">
             <Check className="size-5" aria-hidden />
-            {ready
-              ? timed
-                ? `Done: ${reps ? `+${reps.toLocaleString()} in ` : ""}${clock(length)} ⏱`
-                : `Done: +${active.target.toLocaleString()} in ${clock(watch)}`
-              : `Done in ${clock(left, true)}`}
+            {!ready
+              ? `Done in ${clock(left, true)}`
+              : !last
+                ? part === "reps"
+                  ? `Reps done: on to the ${clock(timerLength)} timer ▶`
+                  : `On to the ${active.target.toLocaleString()} reps ▶`
+                : part === "timer" && !both
+                  ? `Done: ${clock(timerLength)} ⏱`
+                  : `Done: +${reps.toLocaleString()} in ${clock(all)}${both ? " ⏱" : ""}`}
           </span>
           <span className="text-[0.7rem] tracking-normal normal-case opacity-90">
-            {(item.total + reps).toLocaleString()} in {clock(item.ms + (timed ? length : watch))}{" "}
-            all told
+            {(item.total + reps).toLocaleString()} in {clock(item.ms + all)} all told
           </span>
         </button>
         {asking ? (
@@ -239,9 +247,11 @@ export function RestSet({
           </button>
         )}
         <p className="mt-3 text-[0.7rem] text-muted">
-          {timed
-            ? `Recite it over and over for ${clock(length)}; a long buzz when the time is up.`
-            : `Recite it ${active.target.toLocaleString()} times; Done opens after ${clock(length)}.`}{" "}
+          {both
+            ? `Two parts, one after the other: ${active.first === "timer" ? `nonstop for ${clock(timerLength)}, then ${active.target.toLocaleString()} reps` : `${active.target.toLocaleString()} reps, then nonstop for ${clock(timerLength)}`}.`
+            : part === "timer"
+              ? `Recite it over and over for ${clock(timerLength)}; a long buzz when the time is up.`
+              : `Recite it ${active.target.toLocaleString()} times; Done opens after ${clock(length)}.`}{" "}
           The game rests meanwhile, and the clock runs with the screen off too.
         </p>
       </div>
