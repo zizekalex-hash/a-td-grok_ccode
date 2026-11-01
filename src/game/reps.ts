@@ -1,10 +1,11 @@
 /**
  * The Reps tab of the Recitation drill: your own words and phrases, each with a
- * running total of reps. A set counts reps of one (by itself at a pace, or one
- * tap each); finishing it adds them to the total. Resetting sets every total
- * back to 0 and keeps the words and phrases. Saved in this browser (or phone).
- * Pure, with relative imports, so the tests can load it. Tuned in reps in
- * config.json.
+ * running total of reps. A set of N reps takes at least N seconds
+ * (reps.secondsPerRep each); then one tap of Done adds all N to the total.
+ * The time runs by the clock, so it goes on while the screen is off, and a set
+ * in progress is saved. Resetting sets every total back to 0 and keeps the
+ * words and phrases. Saved in this browser (or phone). Pure, with relative
+ * imports, so the tests can load it. Tuned in reps in config.json.
  */
 
 import { CONFIG } from "./config.ts";
@@ -16,23 +17,29 @@ export const REPS_KEY = "azshara-reps-v1";
 export interface RepItem {
   id: string;
   text: string;
-  /** Reps since the last reset, and sets completed. */
+  /** Reps since the last reset, and sets finished. */
   total: number;
   sets: number;
   /** When it was added (ms since 1970). */
   at: number;
 }
 
+/** A set in progress: of which phrase, how many reps, and when it began (ms since 1970). */
+export interface ActiveSet {
+  id: string;
+  target: number;
+  since: number;
+}
+
 export interface RepsState {
   items: RepItem[];
-  /** Reps in a set, how long each word of a rep takes when counting by itself, and whether it does. */
+  /** Reps in a set. */
   set: number;
-  wordMs: number;
-  auto: boolean;
+  active: ActiveSet | null;
 }
 
 export function newReps(): RepsState {
-  return { items: [], set: clampSet(R.set), wordMs: clampPace(R.wordMs), auto: true };
+  return { items: [], set: clampSet(R.set), active: null };
 }
 
 /** Words in a phrase (at least 1, so a single word counts). */
@@ -40,26 +47,28 @@ export function wordsOf(text: string): number {
   return Math.max(1, text.trim().split(/\s+/).filter(Boolean).length);
 }
 
-/** How long one rep takes when counting by itself: every word at the pace, never shorter than minRepMs. */
-export function msPerRep(text: string, wordMs: number): number {
-  return Math.max(R.minRepMs, wordsOf(text) * wordMs);
-}
-
-/** Reps counted after some time, up to the set's size. */
-export function repsAt(elapsedMs: number, repMs: number, target: number): number {
-  if (repMs <= 0) return target;
-  return Math.max(0, Math.min(target, Math.floor(elapsedMs / repMs)));
-}
-
 /** A set size from 1 to maxSet, whole. */
 export function clampSet(n: number): number {
   return Number.isFinite(n) ? Math.max(1, Math.min(R.maxSet, Math.round(n))) : R.set;
 }
 
-/** A pace per word, in 100 ms steps, within limits. */
-export function clampPace(ms: number): number {
-  if (!Number.isFinite(ms)) return R.wordMs;
-  return Math.max(R.wordMsMin, Math.min(R.wordMsMax, Math.round(ms / 100) * 100));
+/** The least time a set of this many reps takes before Done (ms). */
+export function setMs(target: number): number {
+  return Math.max(0, target) * R.secondsPerRep * 1000;
+}
+
+/** Time left before Done can be tapped (ms; 0 when it can). */
+export function timeLeft(a: ActiveSet, now: number): number {
+  return Math.max(0, a.since + setMs(a.target) - now);
+}
+
+/** "1:40", "0:05", "1:02:03". */
+export function clock(ms: number): string {
+  const total = Math.ceil(Math.max(0, ms) / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = String(total % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
 }
 
 /** Adds a word or phrase (once: the same text again, in any case, is the one already there). Its id, or "" for empty text. */
@@ -80,10 +89,24 @@ export function addItem(
 }
 
 export function removeItem(s: RepsState, id: string): RepsState {
-  return { ...s, items: s.items.filter((i) => i.id !== id) };
+  return {
+    ...s,
+    items: s.items.filter((i) => i.id !== id),
+    active: s.active?.id === id ? null : s.active,
+  };
 }
 
-/** Adds the reps of a set to a word or phrase; a set of 0 changes nothing. */
+/** Starts a set of the chosen size for a phrase, now. */
+export function startSet(s: RepsState, id: string, now: number): RepsState {
+  if (!s.items.some((i) => i.id === id)) return s;
+  return { ...s, active: { id, target: s.set, since: now } };
+}
+
+export function cancelSet(s: RepsState): RepsState {
+  return { ...s, active: null };
+}
+
+/** Adds reps to a phrase; 0 changes nothing. */
 export function addReps(s: RepsState, id: string, count: number): RepsState {
   const n = Math.max(0, Math.floor(count));
   if (!n) return s;
@@ -91,6 +114,13 @@ export function addReps(s: RepsState, id: string, count: number): RepsState {
     ...s,
     items: s.items.map((i) => (i.id === id ? { ...i, total: i.total + n, sets: i.sets + 1 } : i)),
   };
+}
+
+/** Finishes the set in progress once its time is up: all its reps go to the phrase. Unchanged before then. */
+export function finishSet(s: RepsState, now: number): RepsState {
+  const a = s.active;
+  if (!a || timeLeft(a, now) > 0) return s;
+  return { ...addReps(s, a.id, a.target), active: null };
 }
 
 /** Every count back to 0; the words and phrases stay. */
@@ -112,9 +142,8 @@ export function loadReps(data: unknown): RepsState {
   const s = newReps();
   const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : NaN);
+  const whole = (v: unknown) => (Number.isFinite(num(v)) ? Math.max(0, Math.floor(num(v))) : 0);
   if (Number.isFinite(num(d.set))) s.set = clampSet(num(d.set));
-  if (Number.isFinite(num(d.wordMs))) s.wordMs = clampPace(num(d.wordMs));
-  if (typeof d.auto === "boolean") s.auto = d.auto;
   const seen = new Set<string>();
   for (const raw of Array.isArray(d.items) ? d.items : []) {
     if (!raw || typeof raw !== "object") continue;
@@ -122,7 +151,6 @@ export function loadReps(data: unknown): RepsState {
     if (typeof i.id !== "string" || !i.id || seen.has(i.id)) continue;
     if (typeof i.text !== "string" || !i.text.trim()) continue;
     seen.add(i.id);
-    const whole = (v: unknown) => (Number.isFinite(num(v)) ? Math.max(0, Math.floor(num(v))) : 0);
     s.items.push({
       id: i.id,
       text: i.text.trim().slice(0, 300),
@@ -130,6 +158,11 @@ export function loadReps(data: unknown): RepsState {
       sets: whole(i.sets),
       at: whole(i.at),
     });
+  }
+  const a = d.active as Record<string, unknown> | null | undefined;
+  if (a && typeof a === "object" && typeof a.id === "string" && seen.has(a.id)) {
+    const target = Number.isFinite(num(a.target)) ? clampSet(num(a.target)) : s.set;
+    s.active = { id: a.id, target, since: whole(a.since) };
   }
   return s;
 }

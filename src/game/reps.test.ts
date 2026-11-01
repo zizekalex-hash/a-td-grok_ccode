@@ -4,16 +4,19 @@ import { CONFIG } from "./config.ts";
 import {
   addItem,
   addReps,
-  clampPace,
+  cancelSet,
   clampSet,
+  clock,
+  finishSet,
   grandTotal,
   loadReps,
-  msPerRep,
   newReps,
   removeItem,
-  repsAt,
   resetAll,
+  setMs,
   setXp,
+  startSet,
+  timeLeft,
   wordsOf,
 } from "./reps.ts";
 
@@ -38,22 +41,33 @@ describe("reps", () => {
     assert.equal(empty.state, s);
   });
 
-  it("adds sets to the total: 100, then 100 more is 200", () => {
-    let s = addItem(newReps(), "xyz", 1, "a").state;
-    s = addReps(s, "a", 100);
-    s = addReps(s, "a", 100);
+  it("a set of 100 takes at least 100 s, then Done adds all 100: 100, then 200", () => {
+    const T = 1_000_000;
+    let s = addItem({ ...newReps(), set: 100 }, "xyz", 1, "a").state;
+    s = startSet(s, "a", T);
+    assert.deepEqual(s.active, { id: "a", target: 100, since: T });
+    assert.equal(setMs(100), 100 * R.secondsPerRep * 1000);
+    assert.equal(timeLeft(s.active!, T + 40_000), setMs(100) - 40_000);
+    // Too soon: nothing changes.
+    assert.equal(finishSet(s, T + setMs(100) - 1), s);
+    s = finishSet(s, T + setMs(100));
+    assert.equal(s.active, null);
+    assert.equal(s.items[0]!.total, 100);
+    s = finishSet(startSet(s, "a", T), T + 10 * setMs(100));
     assert.equal(s.items[0]!.total, 200);
     assert.equal(s.items[0]!.sets, 2);
-    assert.equal(addReps(s, "a", 0), s, "a set of 0 changes nothing");
-    s = addItem(s, "abc", 2, "b").state;
-    s = addReps(s, "b", 10);
-    assert.equal(grandTotal(s), 210);
+    // A cancelled set adds nothing.
+    s = cancelSet(startSet(s, "a", T));
+    assert.equal(s.active, null);
+    assert.equal(s.items[0]!.total, 200);
+    assert.equal(startSet(s, "nobody", T), s, "only a phrase in the list");
   });
 
   it("resets every count to 0 and keeps the words and phrases", () => {
     let s = addItem(newReps(), "xyz", 1, "a").state;
     s = addItem(s, "abc", 2, "b").state;
     s = addReps(addReps(s, "a", 100), "b", 50);
+    assert.equal(grandTotal(s), 150);
     const r = resetAll(s);
     assert.deepEqual(
       r.items.map((i) => [i.text, i.total, i.sets]),
@@ -63,31 +77,29 @@ describe("reps", () => {
       ],
     );
     assert.equal(s.items[0]!.total, 50, "the old state is left as it was");
-    assert.equal(removeItem(r, "a").items.length, 1);
+    const gone = removeItem(startSet(r, "a", 5), "a");
+    assert.equal(gone.items.length, 1);
+    assert.equal(gone.active, null, "deleting a phrase ends its set");
   });
 
-  it("counts reps by time at the pace, up to the set's size", () => {
+  it("knows its sizes, clock and XP", () => {
     assert.equal(wordsOf("one"), 1);
     assert.equal(wordsOf("  two  words "), 2);
     assert.equal(wordsOf(""), 1);
-    assert.equal(msPerRep("a b c", 600), 1800);
-    assert.equal(msPerRep("a", 100), R.minRepMs, "never shorter than minRepMs");
-    assert.equal(repsAt(0, 1000, 100), 0);
-    assert.equal(repsAt(2999, 1000, 100), 2);
-    assert.equal(repsAt(1e9, 1000, 100), 100, "capped at the set");
     assert.equal(clampSet(0), 1);
     assert.equal(clampSet(250.4), 250);
     assert.equal(clampSet(1e9), R.maxSet);
-    assert.equal(clampPace(640), 600);
-    assert.equal(clampPace(1), R.wordMsMin);
+    assert.equal(clock(100_000), "1:40");
+    assert.equal(clock(4_200), "0:05");
+    assert.equal(clock(3_723_000), "1:02:03");
+    assert.equal(clock(-5), "0:00");
     assert.equal(setXp("a b", 100), 200 * R.xpPerWordRep);
   });
 
-  it("reads saves defensively", () => {
+  it("reads saves defensively, with a set in progress", () => {
     const s = loadReps({
       set: 50,
-      wordMs: 900,
-      auto: false,
+      active: { id: "a", target: 100, since: 1234 },
       items: [
         { id: "a", text: " xyz ", total: 120.7, sets: 2, at: 5 },
         { id: "a", text: "again", total: 1 },
@@ -97,8 +109,7 @@ describe("reps", () => {
       ],
     });
     assert.equal(s.set, 50);
-    assert.equal(s.wordMs, 900);
-    assert.equal(s.auto, false);
+    assert.deepEqual(s.active, { id: "a", target: 100, since: 1234 });
     assert.deepEqual(
       s.items.map((i) => [i.id, i.text, i.total]),
       [
@@ -106,6 +117,7 @@ describe("reps", () => {
         ["c", "abc", 0],
       ],
     );
+    assert.equal(loadReps({ items: [], active: { id: "x", target: 5, since: 1 } }).active, null);
     const fresh = loadReps(null);
     assert.equal(fresh.items.length, 0);
     assert.equal(fresh.set, R.set);

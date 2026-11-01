@@ -2663,14 +2663,11 @@
     }
   },
   "reps": {
-    "_about": "The Reps tab of the Recitation drill: write a word or phrase, then count sets of reps of it, adding each finished set to its total. setSizes: the quick set sizes; set: the size picked at first (up to maxSet). When a set counts by itself, each word of a rep takes wordMs (wordMsMin to wordMsMax, changeable in the tab), and a rep never takes less than minRepMs. xpPerWordRep: Recitation XP for each word of each rep in a finished set (0 for none).",
+    "_about": "The Reps tab of the Recitation drill: write a word or phrase, then do sets of reps of it, adding each finished set to its total. setSizes: the quick set sizes; set: the size picked at first (up to maxSet). A set of N reps takes at least N times secondsPerRep before Done can be tapped. xpPerWordRep: Recitation XP for each word of each rep in a finished set (0 for none).",
     "setSizes": [10, 50, 100],
     "set": 100,
     "maxSet": 10000,
-    "wordMs": 600,
-    "wordMsMin": 200,
-    "wordMsMax": 3000,
-    "minRepMs": 600,
+    "secondsPerRep": 1,
     "xpPerWordRep": 1
   },
   "core": {

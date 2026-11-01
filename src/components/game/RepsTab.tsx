@@ -1,20 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { Check, Minus, Pause, Play, Plus, RotateCcw, Square, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Play, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { CONFIG } from "@/game/config";
 import { flashToast, grantSkillXp } from "@/game/engine";
 import { levelForXp } from "@/game/recite";
 import {
   addItem,
-  addReps,
-  clampPace,
+  cancelSet,
   clampSet,
+  clock,
+  finishSet,
   grandTotal,
-  msPerRep,
   readReps,
   removeItem,
-  repsAt,
   resetAll,
+  setMs,
   setXp,
+  startSet,
+  timeLeft,
   writeReps,
   type RepItem,
   type RepsState,
@@ -25,51 +27,12 @@ const R = CONFIG.reps;
 /** Red for what cannot be undone (the shared button style sets its own colours). */
 const DANGER = { color: "var(--color-danger)", borderColor: "var(--color-danger)" };
 
-/** A set being counted: how far it is, and whether it counts by itself or by taps. */
-interface Run {
-  id: string;
-  target: number;
-  count: number;
-  auto: boolean;
-  repMs: number;
-  /** Time counted before the last pause (auto), and when counting last resumed (null while held). */
-  elapsed: number;
-  since: number | null;
-  phase: "count" | "done" | "stopping" | "saved";
-  /** What the finished set added, and the new total. */
-  added: number;
-  total: number;
-}
-
 function buzz(ms: number) {
   try {
     navigator.vibrate?.(ms);
   } catch {
     /* not allowed here */
   }
-}
-
-/** Keeps the screen on while a set counts, where the browser allows it. */
-function useWakeLock(on: boolean) {
-  useEffect(() => {
-    if (!on) return;
-    let lock: { release: () => Promise<void> } | null = null;
-    let gone = false;
-    const nav = navigator as Navigator & {
-      wakeLock?: { request: (t: "screen") => Promise<{ release: () => Promise<void> }> };
-    };
-    nav.wakeLock
-      ?.request("screen")
-      .then((l) => {
-        if (gone) void l.release();
-        else lock = l;
-      })
-      .catch(() => {});
-    return () => {
-      gone = true;
-      void lock?.release().catch(() => {});
-    };
-  }, [on]);
 }
 
 /** Two buttons to say yes or no, the safe answer first. */
@@ -107,21 +70,20 @@ function Confirm({
 
 /**
  * Reps of your own words and phrases: write one, pick how many reps a set has,
- * and count them (by themselves at a pace, or one tap each). Finishing a set adds
- * it to the total; Reset sets every total back to 0 and keeps the phrases.
+ * and start a set. It takes at least a second a rep (by the clock, so the screen
+ * can be off); then one tap of Done adds the whole set to the total. Reset sets
+ * every total back to 0 and keeps the phrases.
  */
 export function RepsTab() {
   const [state, setState] = useState<RepsState>(() => readReps());
   const [draft, setDraft] = useState("");
-  const [run, setRun] = useState<Run | null>(null);
-  const [asking, setAsking] = useState<null | { kind: "reset" } | { kind: "delete"; id: string }>(
-    null,
-  );
   const [setText, setSetText] = useState(String(state.set));
-  const runRef = useRef(run);
-  useEffect(() => {
-    runRef.current = run;
-  });
+  const [asking, setAsking] = useState<
+    null | { kind: "reset" } | { kind: "delete"; id: string } | { kind: "cancel" }
+  >(null);
+  /** The set just finished: what it added and the new total. */
+  const [saved, setSaved] = useState<null | { id: string; added: number; total: number }>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const save = (next: RepsState) => {
     setState(next);
@@ -129,30 +91,21 @@ export function RepsTab() {
   };
   const item = (id: string) => state.items.find((i) => i.id === id);
 
-  // Counting by itself: the count follows the clock; at the set's end it waits for the tap that saves it.
-  const counting = run?.phase === "count" && run.auto && run.since !== null;
+  // While a set runs, the time left is checked twice a second (by the clock, so time
+  // with the screen off counts too); a short buzz when Done opens.
+  const active = state.active;
   useEffect(() => {
-    if (!counting) return;
+    if (!active) return;
+    let wasReady = timeLeft(active, Date.now()) <= 0;
     const timer = window.setInterval(() => {
-      const r = runRef.current;
-      if (!r || r.phase !== "count" || r.since === null) return;
-      const count = repsAt(r.elapsed + performance.now() - r.since, r.repMs, r.target);
-      if (count >= r.target) {
-        buzz(60);
-        setRun({
-          ...r,
-          count,
-          phase: "done",
-          elapsed: r.elapsed + performance.now() - r.since,
-          since: null,
-        });
-      } else if (count !== r.count) {
-        setRun({ ...r, count });
-      }
-    }, 100);
+      const t = Date.now();
+      setNow(t);
+      const ready = timeLeft(active, t) <= 0;
+      if (ready && !wasReady) buzz(80);
+      wasReady = ready;
+    }, 500);
     return () => window.clearInterval(timer);
-  }, [counting]);
-  useWakeLock(!!run && run.phase !== "saved");
+  }, [active]);
 
   const add = () => {
     const { state: next, id } = addItem(state, draft, Date.now());
@@ -162,61 +115,34 @@ export function RepsTab() {
   };
 
   const start = (id: string) => {
-    const it = item(id);
-    if (!it) return;
     setAsking(null);
-    setRun({
-      id,
-      target: state.set,
-      count: 0,
-      auto: state.auto,
-      repMs: msPerRep(it.text, state.wordMs),
-      elapsed: 0,
-      since: state.auto ? performance.now() : null,
-      phase: "count",
-      added: 0,
-      total: it.total,
-    });
+    setSaved(null);
+    const t = Date.now();
+    setNow(t);
+    save(startSet(state, id, t));
   };
 
-  /** Adds the reps counted to the phrase, with Recitation XP, and shows what it came to. */
-  const finish = (count: number) => {
-    const r = run;
-    if (!r) return;
-    const it = item(r.id);
-    const next = addReps(state, r.id, count);
+  /** Done: the whole set goes to the phrase, with Recitation XP. */
+  const done = () => {
+    const a = state.active;
+    if (!a) return;
+    const t = Date.now();
+    const next = finishSet(state, t);
+    if (next === state) return;
     save(next);
-    if (it && count > 0) {
+    const it = item(a.id);
+    if (it) {
       const before = levelForXp(useGame.getState().skills.recitation);
-      grantSkillXp("recitation", setXp(it.text, count));
+      grantSkillXp("recitation", setXp(it.text, a.target));
       const after = levelForXp(useGame.getState().skills.recitation);
       if (after > before) flashToast(`Recitation level ${after}`);
     }
     buzz(30);
-    const total = next.items.find((i) => i.id === r.id)?.total ?? 0;
-    setRun({ ...r, phase: "saved", added: count, total, since: null });
-  };
-
-  const hold = () => {
-    if (!run || run.phase !== "count" || !run.auto) return;
-    if (run.since === null) setRun({ ...run, since: performance.now() });
-    else setRun({ ...run, elapsed: run.elapsed + performance.now() - run.since, since: null });
-  };
-
-  const tapRep = () => {
-    if (!run || run.phase !== "count" || run.auto) return;
-    const count = run.count + 1;
-    buzz(count >= run.target ? 60 : 8);
-    setRun({ ...run, count, phase: count >= run.target ? "done" : "count" });
-  };
-
-  const stop = () => {
-    if (!run) return;
-    const held =
-      run.auto && run.since !== null
-        ? { elapsed: run.elapsed + performance.now() - run.since, since: null }
-        : {};
-    setRun({ ...run, ...held, phase: "stopping" });
+    setSaved({
+      id: a.id,
+      added: a.target,
+      total: next.items.find((i) => i.id === a.id)?.total ?? 0,
+    });
   };
 
   const pickSet = (n: number) => {
@@ -225,164 +151,79 @@ export function RepsTab() {
     setSetText(String(set));
   };
 
-  // ---- A set being counted ----
-  if (run) {
-    const it = item(run.id);
-    const text = it?.text ?? "";
-    const left = run.target - run.count;
-    const recent = [run.count - 2, run.count - 1].filter((n) => n > 0);
+  // ---- A set in progress ----
+  if (active) {
+    const text = item(active.id)?.text ?? "";
+    const full = setMs(active.target);
+    const left = timeLeft(active, now);
+    const ready = left <= 0;
+    const elapsed = Math.min(full, Math.max(0, now - active.since));
     return (
       <div>
         <p className="text-xs tracking-wider text-muted uppercase">
-          Set of {run.target.toLocaleString()} · {run.total.toLocaleString()} before this set
+          Set of {active.target.toLocaleString()} reps ·{" "}
+          {(item(active.id)?.total ?? 0).toLocaleString()} so far
         </p>
-        <div
-          className={`glass mt-2 p-4 text-center select-none ${!run.auto && run.phase === "count" ? "cursor-pointer" : ""}`}
-          onPointerDown={(e) => {
-            if (!run.auto && run.phase === "count") {
-              e.preventDefault();
-              tapRep();
-            }
-          }}
-          aria-live="polite"
-        >
-          {/* The last reps fading above the current one: 1 xyz, 2 xyz, 3 xyz... */}
-          <div className="min-h-12 text-sm text-muted">
-            {recent.map((n, i) => (
-              <p key={n} className="truncate" style={{ opacity: 0.35 + i * 0.3 }}>
-                {n} {text}
-              </p>
-            ))}
-          </div>
-          <p className="font-display text-6xl leading-none text-gold">
-            {run.count.toLocaleString()}
+        <div className="glass mt-2 p-4 text-center">
+          <p className="text-xl leading-snug break-words text-fg">{text}</p>
+          <p
+            className={`mt-3 font-display text-5xl leading-none ${ready ? "text-gold" : "text-cyan"}`}
+            aria-live="off"
+          >
+            {ready ? "✓" : clock(left)}
           </p>
-          <p className="mt-2 text-lg leading-snug break-words text-fg">{text}</p>
-          <div className="meter mt-3" aria-hidden>
-            <span style={{ width: `${(run.count / run.target) * 100}%` }} />
+          {/* The bar fills by itself over the set's time, from wherever it is now. */}
+          <div className="mt-3 h-1.5 overflow-hidden rounded bg-cyan/10" aria-hidden>
+            <div
+              key={`${active.since}|${ready}`}
+              className={`h-1.5 rounded ${ready ? "bg-gold" : "court-fill bg-cyan"}`}
+              style={
+                ready
+                  ? undefined
+                  : { animationDuration: `${full}ms`, animationDelay: `-${elapsed}ms` }
+              }
+            />
           </div>
-          {run.auto && run.phase === "count" && run.since !== null && (
-            <div className="mt-2 h-1 overflow-hidden rounded bg-cyan/10" aria-hidden>
-              <div
-                key={run.count}
-                className="court-fill h-1 rounded bg-cyan"
-                style={{ animationDuration: `${run.repMs}ms` }}
-              />
-            </div>
-          )}
           <p className="mt-2 text-xs text-muted">
-            {run.phase === "count"
-              ? run.auto
-                ? run.since === null
-                  ? "Held. Resume when you are ready."
-                  : `${left.toLocaleString()} to go · ${(run.repMs / 1000).toFixed(1)} s a rep`
-                : `${left.toLocaleString()} to go · tap here for each rep`
-              : run.phase === "done"
-                ? "All done. Tap to save them."
-                : ""}
+            {ready
+              ? `Done when you have said it ${active.target.toLocaleString()} times.`
+              : `Recite it ${active.target.toLocaleString()} times. Done opens after ${clock(full)} (${R.secondsPerRep} s a rep); the time runs with the screen off too.`}
           </p>
         </div>
-
-        {run.phase === "count" && (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {run.auto ? (
-              <button type="button" className="btn min-h-14" onClick={hold}>
-                {run.since === null ? (
-                  <Play className="size-4" aria-hidden />
-                ) : (
-                  <Pause className="size-4" aria-hidden />
-                )}
-                {run.since === null ? "Resume" : "Hold"}
-              </button>
-            ) : (
-              <button type="button" className="btn btn-gold min-h-14" onClick={tapRep}>
-                <Plus className="size-4" aria-hidden />
-                Rep {run.count + 1}
-              </button>
-            )}
-            <button type="button" className="btn min-h-14" onClick={stop}>
-              <Square className="size-4" aria-hidden />
-              Stop
-            </button>
-          </div>
-        )}
-
-        {run.phase === "done" && (
+        <button
+          type="button"
+          className={`btn mt-3 min-h-20 w-full flex-col gap-0 text-lg ${ready ? "btn-gold" : "opacity-70"}`}
+          disabled={!ready}
+          onClick={done}
+        >
+          <span className="flex items-center gap-2">
+            <Check className="size-5" aria-hidden />
+            {ready ? `Done: +${active.target.toLocaleString()}` : `Done in ${clock(left)}`}
+          </span>
+          <span className="text-[0.7rem] tracking-normal normal-case opacity-90">
+            {(item(active.id)?.total ?? 0) + active.target} in all
+          </span>
+        </button>
+        {asking?.kind === "cancel" ? (
+          <Confirm
+            text="Cancel this set? Nothing is added."
+            yes="Yes, cancel it"
+            no="No, go on"
+            onYes={() => {
+              save(cancelSet(state));
+              setAsking(null);
+            }}
+            onNo={() => setAsking(null)}
+          />
+        ) : (
           <button
             type="button"
-            className="btn btn-gold mt-3 min-h-20 w-full flex-col gap-0 text-lg"
-            onClick={() => finish(run.count)}
+            className="btn mt-2 w-full"
+            onClick={() => setAsking({ kind: "cancel" })}
           >
-            <span className="flex items-center gap-2">
-              <Check className="size-5" aria-hidden />
-              Done
-            </span>
-            <span className="text-[0.7rem] tracking-normal normal-case opacity-90">
-              Save {run.count.toLocaleString()} reps: {(run.total + run.count).toLocaleString()} in
-              all
-            </span>
+            <X className="size-4" aria-hidden />
+            Cancel the set
           </button>
-        )}
-
-        {run.phase === "stopping" && (
-          <div className="mt-3 rounded-md border border-cyan/40 p-3">
-            <p className="text-sm">
-              Stop here?{" "}
-              {run.count > 0
-                ? `You counted ${run.count.toLocaleString()} reps.`
-                : "No reps counted yet."}
-            </p>
-            <div className="mt-2 grid gap-2">
-              {run.count > 0 && (
-                <button
-                  type="button"
-                  className="btn btn-gold min-h-12"
-                  onClick={() => finish(run.count)}
-                >
-                  Keep {run.count.toLocaleString()} reps
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn min-h-12"
-                onClick={() =>
-                  setRun({
-                    ...run,
-                    phase: "count",
-                    since: run.auto ? performance.now() : null,
-                  })
-                }
-              >
-                Keep counting
-              </button>
-              <button
-                type="button"
-                className="btn min-h-12"
-                style={DANGER}
-                onClick={() => setRun(null)}
-              >
-                Throw this set away
-              </button>
-            </div>
-          </div>
-        )}
-
-        {run.phase === "saved" && (
-          <div className="mt-3 rounded-md border border-gold/60 p-3 text-center" role="status">
-            <p className="font-display text-lg text-gold">
-              +{run.added.toLocaleString()} → {run.total.toLocaleString()}
-            </p>
-            <p className="mt-1 text-sm break-words">{text}</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button type="button" className="btn btn-gold min-h-14" onClick={() => start(run.id)}>
-                <RotateCcw className="size-4" aria-hidden />
-                Another {state.set.toLocaleString()}
-              </button>
-              <button type="button" className="btn min-h-14" onClick={() => setRun(null)}>
-                Back to the list
-              </button>
-            </div>
-          </div>
         )}
       </div>
     );
@@ -392,8 +233,9 @@ export function RepsTab() {
   return (
     <div>
       <p className="text-sm leading-relaxed text-muted">
-        Write a word or phrase, then count sets of reps of it. Each finished set adds to its total,
-        and gives Recitation XP.
+        Write a word or phrase, then do sets of reps of it. A set of {R.setSizes.at(-1)} takes at
+        least {clock(setMs(R.setSizes.at(-1) ?? 100))}; then Done adds it to the total, with
+        Recitation XP.
       </p>
       <form
         className="mt-2 flex gap-2"
@@ -446,47 +288,19 @@ export function RepsTab() {
         />
       </div>
 
-      <p className="mt-3 text-xs tracking-wider text-muted uppercase">Counting</p>
-      <div className="mt-1 grid grid-cols-2 gap-1.5">
-        <button
-          type="button"
-          className="btn"
-          data-on={state.auto}
-          aria-pressed={state.auto}
-          onClick={() => save({ ...state, auto: true })}
-        >
-          By itself
-        </button>
-        <button
-          type="button"
-          className="btn"
-          data-on={!state.auto}
-          aria-pressed={!state.auto}
-          onClick={() => save({ ...state, auto: false })}
-        >
-          I tap each rep
-        </button>
-      </div>
-      {state.auto && (
-        <div className="mt-1.5 flex items-center justify-center gap-1 text-xs">
+      {saved && item(saved.id) && (
+        <div className="mt-3 rounded-md border border-gold/60 p-3 text-center" role="status">
+          <p className="font-display text-lg text-gold">
+            +{saved.added.toLocaleString()} → {saved.total.toLocaleString()}
+          </p>
+          <p className="mt-1 text-sm break-words">{item(saved.id)?.text}</p>
           <button
             type="button"
-            className="btn stepper"
-            aria-label="Slower"
-            onClick={() => save({ ...state, wordMs: clampPace(state.wordMs + 100) })}
+            className="btn btn-gold mt-2 min-h-12 w-full"
+            onClick={() => start(saved.id)}
           >
-            <Minus className="size-4" aria-hidden />
-          </button>
-          <span className="min-w-28 text-center text-muted">
-            {(state.wordMs / 1000).toFixed(1)} s a word
-          </span>
-          <button
-            type="button"
-            className="btn stepper"
-            aria-label="Faster"
-            onClick={() => save({ ...state, wordMs: clampPace(state.wordMs - 100) })}
-          >
-            <Plus className="size-4" aria-hidden />
+            <RotateCcw className="size-4" aria-hidden />
+            Another {state.set.toLocaleString()}
           </button>
         </div>
       )}
@@ -513,7 +327,7 @@ export function RepsTab() {
                 type="button"
                 className="btn btn-gold shrink-0"
                 onClick={() => start(it.id)}
-                aria-label={`Count ${state.set} reps of ${it.text}`}
+                aria-label={`Start a set of ${state.set} reps of ${it.text}`}
               >
                 <Play className="size-4" aria-hidden />
                 {state.set.toLocaleString()}
@@ -534,6 +348,7 @@ export function RepsTab() {
                 no="No"
                 onYes={() => {
                   save(removeItem(state, it.id));
+                  if (saved?.id === it.id) setSaved(null);
                   setAsking(null);
                 }}
                 onNo={() => setAsking(null)}
@@ -556,6 +371,7 @@ export function RepsTab() {
               no="No, keep them"
               onYes={() => {
                 save(resetAll(state));
+                setSaved(null);
                 setAsking(null);
                 flashToast("All reps back to 0");
               }}

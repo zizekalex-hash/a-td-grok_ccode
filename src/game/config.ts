@@ -679,10 +679,7 @@ export interface GameConfig {
     setSizes: number[];
     set: number;
     maxSet: number;
-    wordMs: number;
-    wordMsMin: number;
-    wordMsMax: number;
-    minRepMs: number;
+    secondsPerRep: number;
     xpPerWordRep: number;
   };
   core: { damagePerLevel: number; maxDamageBonus: number };
