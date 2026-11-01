@@ -674,6 +674,17 @@ export interface GameConfig {
     pickupLines: string[];
     queens: Record<CourtQueenKey, CourtQueenSpec>;
   };
+  /** The Reps tab of the Recitation drill (see reps._about). */
+  reps: {
+    setSizes: number[];
+    set: number;
+    maxSet: number;
+    wordMs: number;
+    wordMsMin: number;
+    wordMsMax: number;
+    minRepMs: number;
+    xpPerWordRep: number;
+  };
   core: { damagePerLevel: number; maxDamageBonus: number };
   textPool: string[];
   narrator: {

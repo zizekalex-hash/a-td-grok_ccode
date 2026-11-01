@@ -21,6 +21,20 @@ import {
   type SkillKey,
 } from "@/game/recite";
 import { useGame } from "@/game/store";
+import { RepsTab } from "@/components/game/RepsTab";
+
+type DrillTab = "rehearse" | "recall" | "reps";
+const TAB_KEY = "azshara-drill-tab";
+
+/** The tab last used, so the drill opens where you left it. */
+function lastTab(): DrillTab {
+  try {
+    const t = localStorage.getItem(TAB_KEY);
+    return t === "recall" || t === "reps" ? t : "rehearse";
+  } catch {
+    return "rehearse";
+  }
+}
 
 /** Recitation levels the wake core, which hits harder in core defense. */
 function CoreLine() {
@@ -184,7 +198,15 @@ export function DrillPanel() {
   const lines = useGame((s) => s.lines);
   const setPanel = () => useGame.setState({ panel: "none" });
   const [index, setIndex] = useState(0);
-  const [tab, setTab] = useState<"rehearse" | "recall">("rehearse");
+  const [tab, setTabState] = useState<DrillTab>(lastTab);
+  const setTab = (t: DrillTab) => {
+    setTabState(t);
+    try {
+      localStorage.setItem(TAB_KEY, t);
+    } catch {
+      /* private mode */
+    }
+  };
   const count = lines.length;
   const safeIndex = count ? ((index % count) + count) % count : 0;
   const words = sectorWords(lines, safeIndex);
@@ -207,41 +229,52 @@ export function DrillPanel() {
           <SkillBar skill="recall" />
           <CoreLine />
 
-          <div className="mt-4 flex items-center justify-between gap-2">
-            <button type="button" className="btn" onClick={() => setIndex(safeIndex - 1)} disabled={count < 2}>
-              Previous
-            </button>
-            <p className="text-xs tracking-wider text-muted">
-              Sector {count ? safeIndex + 1 : 0} of {count}
-            </p>
-            <button type="button" className="btn" onClick={() => setIndex(safeIndex + 1)} disabled={count < 2}>
-              Next
-            </button>
-          </div>
-          <p className="mt-2 text-sm leading-relaxed text-fg">{text}</p>
-
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="mt-4 grid grid-cols-3 gap-2">
             <button type="button" className="btn" data-on={tab === "rehearse"} aria-pressed={tab === "rehearse"} onClick={() => setTab("rehearse")}>
               Rehearse
             </button>
             <button type="button" className="btn" data-on={tab === "recall"} aria-pressed={tab === "recall"} onClick={() => setTab("recall")}>
               Recall
             </button>
+            <button type="button" className="btn" data-on={tab === "reps"} aria-pressed={tab === "reps"} onClick={() => setTab("reps")}>
+              Reps
+            </button>
           </div>
 
-          <div className="mt-4">
-            {tab === "rehearse" ? (
-              <>
-                <p className="text-sm leading-relaxed text-muted">{SKILLS[0]?.copy}</p>
-                <Rehearse key={safeIndex} words={words} />
-              </>
-            ) : (
-              <>
-                <p className="text-sm leading-relaxed text-muted">{SKILLS[1]?.copy}</p>
-                <Recall key={safeIndex} words={words} text={text} />
-              </>
-            )}
-          </div>
+          {tab === "reps" ? (
+            <div className="mt-4">
+              <RepsTab />
+            </div>
+          ) : (
+            <>
+              <div className="mt-4 flex items-center justify-between gap-2">
+                <button type="button" className="btn" onClick={() => setIndex(safeIndex - 1)} disabled={count < 2}>
+                  Previous
+                </button>
+                <p className="text-xs tracking-wider text-muted">
+                  Sector {count ? safeIndex + 1 : 0} of {count}
+                </p>
+                <button type="button" className="btn" onClick={() => setIndex(safeIndex + 1)} disabled={count < 2}>
+                  Next
+                </button>
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-fg">{text}</p>
+
+              <div className="mt-4">
+                {tab === "rehearse" ? (
+                  <>
+                    <p className="text-sm leading-relaxed text-muted">{SKILLS[0]?.copy}</p>
+                    <Rehearse key={safeIndex} words={words} />
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm leading-relaxed text-muted">{SKILLS[1]?.copy}</p>
+                    <Recall key={safeIndex} words={words} text={text} />
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

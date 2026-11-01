@@ -60,6 +60,18 @@ Every queen has her own portrait, drawn in code from her look in `config.json` (
 
 Load .txt (title screen, tome, Options → Text) takes one file or several at once. Several are read in turn, in name order (1, 2, 3 ... 10): the shots carry phrases from text 1 until it has been read through, then text 2 takes over, and after the last, text 1 comes back. The field, the binary rain and the core show the text in use. Two sliders in Options → Game set the timing: Pause between phrases (the least time between two phrases on shots, 300 ms to start) and Pause between texts (a break after a text has been read through, before the next one, or the same one again, starts; 2 s to start). Shots inside a pause fly plain; spells always carry a phrase. The tome and Options → Text list the loaded texts: tap one to switch to it now, Next for the next, ✕ to drop one. Up to 30 texts stay on the device between visits; pasted text replaces them.
 
+## Reps
+
+Recitation drill (on the title screen), tab Reps: count reps of your own words and phrases.
+
+- **Add:** write a word or phrase and tap Add. Each one keeps a running total.
+- **Set size:** pick 10, 50 or 100, or type any number.
+- **Counting:** by itself at a pace you set (seconds a word), or one tap per rep.
+- **A set:** tap the play button on a phrase. The count runs "1 xyz, 2 xyz, 3 xyz…" with the last reps fading above. When the set is done, tap Done to add it to the total. Another starts the next set: 100, then 200. Stop asks whether to keep the reps counted so far.
+- **Reset all to 0:** asks yes or no first, sets every total back to 0 and keeps the words and phrases (for a fresh start after sleep).
+- **Saving and XP:** everything is saved on the device. Each finished set gives Recitation XP.
+- **Tuning:** `reps` in config.json.
+
 ## Tuning
 
 Game parameters live in `src/game/config.json`: starting settings and slider ranges, the binary rain, wave and spawn rates for every mode, enemy stats, the core-level bonus from the recitation drill, the default text, and the narrator. Edit values there rather than in the code, then run `npm test`; `src/game/config.test.ts` catches out-of-range or missing values. Changes ship with the next build.
