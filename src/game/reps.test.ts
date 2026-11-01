@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { CONFIG } from "./config.ts";
 import {
   addItem,
+  addMany,
   addReps,
+  phraseIndex,
+  phrasesFromText,
   cancelSet,
   clampSet,
   clearHistory,
@@ -205,5 +208,45 @@ describe("reps", () => {
     for (let i = 0; i < R.historyKeep + 5; i++)
       big = finishSet(startSet(big, "q", i * 10_000), i * 10_000 + 5000);
     assert.equal(big.log.length, R.historyKeep);
+  });
+
+  it("picks phrases out of a text, and knows which are on the list or done before", () => {
+    const text = [
+      "The light is a decision. Name the signal!  Name the signal!",
+      "- Attention is a blade",
+      "  2. keep it sharp   ",
+      "",
+      "...",
+      "Why? Because.",
+    ].join("\n");
+    assert.deepEqual(phrasesFromText(text), [
+      "The light is a decision.",
+      "Name the signal!",
+      "Attention is a blade",
+      "keep it sharp",
+      "Why?",
+      "Because.",
+    ]);
+    assert.equal(phrasesFromText(text, 2).length, 2);
+    // "name the signal!" is on the list, "Why?" was done before and deleted.
+    let s = addItem({ ...newReps(), set: 10 }, "name the signal!", 1, "a").state;
+    s = addItem(s, "Why?", 2, "b").state;
+    s = finishSet(startSet(s, "b", 10), 20_000);
+    s = finishSet(startSet(s, "a", 30_000), 45_000);
+    s = removeItem(s, "b");
+    const status = phraseIndex(s);
+    const on = status("Name the signal!");
+    assert.equal(on.kind, "on");
+    assert.equal(on.kind === "on" && on.item.total, 10);
+    assert.deepEqual(status("why?"), { kind: "done", reps: 10, ms: 19_990 });
+    assert.deepEqual(status("Because."), { kind: "new" });
+    // Adding several: the ones on the list are not added twice; the first picked is on top.
+    const r = addMany(s, ["Attention is a blade", "NAME THE SIGNAL!", "keep it sharp"], 99);
+    assert.equal(r.added, 2);
+    assert.deepEqual(
+      r.state.items.map((i) => i.text),
+      ["Attention is a blade", "keep it sharp", "name the signal!"],
+    );
+    assert.equal(new Set(r.state.items.map((i) => i.id)).size, 3, "every id different");
   });
 });

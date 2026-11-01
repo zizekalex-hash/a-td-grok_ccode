@@ -246,6 +246,78 @@ export function historyOf(
   };
 }
 
+// ---- Phrases from a text ----
+
+/** A phrase's key for matching: lower case, single spaces. */
+export function phraseKey(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * The phrases in a text, to pick from: each line split into sentences, list
+ * marks ("- ", "• ", "1. ") taken off, nothing without a letter or a digit,
+ * each phrase once (the first time it comes), up to max.
+ */
+export function phrasesFromText(text: string, max = 5000): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of text.split(/\r?\n/)) {
+    // A list mark comes off the line first, so "2. Keep it sharp" is not cut after "2.".
+    const line = raw.replace(/^\s*(?:[-•*·]|\d+[.)])\s+/, "");
+    for (const part of line.split(/(?<=[.!?…])\s+/)) {
+      const p = part.replace(/\s+/g, " ").trim().slice(0, 300);
+      if (!/[\p{L}\p{N}]/u.test(p)) continue;
+      const key = phraseKey(p);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(p);
+      if (out.length >= max) return out;
+    }
+  }
+  return out;
+}
+
+export type PhraseStatus =
+  { kind: "on"; item: RepItem } | { kind: "done"; reps: number; ms: number } | { kind: "new" };
+
+/** Where each phrase stands: on the list (with its totals), done before (in the history), or new. */
+export function phraseIndex(s: RepsState): (text: string) => PhraseStatus {
+  const on = new Map(s.items.map((i) => [phraseKey(i.text), i]));
+  const done = new Map<string, { reps: number; ms: number }>();
+  for (const e of s.log) {
+    if (e.kind !== "set") continue;
+    const k = phraseKey(e.text);
+    const d = done.get(k) ?? { reps: 0, ms: 0 };
+    d.reps += e.reps;
+    d.ms += e.ms;
+    done.set(k, d);
+  }
+  return (text) => {
+    const k = phraseKey(text);
+    const item = on.get(k);
+    if (item) return { kind: "on", item };
+    const d = done.get(k);
+    return d ? { kind: "done", ...d } : { kind: "new" };
+  };
+}
+
+/** Adds several phrases to the list (those not on it already), first one at the top; how many were added. */
+export function addMany(
+  s: RepsState,
+  texts: string[],
+  now: number,
+): { state: RepsState; added: number } {
+  let state = s;
+  let added = 0;
+  // Backwards, so the first picked ends up at the top of the list.
+  for (let i = texts.length - 1; i >= 0; i--) {
+    const before = state.items.length;
+    state = addItem(state, texts[i] ?? "", now, `r${now.toString(36)}${i.toString(36)}`).state;
+    if (state.items.length > before) added += 1;
+  }
+  return { state, added };
+}
+
 export function grandTotal(s: RepsState): number {
   return s.items.reduce((n, i) => n + i.total, 0);
 }

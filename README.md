@@ -65,6 +65,10 @@ Load .txt (title screen, tome, Options → Text) takes one file or several at on
 Recitation drill (on the title screen), tab Reps: count reps of your own words and phrases.
 
 - **Add:** write a word or phrase and tap Add. They stay in the list. Each line shows its reps and time, like "100 xyz · 5:33" (or "0 xyz · 0:00" after a reset).
+- **From a text:** Load .txt (or Loaded texts, for texts already in the game) splits a text into its phrases (sentences and lines, list marks taken off, each phrase once).
+  - Tick the ones you want, or Pick all new, then Add.
+  - Only the added phrases are kept, not the text.
+  - Phrases already on your list show their reps and time and cannot be added twice. Ones done before (in the history) say so. Load the same text again to see what is already taken.
 - **Set size:** pick 10, 50 or 100, or type any number.
 - **A set:** tap a phrase (or its play button) and recite it that many times.
   - A stopwatch runs from the start of the set. Done opens after at least a second a rep (100 reps: 1:40), and nothing counts on screen meanwhile.
