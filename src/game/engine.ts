@@ -10,6 +10,7 @@ import { clampCenter, overlapArea } from "@/game/layout";
 import { cancelNarration, narrate } from "@/game/narrator";
 import { getGame, setActiveGame, type GameBase } from "@/game/registry";
 import { byName, gateOpen, readChunk, wrapped, type Cursor, type PhraseGate } from "@/game/reader";
+import { mergeTexts } from "@/game/texts";
 import { DISPLAY, FONT, PAL } from "@/game/palette";
 import { defaultSettings, useGame, type LoadedText, type Settings } from "@/game/store";
 import { coreDamageMultiplier, coreLevel, type SkillKey } from "@/game/recite";
@@ -296,20 +297,43 @@ export function loadCodexText(raw: string) {
  * through, and after the last the first comes back.
  */
 export function loadCodexTexts(files: { name: string; raw: string }[]) {
-  const texts: LoadedText[] = [...files]
+  const incoming = [...files]
     .sort((a, b) => byName(a.name, b.name))
     .map((f) => ({ name: f.name.replace(/\.txt$/i, "") || "Text", lines: parseCodex(f.raw) }))
-    .filter((t) => t.lines.length > 0)
-    .slice(0, MAX_TEXTS);
-  const first = texts[0];
-  if (!first) {
+    .filter((t) => t.lines.length > 0);
+  if (!incoming.length) {
     flashToast(files.length > 1 ? "No usable lines in those texts" : "No usable lines in that text");
     return;
   }
-  useGame.setState({ texts, textIndex: 0, lines: first.lines, custom: true });
-  getGame()?.onCodex(first.lines.length);
+  // Loading adds: the texts already loaded stay until removed with their ✕.
+  const { texts: have, custom, textIndex } = useGame.getState();
+  const base = custom ? have : [];
+  const r = mergeTexts(base, incoming, MAX_TEXTS);
+  if (!r.added) {
+    flashToast(
+      r.full
+        ? `${MAX_TEXTS} texts at most: remove some with ✕ first`
+        : r.already > 1
+          ? "Those texts are loaded already"
+          : "That text is loaded already",
+    );
+    return;
+  }
+  // The text in use stays in use; with only the built-in text, the first new one starts.
+  const index = base.length ? Math.min(textIndex, r.texts.length - 1) : 0;
+  const texts: LoadedText[] = r.texts;
+  useGame.setState({ texts, textIndex: index, lines: texts[index]!.lines, custom: true });
+  if (!base.length) getGame()?.onCodex(texts[index]!.lines.length);
   const total = texts.reduce((n, t) => n + t.lines.length, 0);
-  flashToast(texts.length > 1 ? `Loaded ${texts.length} texts, ${total} sectors: read in turn` : `Loaded ${total} sectors`);
+  const extra = [
+    r.already ? `${r.already} already loaded` : "",
+    r.full ? `${r.full} over the ${MAX_TEXTS}-text limit` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  flashToast(
+    `Added ${r.added} text${r.added === 1 ? "" : "s"}: ${texts.length} loaded, ${total} sectors${extra ? ` (${extra})` : ""}`,
+  );
   schedulePersist();
 }
 

@@ -59,22 +59,25 @@ export function FileLoad() {
 
 /**
  * The loaded texts, in the order they are read. The one in use is marked; tap
- * another to switch to it now. Only shown when there is more than one.
+ * another to switch to it now. Loading more adds to the list; ✕ takes one out.
  */
 export function TextList() {
   const texts = useGame((s) => s.texts);
   const current = useGame((s) => s.textIndex);
-  if (texts.length < 2) return null;
+  const custom = useGame((s) => s.custom);
+  if (!custom || !texts.length) return null;
   return (
     <section className="mt-3" aria-label="Loaded texts">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs tracking-wider text-muted uppercase">
-          Texts · {current + 1} of {texts.length}, read in turn
+          {texts.length > 1 ? `Texts · ${current + 1} of ${texts.length}, read in turn` : "Your text"}
         </p>
-        <button type="button" className="btn px-2" onClick={() => selectText(current + 1)}>
-          Next
-          <ChevronRight className="size-4" aria-hidden />
-        </button>
+        {texts.length > 1 && (
+          <button type="button" className="btn px-2" onClick={() => selectText(current + 1)}>
+            Next
+            <ChevronRight className="size-4" aria-hidden />
+          </button>
+        )}
       </div>
       <ol className="mt-1 space-y-1">
         {texts.map((t, i) => (

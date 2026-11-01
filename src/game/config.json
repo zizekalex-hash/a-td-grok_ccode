@@ -998,6 +998,15 @@
       "lingerMinutes": 4,
       "encounterDist": 2.5,
       "encounterMinutes": 10,
+    "feed": {
+      "_about": "A queen who has found you and walks with you gets hungry after afterSeconds and asks to be fed: a set of reps (the size picked in Reps) of one of your Reps phrases (of at most maxWords words). Feed her opens the rest screen; Done counts the set in Reps and gives her affection, delights her and keeps her with you a while longer. A Court bonus set she watches feeds her too. She waits waitMinutes (talking to her makes her wait again), then goes home hungry and hurt. Later hides her ask for snoozeSeconds. enabled false turns it off.",
+      "enabled": true,
+      "afterSeconds": 45,
+      "maxWords": 9,
+      "affection": 40,
+      "waitMinutes": 4,
+      "snoozeSeconds": 90
+    },
       "lines": {
         "seeking": [
           "There you are. I looked everywhere for you.",

@@ -1146,6 +1146,79 @@ function phraseClass(phrase: string): string {
 }
 
 /**
+ * A queen who walks with you is hungry: feed her a set of reps of one of your
+ * Reps phrases (on the rest screen), or put her off for a little while. She
+ * waits a few minutes, then goes home hungry and hurt.
+ */
+function FeedCard({ v }: { v: CourtView }) {
+  const [reps, setReps] = useState<RepsState | null>(null);
+  const h = v.hungry;
+  if (!h) return null;
+  const spec = C.queens[h.queen];
+  const minutes = Math.max(1, Math.ceil((h.until - Date.now()) / 60_000));
+
+  const feed = () => {
+    let next = readReps();
+    // A set already going in Reps feeds her too; else a new one of what she asked for.
+    if (!next.active) next = startSet(next, h.id, Date.now());
+    if (!next.active) return;
+    writeReps(next);
+    setReps(next);
+  };
+
+  return (
+    <div
+      className="glass mb-2 flex items-center gap-3 px-3 py-2"
+      style={{
+        background: `linear-gradient(90deg, ${spec.color}40, rgba(12, 6, 26, 0.92) 65%)`,
+        borderColor: `${spec.color}aa`,
+      }}
+      role="status"
+    >
+      <QueenAvatar q={h.queen} size={44} mood="longing" />
+      <div className="min-w-0 flex-1">
+        <p className="font-display text-[0.7rem] tracking-[0.14em]" style={{ color: spec.color }}>
+          {spec.name.toUpperCase()} IS HUNGRY
+        </p>
+        <p className="text-sm leading-snug break-words">
+          Feed her <span className="text-gold">{h.size.toLocaleString()}</span> × “{h.text}”
+        </p>
+        <p className="text-[0.65rem] text-muted">
+          She waits about {minutes} min, then goes home hurt.
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-col gap-1.5">
+        <button type="button" className="btn btn-gold min-h-10 px-3" onClick={feed}>
+          Feed her ▶
+        </button>
+        <button
+          type="button"
+          className="btn min-h-9 px-3 text-[0.6rem]"
+          onClick={() => game()?.courtFeedLater(h.queen)}
+        >
+          Later
+        </button>
+      </div>
+      {reps?.active && (
+        <RestSet
+          state={reps}
+          title={`Feeding ${spec.name}`}
+          color={spec.color}
+          reward={`On Done: ${spec.name} is fed (+${C.presence.feed.affection} ♥)`}
+          onChange={(next) => {
+            writeReps(next);
+            // Stopped without Done (no new set in the history): she waits again.
+            if (!next.active && next.log[0] === reps.log[0]) game()?.courtFeedStop(h.queen);
+            setReps(next.active ? next : null);
+          }}
+          onDone={(d) => game()?.courtFed(h.queen, d.text, d.added)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
  * The +1 after every round: a set of reps of a word or phrase from the
  * Recitation drill's Reps, picked at random, done on the rest screen. It counts
  * in Reps (total, time, history) and pays here as that many passes.
@@ -1650,6 +1723,7 @@ export function CourtHud() {
       </header>
 
       <footer ref={footerRef} className={`pointer-events-auto mx-auto w-full max-w-xl ${hide}`}>
+        <FeedCard v={v} />
         <div
           className="glass flex min-h-14 items-center gap-3 px-3 py-2"
           style={

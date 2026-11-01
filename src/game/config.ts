@@ -669,6 +669,15 @@ export interface GameConfig {
       lingerMinutes: number;
       encounterDist: number;
       encounterMinutes: number;
+      /** A queen with you asks to be fed a set of reps (see court.presence.feed._about). */
+      feed: {
+        enabled: boolean;
+        afterSeconds: number;
+        maxWords: number;
+        affection: number;
+        waitMinutes: number;
+        snoozeSeconds: number;
+      };
       lines: Record<string, string[]>;
       notices: Record<string, string[]>;
     };

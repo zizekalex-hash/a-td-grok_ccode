@@ -25,7 +25,6 @@ import {
   QUEEN_KEYS,
   queenAt,
   regionOf,
-  queenLine,
   SKILL_KEYS,
   GIFT_KEYS,
   skillAt,
@@ -73,6 +72,7 @@ import {
 import {
   arcMult,
   arcOf,
+  bondsOf,
   BOND_NAME,
   bondOf,
   countWish,
@@ -96,6 +96,8 @@ import {
 } from "./hearts.ts";
 import { addNews, bondTalk, buzzMult, buzzOf, loadNews, makeRumor, unreadNews } from "./news.ts";
 import { comeOutChance, encounterOf, foundKind, pairKey, presenceLine } from "./presence.ts";
+import { chat, dress, feedLine, giftSay, midSentence, speak, type Fill } from "./speech.ts";
+import { pickBonus, readReps } from "@/game/reps";
 import type { CourtArcKey } from "@/game/config";
 import { cancelSleep, resting, sleepFrames } from "@/game/rest";
 
@@ -103,6 +105,9 @@ const C = CONFIG.court;
 const H = C.hearts;
 const N = C.news;
 const P = C.presence;
+const F = C.presence.feed;
+/** Talking to her again within this long carries the conversation on. */
+const CHAT_MS = 5 * 60_000;
 
 /** A queen out on the map looking for you. */
 interface Outing {
@@ -119,6 +124,10 @@ interface Outing {
   home: boolean;
   /** How she felt when she came out. */
   was: CourtArcKey | null;
+  /** When she will ask to be fed (ms; 0 for not at all), what she asks for, and whether she has been fed. */
+  hungerAt: number;
+  hungry: { id: string; text: string; size: number; since: number; hiddenUntil: number } | null;
+  fed: boolean;
 }
 const SAVE_KEY = "azshara-court-v1";
 const PLAYER = "Alien X";
@@ -239,6 +248,9 @@ export class CourtGame implements GameBase {
   private encounterIn = 1;
   /** When each pair of queens last met on the map (ms). */
   private encounters = new Map<string, number>();
+  /** What each queen said lately, so she does not repeat herself, and your conversations. */
+  private said = new Map<QueenKey, string[]>();
+  private chatted = new Map<QueenKey, { at: number; topics: string[] }>();
   private line: CourtView["line"] = null;
   private message = "Tap anywhere to walk there. Tap a place to train, a queen to talk.";
   private raf = 0;
@@ -376,12 +388,16 @@ export class CourtGame implements GameBase {
     situation = "",
   ) {
     const spec = C.queens[q];
-    this.line = {
-      speaker: spec.name,
-      text: queenLine(q, key, Math.random(), fill),
-      color: spec.color,
-      queen: q,
-    };
+    const text = speak(
+      q,
+      key,
+      Math.random,
+      { ...this.voiceFill(q), ...fill },
+      this.tierOf(q),
+      this.said.get(q),
+    );
+    this.remember(q, text);
+    this.line = { speaker: spec.name, text, color: spec.color, queen: q };
     this.see(q);
     if (situation) {
       speakAs(`${spec.name}, ${spec.title}: ${spec.persona}`, situation, (text) => {
@@ -391,6 +407,59 @@ export class CourtGame implements GameBase {
       });
     }
     this.pushView(true);
+  }
+
+  /** What her lines can use: where you are, your best skill, her bonds, one of your Reps phrases. */
+  private voiceFill(q: QueenKey): Fill {
+    const spec = C.queens[q];
+    const skills = this.save.skills;
+    const best = (Object.keys(skills) as SkillKey[]).sort((a, b) => skills[b] - skills[a])[0];
+    const bonds = bondsOf(q);
+    const of = (kind: string) => {
+      const list = bonds.filter((b) => b.kind === kind);
+      const b = list[Math.floor(Math.random() * list.length)];
+      return b ? C.queens[b.queen].name : undefined;
+    };
+    const hour = new Date().getHours();
+    return {
+      place: midSentence(C.places[spec.place as PlaceKey].name),
+      region: midSentence(C.regions[this.save.region].name),
+      skill: best ? C.skills[best].name : undefined,
+      level: best ? skillLevel(skills[best]) : undefined,
+      total: totalLevel(skills),
+      gift: giftSay(spec.gift),
+      time:
+        hour < 5
+          ? "tonight"
+          : hour < 12
+            ? "this morning"
+            : hour < 18
+              ? "this afternoon"
+              : "this evening",
+      sister: of("sister"),
+      friend: of("friend"),
+      foe: of("rival"),
+      phrase: pickBonus(readReps(), Math.random, C.bonus.maxWords)?.text,
+      passes: this.save.devotion[q].toLocaleString("en"),
+    };
+  }
+
+  private tierOf(q: QueenKey): number {
+    return tierOf(this.save.affection[q]).index;
+  }
+
+  /** Her line, in her voice (an opener, an ending), remembered so she does not repeat it soon. */
+  private voiced(q: QueenKey, text: string): string {
+    const out = dress(q, text, Math.random, this.tierOf(q), this.voiceFill(q));
+    this.remember(q, out);
+    return out;
+  }
+
+  private remember(q: QueenKey, text: string) {
+    const list = this.said.get(q) ?? [];
+    list.push(text);
+    if (list.length > 12) list.shift();
+    this.said.set(q, list);
   }
 
   private say0(q: QueenKey, key: LineKey) {
@@ -446,6 +515,8 @@ export class CourtGame implements GameBase {
     o.met = true;
     o.home = false;
     if (o.foundAt) o.foundAt = Date.now();
+    // Talking to a hungry queen makes her wait a while longer.
+    if (o.hungry) o.hungry.since = Date.now();
   }
 
   /** On the map: queens come out now and then, walk to you, stay a while, and go home. */
@@ -495,6 +566,9 @@ export class CourtGame implements GameBase {
       met: false,
       home: false,
       was,
+      hungerAt: 0,
+      hungry: null,
+      fed: false,
     });
     sfx.ready();
     const place = C.places[C.queens[q].place as PlaceKey].name;
@@ -528,8 +602,17 @@ export class CourtGame implements GameBase {
         if (Math.hypot(o.x - slot[0], o.y - slot[1]) < 0.2) o.path = [];
         else if (retarget || !o.path.length)
           o.path = pathTo(this.world, [Math.round(o.x), Math.round(o.y)], slot) ?? o.path;
-        // She stays a while once she has found you; if she never does, she gives up quietly.
-        if (o.foundAt ? now - o.foundAt > linger : now - o.since > linger * 2) this.goHome(q, o);
+        if (o.foundAt && o.hungerAt && !o.hungry && now >= o.hungerAt) this.getHungry(q, o);
+        // She stays a while once she has found you (hungry, until she gives up on being
+        // fed); if she never finds you, she gives up quietly.
+        if (
+          o.hungry
+            ? now - o.hungry.since > F.waitMinutes * 60_000
+            : o.foundAt
+              ? now - o.foundAt > linger
+              : now - o.since > linger * 2
+        )
+          this.goHome(q, o);
       }
       this.stepAlong(o, dt * C.walkSpeed * P.speed);
       if (o.home && !o.path.length) this.endOuting(q, true);
@@ -600,7 +683,10 @@ export class CourtGame implements GameBase {
     );
     sfx.bless();
     const spec = C.queens[q];
-    if (text) this.line = { speaker: spec.name, text, color: spec.color, queen: q };
+    if (text)
+      this.line = { speaker: spec.name, text: this.voiced(q, text), color: spec.color, queen: q };
+    // A while with you, and she will want feeding.
+    o.hungerAt = F.enabled && !o.fed ? now + F.afterSeconds * 1000 : 0;
     this.see(q);
     this.pushView(true);
   }
@@ -616,17 +702,128 @@ export class CourtGame implements GameBase {
     if (!o.foundAt) return;
     const now = Date.now();
     const spec = C.queens[q];
-    const happy = o.met;
+    // Left hungry, she is hurt however you spent the time.
+    const starved = o.hungry !== null;
+    const happy = o.met && !starved;
+    o.hungry = null;
     setArc(this.save, q, happy ? "satisfied" : "distant", now);
-    const line = presenceLine(happy ? "leaveHappy" : "leaveHurt", {}, Math.random);
-    if (line) this.line = { speaker: spec.name, text: line, color: spec.color, queen: q };
-    const notice = presenceLine(
-      happy ? "leftHappy" : "leftHurt",
-      { queen: spec.name },
-      Math.random,
-      "notices",
-    );
+    const line = starved
+      ? feedLine(q, "hungry", Math.random, this.voiceFill(q))
+      : presenceLine(happy ? "leaveHappy" : "leaveHurt", {}, Math.random);
+    if (line)
+      this.line = {
+        speaker: spec.name,
+        text: starved ? line : this.voiced(q, line),
+        color: spec.color,
+        queen: q,
+      };
+    const notice = starved
+      ? `${spec.name} went home hungry. Feed her next time she walks with you.`
+      : presenceLine(
+          happy ? "leftHappy" : "leftHurt",
+          { queen: spec.name },
+          Math.random,
+          "notices",
+        );
     if (notice) this.notice(notice, q);
+    this.persist();
+    this.pushView(true);
+  }
+
+  /** She wants feeding: a set of reps of one of your Reps phrases. */
+  private getHungry(q: QueenKey, o: Outing) {
+    o.hungerAt = 0;
+    const reps = readReps();
+    const item = pickBonus(reps, Math.random, F.maxWords);
+    const spec = C.queens[q];
+    if (!item) {
+      // Nothing to feed her with yet: she says where to find some.
+      this.line = {
+        speaker: spec.name,
+        text: this.voiced(
+          q,
+          "Put some words in your Reps, in the Recitation drill. Then you can feed me.",
+        ),
+        color: spec.color,
+        queen: q,
+      };
+      return this.pushView(true);
+    }
+    const now = Date.now();
+    o.hungry = { id: item.id, text: item.text, size: reps.set, since: now, hiddenUntil: 0 };
+    sfx.ready();
+    this.feel(q, "longing");
+    this.line = {
+      speaker: spec.name,
+      text: feedLine(q, "feed", Math.random, {
+        ...this.voiceFill(q),
+        count: reps.set,
+        phrase: item.text,
+      }),
+      color: spec.color,
+      queen: q,
+    };
+    this.notice(`${spec.name} is hungry: feed her ${reps.set} × “${item.text}”`, q);
+    this.pushView(true);
+  }
+
+  /** The hungry queen to show, if any (not one whose ask you put off for now). */
+  private hungryView(): CourtView["hungry"] {
+    const now = Date.now();
+    for (const [q, o] of this.out) {
+      if (!o.hungry || o.home || o.hungry.hiddenUntil > now) continue;
+      return {
+        queen: q,
+        id: o.hungry.id,
+        text: o.hungry.text,
+        size: o.hungry.size,
+        until: o.hungry.since + F.waitMinutes * 60_000,
+      };
+    }
+    return null;
+  }
+
+  /** Later: her ask goes out of sight for a while (she still waits). */
+  courtFeedLater(q: QueenKey) {
+    const o = this.out.get(q);
+    if (o?.hungry) o.hungry.hiddenUntil = Date.now() + F.snoozeSeconds * 1000;
+    this.pushView(true);
+  }
+
+  /** A feeding set was stopped without Done: she waits again from now. */
+  courtFeedStop(q: QueenKey) {
+    const o = this.out.get(q);
+    if (o?.hungry) o.hungry.since = Date.now();
+    this.pushView(true);
+  }
+
+  /**
+   * Fed: a set of reps done for her (on the rest screen, or a Court bonus set she
+   * watched). She is delighted, warmer, and stays with you a while longer.
+   */
+  courtFed(q: QueenKey, text: string, reps: number) {
+    const o = this.out.get(q);
+    const spec = C.queens[q];
+    const now = Date.now();
+    if (o) {
+      o.hungry = null;
+      o.fed = true;
+      o.met = true;
+      o.home = false;
+      if (o.foundAt) o.foundAt = now;
+    }
+    const value = this.addAffection(q, F.affection * jealousMult(this.save, q), false);
+    this.save.lastSeen[q] = now;
+    this.feel(q, "delighted");
+    sfx.bless();
+    this.drop(`+${value} ♥ ${spec.name}`, spec.color);
+    this.line = {
+      speaker: spec.name,
+      text: this.voiced(q, feedLine(q, "fed", Math.random, this.voiceFill(q))),
+      color: spec.color,
+      queen: q,
+    };
+    this.notice(`You fed ${spec.name} ${reps.toLocaleString("en")} × “${text}”`, q);
     this.persist();
     this.pushView(true);
   }
@@ -882,6 +1079,11 @@ export class CourtGame implements GameBase {
       this.say0(q, "locked");
       return;
     }
+    // Talking again soon after: a conversation, one topic after another.
+    const chatting = this.chatted.get(q);
+    if (chatting && Date.now() - chatting.at < CHAT_MS && this.save.jealous[q] <= 0)
+      return this.converse(q, chatting);
+    this.chatted.set(q, { at: Date.now(), topics: [] });
     // A reunion, jealousy or today's wish comes before small talk.
     if (this.meet(q)) return;
     if (this.save.jealous[q] > 0) {
@@ -905,7 +1107,12 @@ export class CourtGame implements GameBase {
           : null;
       if (talk) {
         const spec = C.queens[q];
-        this.line = { speaker: spec.name, text: talk.text, color: spec.color, queen: q };
+        this.line = {
+          speaker: spec.name,
+          text: this.voiced(q, talk.text),
+          color: spec.color,
+          queen: q,
+        };
         this.see(q);
         this.pushView(true);
         return;
@@ -917,6 +1124,23 @@ export class CourtGame implements GameBase {
         `The player greets you with this line: "${pickup}". You are at tier ${tierOf(this.save.affection[q]).name}.`,
       );
     }, 1400);
+  }
+
+  /** A turn of conversation: you ask about something, and she answers in her own words. */
+  private converse(q: QueenKey, talk: { at: number; topics: string[] }) {
+    const c = chat(q, Math.random, this.voiceFill(q), this.tierOf(q), talk.topics);
+    talk.at = Date.now();
+    talk.topics = [...talk.topics, c.topic].slice(-6);
+    this.line = { speaker: PLAYER, text: c.ask, color: STANCE_COLOR[this.save.stance] };
+    this.pushView(true);
+    window.setTimeout(() => {
+      if (!this.running) return;
+      const spec = C.queens[q];
+      this.remember(q, c.answer);
+      this.line = { speaker: spec.name, text: c.answer, color: spec.color, queen: q };
+      this.see(q);
+      this.pushView(true);
+    }, 1200);
   }
 
   courtBuy(item: GiftKey | "elixir") {
@@ -1087,6 +1311,8 @@ export class CourtGame implements GameBase {
       save.lastSeen[s.queen] = Date.now();
       this.notice(`${C.queens[s.queen].name} watched your ${reps} reps of “${text}”`, s.queen);
     }
+    // A hungry queen who watched it is fed by it too.
+    if (s.queen && this.out.get(s.queen)?.hungry) this.courtFed(s.queen, text, reps);
     const after = skillLevel(save.skills[s.skill]);
     if (after > before) this.levelUp(s.skill, after);
     this.persist();
@@ -1156,7 +1382,7 @@ export class CourtGame implements GameBase {
         const spec = C.queens[s.queen];
         this.line = {
           speaker: spec.name,
-          text: list[Math.min(at, list.length - 1)] ?? "",
+          text: this.voiced(s.queen, list[Math.min(at, list.length - 1)] ?? ""),
           color: spec.color,
           queen: s.queen,
         };
@@ -1508,7 +1734,8 @@ export class CourtGame implements GameBase {
     // Queens out looking for you (not those already on their way home).
     const looking = [...this.out].filter(([, o]) => !o.home).map(([q]) => q);
     const out = looking.join();
-    const sig = `${this.drops.length}|${this.drops[0]?.id ?? 0}|${this.notices.length}|${this.notices[0]?.id ?? 0}|${moods}|${feelings}|${out}|${this.message}|${this.line?.text ?? ""}|${reading}`;
+    const hungry = this.hungryView();
+    const sig = `${this.drops.length}|${this.drops[0]?.id ?? 0}|${this.notices.length}|${this.notices[0]?.id ?? 0}|${moods}|${feelings}|${out}|${this.message}|${this.line?.text ?? ""}|${reading}|${hungry?.queen ?? ""}`;
     if (!force && sig === this.viewSig && now - this.viewAt < 1000) return;
     this.viewSig = sig;
     this.viewAt = now;
@@ -1563,6 +1790,7 @@ export class CourtGame implements GameBase {
           }),
         ),
         out: looking,
+        hungry,
         line: this.line,
         at: this.at,
         region: this.save.region,
