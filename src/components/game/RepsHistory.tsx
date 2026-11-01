@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { History, RotateCcw, Trash2 } from "lucide-react";
-import { Confirm } from "@/components/game/RepsTab";
+import { Confirm } from "@/components/game/Confirm";
 import {
   clearHistory,
   clock,

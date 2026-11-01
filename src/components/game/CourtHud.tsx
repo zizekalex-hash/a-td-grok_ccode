@@ -12,6 +12,7 @@ import {
   Newspaper,
   Plus,
   ScrollText,
+  Shuffle,
   SkipForward,
   Sparkles,
   Store,
@@ -19,6 +20,8 @@ import {
   X,
 } from "lucide-react";
 import { MenuButton } from "@/components/game/BattleButtons";
+import { BinaryWall } from "@/components/game/BinaryWall";
+import { RestSet } from "@/components/game/RestSet";
 import { useChromeInsets } from "@/components/game/useChromeInsets";
 import { CONFIG } from "@/game/config";
 import { CourtGame, STANCE_COLOR } from "@/game/court/courtgame";
@@ -41,6 +44,7 @@ import {
   type PlaceKey,
   type QueenKey,
   type SkillKey,
+  bonusReward,
 } from "@/game/court/rules";
 import { canBlink, placeBanner, queenAir, queenPortrait } from "@/game/court/portrait";
 import {
@@ -55,6 +59,7 @@ import {
 } from "@/game/court/hearts";
 import { ago } from "@/game/court/news";
 import { xpForLevel } from "@/game/recite";
+import { clock, pickBonus, readReps, startSet, writeReps, type RepsState } from "@/game/reps";
 import { getGame } from "@/game/registry";
 import { useGame, type CourtView } from "@/game/store";
 
@@ -1140,6 +1145,115 @@ function phraseClass(phrase: string): string {
   return "text-xs";
 }
 
+/**
+ * The +1 after every round: a set of reps of a word or phrase from the
+ * Recitation drill's Reps, picked at random, done on the rest screen. It counts
+ * in Reps (total, time, history) and pays here as that many passes.
+ */
+function BonusRound({ v, color }: { v: CourtView; color: string }) {
+  const s = v.session;
+  const [reps, setReps] = useState<RepsState>(() => readReps());
+  const [pick, setPick] = useState(
+    () => reps.active?.id ?? pickBonus(reps, Math.random, C.bonus.maxWords)?.id ?? "",
+  );
+  const [running, setRunning] = useState(false);
+  const [paid, setPaid] = useState<null | {
+    text: string;
+    added: number;
+    took: number;
+    xp: number;
+    gold: number;
+  }>(null);
+  if (!s || !C.bonus.enabled) return null;
+  const skill = C.skills[s.skill];
+  const item = reps.items.find((i) => i.id === pick);
+
+  const save = (next: RepsState) => {
+    setReps(next);
+    writeReps(next);
+    if (!next.active) setRunning(false);
+  };
+
+  if (paid)
+    return (
+      <p className="mt-2 rounded-md border border-cyan/50 p-2 text-sm" role="status">
+        <span className="font-display text-xs tracking-[0.14em] text-cyan">BONUS ✓</span>{" "}
+        <span className="text-gold">+{paid.added.toLocaleString()}</span> {paid.text} in{" "}
+        {clock(paid.took)} · +{Math.round(paid.xp).toLocaleString()} {skill.name} XP · +{paid.gold}{" "}
+        gold
+      </p>
+    );
+  if (!item)
+    return (
+      <p className="mt-2 text-xs text-muted">
+        Bonus +1: put words or phrases in Recitation drill → Reps, and after every round a set of
+        one of them pays here too.
+      </p>
+    );
+
+  const going = reps.active?.id === item.id;
+  const size = going && reps.active ? reps.active.target : reps.set;
+  const would = bonusReward(item.text, size, s.place, s.queen !== null);
+  const start = () => {
+    let next = readReps();
+    if (!next.active) next = startSet(next, item.id, Date.now());
+    if (!next.active) return;
+    setPick(next.active.id);
+    save(next);
+    setRunning(true);
+  };
+
+  return (
+    <div className="mt-3 rounded-md border border-cyan/50 p-2 text-left">
+      <p className="font-display text-xs tracking-[0.14em] text-cyan">BONUS +1 · FROM YOUR REPS</p>
+      <p className="mt-1 text-base leading-snug break-words">
+        <span className="font-display text-gold">{size.toLocaleString()}</span> × {item.text}
+      </p>
+      <p className="text-xs text-muted">
+        {item.total.toLocaleString()} so far · {clock(item.ms)} · on Done +
+        {Math.round(would.xp).toLocaleString()} {skill.name} XP · +{would.gold} gold
+        {s.queen && would.affection ? ` · +${would.affection} ♥` : ""}
+      </p>
+      <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+        <button type="button" className="btn btn-gold min-h-12" onClick={start}>
+          {going ? "Go on with the set ▶" : "Start the bonus set ▶"}
+        </button>
+        <button
+          type="button"
+          className="btn min-h-12 px-3"
+          disabled={going || reps.items.length < 2}
+          onClick={() =>
+            setPick(pickBonus(reps, Math.random, C.bonus.maxWords, item.id)?.id ?? item.id)
+          }
+          aria-label="Another word or phrase"
+        >
+          <Shuffle className="size-4" aria-hidden />
+        </button>
+      </div>
+      {running && reps.active && (
+        <RestSet
+          state={reps}
+          onChange={save}
+          title={`Court bonus · ${skill.name}`}
+          color={color}
+          reward={`On Done: +${Math.round(would.xp).toLocaleString()} ${skill.name} XP · +${would.gold} gold`}
+          onDone={(d) => {
+            const r = game()?.courtBonus(d.text, d.added);
+            setPaid({
+              text: d.text,
+              added: d.added,
+              took: d.took,
+              xp: r?.xp ?? 0,
+              gold: r?.gold ?? 0,
+            });
+            setRunning(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 function ReciteScreen({ v }: { v: CourtView }) {
   const s = v.session;
   if (!s) return null;
@@ -1161,6 +1275,10 @@ function ReciteScreen({ v }: { v: CourtView }) {
             : "radial-gradient(ellipse at 50% 30%, rgba(200,80,30,0.32), rgba(200,80,30,0) 70%), rgba(2,0,5,0.9)",
       }}
     >
+      {/* The current phrase in raw binary, standing still behind it all. */}
+      <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
+        <BinaryWall text={s.phrase} color={color} spec={C.wall} />
+      </div>
       <header className="glass flex items-center justify-between gap-2 px-3 py-2">
         <div className="min-w-0">
           <p className="font-display text-xs tracking-[0.14em]" style={{ color }}>
@@ -1301,6 +1419,7 @@ function ReciteScreen({ v }: { v: CourtView }) {
               {s.roundTotals.gold} gold · {s.roundTotals.reps} reps · {s.roundTotals.phrases}{" "}
               phrases
             </p>
+            <BonusRound v={v} color={color} />
             <div className="mt-2 flex items-center justify-center gap-1 text-xs">
               <button
                 type="button"

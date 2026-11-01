@@ -25,6 +25,7 @@ import {
   type PotionKey,
   type UpgradeKey,
 } from "@/game/upgrades";
+import { cancelSleep, resting, sleepFrames } from "@/game/rest";
 
 const SAVE_KEY = "azshara-signal-v1";
 
@@ -536,6 +537,7 @@ export class Engine implements GameBase {
   }
 
   stop() {
+    cancelSleep(this.wake);
     this.running = false;
     cancelAnimationFrame(this.raf);
     this.ro?.disconnect();
@@ -779,8 +781,18 @@ export class Engine implements GameBase {
     }
   }
 
+  /** A rep set's rest ended: draw again. */
+  private wake = () => {
+    if (this.running && !this.raf) this.raf = requestAnimationFrame(this.frame);
+  };
+
   private frame = (t: number) => {
     if (!this.running) return;
+    // While a rep set runs, nothing is drawn: the loop sleeps until it ends.
+    if (resting()) {
+      this.raf = 0;
+      return sleepFrames(this.wake);
+    }
     this.raf = requestAnimationFrame(this.frame);
     const { fpsCap, renderScale } = useGame.getState().settings;
     if (!this.limiter.ready(t, fpsCap)) return;

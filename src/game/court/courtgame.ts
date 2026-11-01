@@ -47,6 +47,7 @@ import {
   type Reward,
   type Session,
   type SkillKey,
+  bonusReward,
 } from "./rules.ts";
 import {
   destinationFor,
@@ -96,6 +97,7 @@ import {
 import { addNews, bondTalk, buzzMult, buzzOf, loadNews, makeRumor, unreadNews } from "./news.ts";
 import { comeOutChance, encounterOf, foundKind, pairKey, presenceLine } from "./presence.ts";
 import type { CourtArcKey } from "@/game/config";
+import { cancelSleep, resting, sleepFrames } from "@/game/rest";
 
 const C = CONFIG.court;
 const H = C.hearts;
@@ -299,6 +301,7 @@ export class CourtGame implements GameBase {
   }
 
   stop() {
+    cancelSleep(this.wake);
     this.persist();
     this.running = false;
     cancelAnimationFrame(this.raf);
@@ -1058,6 +1061,39 @@ export class CourtGame implements GameBase {
     this.pushView(true);
   }
 
+  /**
+   * A bonus set from Reps, done after a round (+1): it pays in the round's skill
+   * as that many passes of its phrase, with gold, and pleases a queen who
+   * watches. What it paid, for the round's summary.
+   */
+  courtBonus(text: string, reps: number): { xp: number; gold: number } | null {
+    const s = this.session;
+    if (!s || !C.bonus.enabled) return null;
+    const r = bonusReward(text, reps, s.place, s.queen !== null);
+    const save = this.save;
+    const before = skillLevel(save.skills[s.skill]);
+    save.skills[s.skill] += r.xp;
+    save.gold += r.gold;
+    s.totals.xp += r.xp;
+    s.totals.gold += r.gold;
+    s.roundTotals.xp += r.xp;
+    s.roundTotals.gold += r.gold;
+    sfx.bless();
+    const color = STANCE_COLOR[C.skills[s.skill].element === "water" ? "water" : "fire"];
+    this.drop(`+${Math.round(r.xp)} ${skillName(s.skill)} XP · bonus`, color);
+    if (r.gold > 0) this.drop(`+${r.gold} gold`, PAL.gold);
+    if (s.queen && r.affection > 0) {
+      this.addAffection(s.queen, r.affection * jealousMult(save, s.queen), true);
+      save.lastSeen[s.queen] = Date.now();
+      this.notice(`${C.queens[s.queen].name} watched your ${reps} reps of “${text}”`, s.queen);
+    }
+    const after = skillLevel(save.skills[s.skill]);
+    if (after > before) this.levelUp(s.skill, after);
+    this.persist();
+    this.pushView(true);
+    return { xp: r.xp, gold: r.gold };
+  }
+
   /** More or fewer phrases in a round (1 to 10). */
   courtRound(dir: number) {
     this.save.phrasesPerRound = Math.min(10, Math.max(1, this.save.phrasesPerRound + dir));
@@ -1355,8 +1391,18 @@ export class CourtGame implements GameBase {
     return this.pausedAt ?? performance.now();
   }
 
+  /** A rep set's rest ended: draw again. */
+  private wake = () => {
+    if (this.running && !this.raf) this.raf = requestAnimationFrame(this.frame);
+  };
+
   private frame = (t: number) => {
     if (!this.running) return;
+    // While a rep set runs, nothing is drawn: the loop sleeps until it ends.
+    if (resting()) {
+      this.raf = 0;
+      return sleepFrames(this.wake);
+    }
     this.raf = requestAnimationFrame(this.frame);
     const { fpsCap, renderScale } = useGame.getState().settings;
     if (!this.limiter.ready(t, fpsCap)) return;

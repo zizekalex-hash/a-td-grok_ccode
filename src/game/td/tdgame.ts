@@ -63,6 +63,7 @@ import {
   type TowerKey,
 } from "./economy.ts";
 import { restore, serialize, summarize } from "./save.ts";
+import { cancelSleep, resting, sleepFrames } from "@/game/rest";
 
 const BEST_KEY = "azshara-td-v1";
 /** The run in progress, saved so it survives the app closing. */
@@ -242,6 +243,7 @@ export class TdGame implements GameBase {
   }
 
   stop() {
+    cancelSleep(this.wake);
     this.saveRun();
     document.removeEventListener("visibilitychange", this.onHide);
     window.removeEventListener("pagehide", this.onPageHide);
@@ -519,8 +521,18 @@ export class TdGame implements GameBase {
     this.boardKey = "";
   }
 
+  /** A rep set's rest ended: draw again. */
+  private wake = () => {
+    if (this.running && !this.raf) this.raf = requestAnimationFrame(this.frame);
+  };
+
   private frame = (t: number) => {
     if (!this.running) return;
+    // While a rep set runs, nothing is drawn: the loop sleeps until it ends.
+    if (resting()) {
+      this.raf = 0;
+      return sleepFrames(this.wake);
+    }
     this.raf = requestAnimationFrame(this.frame);
     const { fpsCap, renderScale } = useGame.getState().settings;
     if (!this.limiter.ready(t, fpsCap)) return;

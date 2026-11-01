@@ -37,6 +37,7 @@ import {
   type ChessState,
   type Fighter,
 } from "./sim.ts";
+import { cancelSleep, resting, sleepFrames } from "@/game/rest";
 
 const CH = CONFIG.chess;
 const BEST_KEY = "azshara-chess-v1";
@@ -185,6 +186,7 @@ export class ChessGame implements GameBase {
   }
 
   stop() {
+    cancelSleep(this.wake);
     this.running = false;
     cancelAnimationFrame(this.raf);
     this.ro?.disconnect();
@@ -516,8 +518,18 @@ export class ChessGame implements GameBase {
     this.boardKey = "";
   }
 
+  /** A rep set's rest ended: draw again. */
+  private wake = () => {
+    if (this.running && !this.raf) this.raf = requestAnimationFrame(this.frame);
+  };
+
   private frame = (t: number) => {
     if (!this.running) return;
+    // While a rep set runs, nothing is drawn: the loop sleeps until it ends.
+    if (resting()) {
+      this.raf = 0;
+      return sleepFrames(this.wake);
+    }
     this.raf = requestAnimationFrame(this.frame);
     const { fpsCap, renderScale } = useGame.getState().settings;
     if (!this.limiter.ready(t, fpsCap)) return;

@@ -39,6 +39,7 @@ import {
   type QueenKey,
   type Reward,
   type Session,
+  bonusReward,
 } from "./rules.ts";
 import {
   cellAt,
@@ -1228,5 +1229,22 @@ describe("portrait styles", () => {
       queenPortrait("azshara", { mood: "smile", style: C.portraits.style }),
       "the style comes from config when not given",
     );
+  });
+});
+
+describe("court bonus set", () => {
+  it("pays a bonus set from Reps as that many passes, more when a queen watches", () => {
+    const B = C.bonus;
+    const one = bonusReward("xyz", 1, "forest", false);
+    const hundred = bonusReward("xyz", 100, "forest", false);
+    assert.ok(one.xp > 0);
+    assert.ok(Math.abs(hundred.xp - one.xp * 100) < 1e-6, "a hundred passes' worth");
+    assert.equal(hundred.affection, 0, "no queen, no affection");
+    const watched = bonusReward("xyz", 100, "forest", true);
+    assert.ok(Math.abs(watched.xp - hundred.xp * (1 + C.watchedBonus)) < 1e-6);
+    assert.equal(watched.affection, B.affection);
+    assert.ok(bonusReward("one two three", 100, "forest", false).xp > hundred.xp, "longer phrases pay more");
+    assert.deepEqual(bonusReward("xyz", 0, "forest", true), { xp: 0, gold: 0, affection: 0 });
+    assert.ok(B.maxWords >= 1 && B.xpMult >= 0 && B.goldMult >= 0);
   });
 });

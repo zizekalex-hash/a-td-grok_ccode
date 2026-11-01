@@ -419,3 +419,14 @@ textarea {
     animation-name: none;
   }
 }
+
+/*
+ * A rep set's rest screen (see src/game/rest.ts): the page under it is hidden and
+ * stands still, so only the set's own screen is drawn.
+ */
+html.resting body > :not(.rest-screen) {
+  visibility: hidden;
+}
+html.resting body > :not(.rest-screen) * {
+  animation-play-state: paused !important;
+}

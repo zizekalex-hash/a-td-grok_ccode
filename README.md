@@ -66,6 +66,17 @@ The queens are drawn in a dark fantasy style: each stands in a night scene lit f
 
 Every queen has her own portrait, drawn in code from her look in `config.json` (skin, hair, sheen and style, eyes with winged liner and eyeshadow, lipstick, elf or round ears, dragon horns, a crown, void crown, tiara, circlet or hood, earrings, gown and colours), so it works offline: on the map, in her window (washed in her colour; tap her portrait there or in the Queens list to see it full screen), beside her lines, large on the recite screen while she watches (glowing brighter with your streak), and on the title. With a model connected in the Narrator settings, the queens answer level-ups, gifts and dates in their own words; without one they use their scripted lines. Everything is tuned in the `court` block of `config.json`, the map included. The Court is separate from the other modes.
 
+### Bonus set after every round
+
+When a round of reciting is complete (3 phrases of 3 passes, or what you set), the round's summary offers a bonus (+1): a set of reps of a word or phrase from Recitation drill → Reps, picked at random from those of up to 9 words (Shuffle picks another). Its size is the set size picked in Reps (100 by default).
+
+- Start opens the rest screen (see Reps): black, the phrase in raw binary behind the stopwatch, and the Court stops drawing meanwhile. Done opens after a second a rep.
+- Done counts the set in Reps, exactly as one done there: total, time, history and Recitation XP. A set already going in Reps is offered to go on with instead.
+- Here it pays as that many passes of the phrase in the round's skill, with gold, plus affection to a queen who watches.
+- Continue skips it. With nothing in Reps, the summary says where to add phrases.
+- Behind the recite screen, the current phrase stands in raw binary too (36%, 3 to 9 px, 1.89 px if a phrase is too long for that; `court.wall`).
+- Tuning: `court.bonus` (on or off, words at most, XP and gold multipliers, affection).
+
 ## Your texts
 
 Load .txt (title screen, tome, Options → Text) takes one file or several at once. Several are read in turn, in name order (1, 2, 3 ... 10): the shots carry phrases from text 1 until it has been read through, then text 2 takes over, and after the last, text 1 comes back. The field, the binary rain and the core show the text in use. Two sliders in Options → Game set the timing: Pause between phrases (the least time between two phrases on shots, 300 ms to start) and Pause between texts (a break after a text has been read through, before the next one, or the same one again, starts; 2 s to start). Shots inside a pause fly plain; spells always carry a phrase. The tome and Options → Text list the loaded texts: tap one to switch to it now, Next for the next, ✕ to drop one. Up to 30 texts stay on the device between visits; pasted text replaces them.
@@ -84,6 +95,7 @@ Recitation drill (on the title screen), tab Reps: count reps of your own words a
   - Phrases already on your list show their reps and time and cannot be added twice. Ones done before (in the history) say so. Load the same text again to see what is already taken.
 - **Set size:** pick 10, 50 or 100, or type any number.
 - **A set:** tap a phrase (or its play button) and recite it that many times.
+  - The set has its own rest screen, over everything: black, with the word or phrase standing behind in raw binary (its letters as bytes of 0s and 1s, at 36%, 3 to 9 px, whole copies spread evenly so nothing is cut off; `reps.wall`). Nothing moves while it shows: every game below stops drawing until the set ends, to spare the battery while you recite from memory.
   - A stopwatch runs from the start of the set. Done opens after at least a second a rep (100 reps: 1:40), and nothing counts on screen meanwhile.
   - The time runs by the clock, so the screen can be off. A set in progress is still there if the app is closed and opened again.
   - Then one tap of Done adds the whole set to the total, with its time: "Completed 100 xyz in 5:33 (333 s)".
@@ -96,6 +108,7 @@ Recitation drill (on the title screen), tab Reps: count reps of your own words a
   - **Every set, by day:** "08:21 100 xyz · 5:33", with each day's total and resets marked (with what they cleared).
   - Resets in Reps do not clear the history. Clear history does, after asking yes or no, and leaves the totals in Reps.
   - It keeps the last 3000 sets and resets (`reps.historyKeep`).
+- **In the Court:** after every round of reciting, a bonus set (+1) of one of your phrases (see Court).
 - **Saving and XP:** everything is saved on the device. Each finished set gives Recitation XP.
 - **Tuning:** `reps` in config.json (`secondsPerRep` is the least time per rep).
 

@@ -6,6 +6,7 @@ import {
   addMany,
   addReps,
   phraseIndex,
+  pickBonus,
   phrasesFromText,
   cancelSet,
   clampSet,
@@ -253,5 +254,27 @@ describe("reps", () => {
       ["Attention is a blade", "keep it sharp", "name the signal!"],
     );
     assert.equal(new Set(r.state.items.map((i) => i.id)).size, 3, "every id different");
+  });
+
+  it("picks a short word or phrase at random for a bonus set", () => {
+    let s = addItem(newReps(), "one", 1, "a").state;
+    s = addItem(s, "two words", 2, "b").state;
+    s = addItem(s, "a phrase of more than nine words, long enough to leave out", 3, "c").state;
+    const seen = new Set<string>();
+    for (let i = 0; i < 40; i++) seen.add(pickBonus(s, () => i / 40, 9)!.id);
+    assert.deepEqual([...seen].sort(), ["a", "b"], "only phrases of up to 9 words");
+    assert.equal(pickBonus(s, () => 0.99, 9, "b")!.id, "a", "not the last one again");
+    const long = addItem(
+      newReps(),
+      "a phrase of more than nine words, long enough to use anyway",
+      1,
+      "x",
+    ).state;
+    assert.equal(pickBonus(long, () => 0.5, 9)!.id, "x", "all of them when none is short");
+    assert.equal(pickBonus(long, () => 0.5, 9, "x")!.id, "x", "the only one, again");
+    assert.equal(
+      pickBonus(newReps(), () => 0.5, 9),
+      null,
+    );
   });
 });

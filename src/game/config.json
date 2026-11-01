@@ -886,6 +886,23 @@
       "size": 24,
       "opacity": 0.9
     },
+    "wall": {
+      "_about": "Behind the recite screen, the current phrase in raw binary (its letters as bytes of 0s and 1s), standing still, in whole copies spread evenly over the screen. opacity is how strong it shows; the font is the largest from maxFont down to minFont (px) at which the copies cover at least fill of the screen, else fallbackFont and smaller, so it always fits. enabled false turns it off.",
+      "enabled": true,
+      "opacity": 0.36,
+      "minFont": 3,
+      "maxFont": 9,
+      "fallbackFont": 1.89,
+      "fill": 0.85
+    },
+    "bonus": {
+      "_about": "After each round, a bonus set (+1) from the Recitation drill's Reps: a random word or phrase from your list (one of at most maxWords words, when there are any), a set of the size picked in Reps, on the rest screen. It counts in Reps (total, time, history, Recitation XP) and pays here as that many passes of the phrase, times xpMult and goldMult (XP more when a queen watches), and affection to a queen who watches. enabled false turns it off.",
+      "enabled": true,
+      "maxWords": 9,
+      "xpMult": 1,
+      "goldMult": 1,
+      "affection": 10
+    },
     "repsPerPhrase": 3,
     "minPhraseWords": 3,
     "maxPhraseWords": 60,
@@ -2669,7 +2686,16 @@
     "maxSet": 10000,
     "secondsPerRep": 1,
     "xpPerWordRep": 1,
-    "historyKeep": 3000
+    "historyKeep": 3000,
+    "wall": {
+      "_about": "While a set runs, the rest screen: black, the game below stops drawing, and the word or phrase stands behind the stopwatch in raw binary (like court.wall: whole copies spread evenly, the largest font from maxFont down to minFont that fills at least fill of the screen, else fallbackFont and smaller). enabled false leaves the screen plain black.",
+      "enabled": true,
+      "opacity": 0.36,
+      "minFont": 3,
+      "maxFont": 9,
+      "fallbackFont": 1.89,
+      "fill": 0.85
+    }
   },
   "core": {
     "_about": "The wake core's level follows the Recitation skill from the drill. Each level above 1 adds this much shot damage in core defense, up to the cap.",

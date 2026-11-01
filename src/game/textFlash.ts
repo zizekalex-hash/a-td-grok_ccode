@@ -3,6 +3,7 @@ import { clampCenter, fitPhrase, overlapArea, type Measure } from "@/game/layout
 import { FONT, PAL } from "@/game/palette";
 import { readPhrase, type Cursor } from "@/game/reader";
 import { useGame } from "@/game/store";
+import { cancelSleep, resting, sleepFrames } from "@/game/rest";
 
 interface Phrase {
   text: string;
@@ -85,6 +86,7 @@ export class TextFlash {
   }
 
   stop() {
+    cancelSleep(this.wake);
     this.running = false;
     cancelAnimationFrame(this.raf);
     this.ro?.disconnect();
@@ -109,8 +111,18 @@ export class TextFlash {
     return Math.max(1, Math.min(density, Math.floor((this.w * this.h) / (this.avgArea * 2.5))));
   }
 
+  /** A rep set's rest ended: draw again. */
+  private wake = () => {
+    if (this.running && !this.raf) this.raf = requestAnimationFrame(this.frame);
+  };
+
   private frame = (t: number) => {
     if (!this.running) return;
+    // While a rep set runs, nothing is drawn: the loop sleeps until it ends.
+    if (resting()) {
+      this.raf = 0;
+      return sleepFrames(this.wake);
+    }
     this.raf = requestAnimationFrame(this.frame);
     if (!this.limiter.ready(t, useGame.getState().settings.fpsCap)) return;
     if (useGame.getState().settings.renderScale !== this.renderScale) this.resize();

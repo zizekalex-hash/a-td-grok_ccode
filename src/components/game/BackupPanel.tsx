@@ -7,7 +7,7 @@ import {
   HardDriveDownload,
   Share2,
 } from "lucide-react";
-import { Confirm } from "@/components/game/RepsTab";
+import { Confirm } from "@/components/game/Confirm";
 import {
   backupFileName,
   collect,

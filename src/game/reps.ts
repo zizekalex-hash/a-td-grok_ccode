@@ -248,6 +248,24 @@ export function historyOf(
 
 // ---- Phrases from a text ----
 
+/**
+ * A word or phrase for a bonus set (the Court's +1 after a round): one at random
+ * of those of at most maxWords words, or of all when none is that short; not
+ * `avoid` (the last one) when there is another. Null with an empty list.
+ */
+export function pickBonus(
+  s: RepsState,
+  rand: () => number,
+  maxWords: number,
+  avoid = "",
+): RepItem | null {
+  const short = s.items.filter((i) => wordsOf(i.text) <= maxWords);
+  const pool = short.length ? short : s.items;
+  const other = pool.length > 1 ? pool.filter((i) => i.id !== avoid) : pool;
+  if (!other.length) return null;
+  return other[Math.min(other.length - 1, Math.floor(rand() * other.length))] ?? null;
+}
+
 /** A phrase's key for matching: lower case, single spaces. */
 export function phraseKey(text: string): string {
   return text.replace(/\s+/g, " ").trim().toLowerCase();

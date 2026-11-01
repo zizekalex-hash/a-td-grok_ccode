@@ -8,6 +8,16 @@ import raw from "./config.json" with { type: "json" };
 import { bootCfg, type CfgStatus } from "./cfg.ts";
 import { applyPendingRestore, deviceStore } from "./backup.ts";
 
+/** A phrase in raw binary, standing still behind a screen (see court.wall._about). */
+export interface BinaryWallConfig {
+  enabled: boolean;
+  opacity: number;
+  minFont: number;
+  maxFont: number;
+  fallbackFont: number;
+  fill: number;
+}
+
 export interface Range {
   min: number;
   max: number;
@@ -599,6 +609,16 @@ export interface GameConfig {
     night: { enabled: boolean; darkness: number };
     /** The current phrase flashing in the middle of the recite screen (see court.flash._about). */
     flash: { enabled: boolean; everyMs: number; lifeMs: number; size: number; opacity: number };
+    /** The current phrase in raw binary behind the recite screen (see court.wall._about). */
+    wall: BinaryWallConfig;
+    /** A bonus set from Reps after each round (see court.bonus._about). */
+    bonus: {
+      enabled: boolean;
+      maxWords: number;
+      xpMult: number;
+      goldMult: number;
+      affection: number;
+    };
     repsPerPhrase: number;
     minPhraseWords: number;
     maxPhraseWords: number;
@@ -683,6 +703,8 @@ export interface GameConfig {
     secondsPerRep: number;
     xpPerWordRep: number;
     historyKeep: number;
+    /** The rest screen while a set runs (see reps.wall._about). */
+    wall: BinaryWallConfig;
   };
   core: { damagePerLevel: number; maxDamageBonus: number };
   textPool: string[];

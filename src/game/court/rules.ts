@@ -221,6 +221,27 @@ export function passGold(words: number, place: PlaceKey): number {
   return Math.max(0, Math.round(words * C.goldPerWord * C.places[place].goldMult));
 }
 
+/**
+ * A bonus set from Reps after a round: it pays as `reps` passes of its phrase
+ * (no streak), times court.bonus.xpMult and goldMult; a watching queen adds her
+ * XP bonus and feels court.bonus.affection.
+ */
+export function bonusReward(
+  text: string,
+  reps: number,
+  place: PlaceKey,
+  watched: boolean,
+): { xp: number; gold: number; affection: number } {
+  const n = Math.max(0, Math.floor(reps));
+  const words = Math.max(1, wordsIn(text).length);
+  const B = C.bonus;
+  return {
+    xp: passXp(words, lettersIn(text)) * n * B.xpMult * (watched ? 1 + C.watchedBonus : 1),
+    gold: Math.max(0, Math.round(passGold(words, place) * n * B.goldMult)),
+    affection: watched && n > 0 ? B.affection : 0,
+  };
+}
+
 /** Affection a queen feels while you recite where she can see: more in her element, with a streak, on a date. */
 export function affectionGain(
   words: number,

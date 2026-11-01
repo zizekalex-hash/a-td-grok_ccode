@@ -1,27 +1,17 @@
-import { useEffect, useState } from "react";
-import {
-  Check,
-  ClipboardPaste,
-  FileText,
-  Library,
-  Play,
-  Plus,
-  RotateCcw,
-  Trash2,
-  X,
-} from "lucide-react";
+import { useState } from "react";
+import { ClipboardPaste, FileText, Library, Play, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Confirm } from "@/components/game/Confirm";
+import { DANGER } from "@/components/game/feel";
 import { RepsPicker } from "@/components/game/RepsPicker";
+import { RestSet } from "@/components/game/RestSet";
 import { CONFIG } from "@/game/config";
-import { flashToast, grantSkillXp } from "@/game/engine";
-import { levelForXp } from "@/game/recite";
+import { flashToast } from "@/game/engine";
 import {
   addItem,
   addMany,
   phrasesFromText,
-  cancelSet,
   clampSet,
   clock,
-  finishSet,
   grandTime,
   grandTotal,
   perRep,
@@ -30,10 +20,7 @@ import {
   resetAll,
   seconds,
   setMs,
-  setTime,
-  setXp,
   startSet,
-  timeLeft,
   writeReps,
   type RepItem,
   type RepsState,
@@ -41,50 +28,6 @@ import {
 import { useGame } from "@/game/store";
 
 const R = CONFIG.reps;
-/** Red for what cannot be undone (the shared button style sets its own colours). */
-const DANGER = { color: "var(--color-danger)", borderColor: "var(--color-danger)" };
-
-function buzz(ms: number) {
-  try {
-    navigator.vibrate?.(ms);
-  } catch {
-    /* not allowed here */
-  }
-}
-
-/** Two buttons to say yes or no, the safe answer first. */
-export function Confirm({
-  text,
-  yes,
-  no,
-  onYes,
-  onNo,
-}: {
-  text: string;
-  yes: string;
-  no: string;
-  onYes: () => void;
-  onNo: () => void;
-}) {
-  return (
-    <div
-      className="mt-2 rounded-md border border-danger/60 p-3"
-      role="alertdialog"
-      aria-label={text}
-    >
-      <p className="text-sm text-fg">{text}</p>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        <button type="button" className="btn min-h-12" onClick={onNo} autoFocus>
-          {no}
-        </button>
-        <button type="button" className="btn min-h-12" style={DANGER} onClick={onYes}>
-          {yes}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /**
  * Reps of your own words and phrases: write one, pick how many reps a set has,
  * and start a set. It takes at least a second a rep (by the clock, so the screen
@@ -107,7 +50,6 @@ export function RepsTab() {
     took: number;
     time: number;
   }>(null);
-  const [now, setNow] = useState(() => Date.now());
   /** A text's phrases being picked from (only the picked ones are kept), and the loaded texts' list being open. */
   const [source, setSource] = useState<null | { name: string; phrases: string[] }>(null);
   const [chooseLoaded, setChooseLoaded] = useState(false);
@@ -118,22 +60,7 @@ export function RepsTab() {
     writeReps(next);
   };
   const item = (id: string) => state.items.find((i) => i.id === id);
-
-  // While a set runs, the time left is checked twice a second (by the clock, so time
-  // with the screen off counts too); a short buzz when Done opens.
   const active = state.active;
-  useEffect(() => {
-    if (!active) return;
-    let wasReady = timeLeft(active, Date.now()) <= 0;
-    const timer = window.setInterval(() => {
-      const t = Date.now();
-      setNow(t);
-      const ready = timeLeft(active, t) <= 0;
-      if (ready && !wasReady) buzz(80);
-      wasReady = ready;
-    }, 500);
-    return () => window.clearInterval(timer);
-  }, [active]);
 
   /**
    * Adds what was written or pasted: one line is one phrase, as it is; several
@@ -185,35 +112,7 @@ export function RepsTab() {
   const start = (id: string) => {
     setAsking(null);
     setSaved(null);
-    const t = Date.now();
-    setNow(t);
-    save(startSet(state, id, t));
-  };
-
-  /** Done: the whole set goes to the phrase, with Recitation XP. */
-  const done = () => {
-    const a = state.active;
-    if (!a) return;
-    const t = Date.now();
-    const next = finishSet(state, t);
-    if (next === state) return;
-    save(next);
-    const it = item(a.id);
-    if (it) {
-      const before = levelForXp(useGame.getState().skills.recitation);
-      grantSkillXp("recitation", setXp(it.text, a.target));
-      const after = levelForXp(useGame.getState().skills.recitation);
-      if (after > before) flashToast(`Recitation level ${after}`);
-    }
-    buzz(30);
-    const after = next.items.find((i) => i.id === a.id);
-    setSaved({
-      id: a.id,
-      added: a.target,
-      total: after?.total ?? 0,
-      took: setTime(a, t),
-      time: after?.ms ?? 0,
-    });
+    save(startSet(state, id, Date.now()));
   };
 
   const pickSet = (n: number) => {
@@ -222,90 +121,17 @@ export function RepsTab() {
     setSetText(String(set));
   };
 
-  // ---- A set in progress ----
+  // ---- A set in progress: the rest screen, over everything ----
   if (active) {
-    const text = item(active.id)?.text ?? "";
-    const full = setMs(active.target);
-    const left = timeLeft(active, now);
-    const ready = left <= 0;
-    const elapsed = Math.min(full, Math.max(0, now - active.since));
-    // The stopwatch: from the set's start until Done.
-    const watch = setTime(active, now);
     return (
-      <div>
-        <p className="text-xs tracking-wider text-muted uppercase">
-          Set of {active.target.toLocaleString()} reps ·{" "}
-          {(item(active.id)?.total ?? 0).toLocaleString()} so far
-        </p>
-        <div className="glass mt-2 p-4 text-center">
-          <p className="text-xl leading-snug break-words text-fg">{text}</p>
-          <p
-            className={`mt-3 font-display text-5xl leading-none tabular-nums ${ready ? "text-gold" : "text-cyan"}`}
-            aria-live="off"
-            aria-label={`Stopwatch ${clock(watch)}`}
-          >
-            {clock(watch)}
-          </p>
-          <p className="mt-1 text-xs tracking-wider text-muted uppercase">
-            {ready ? "Ready: tap Done when you finish" : `Done opens in ${clock(left, true)}`}
-          </p>
-          {/* The bar fills by itself over the set's time, from wherever it is now. */}
-          <div className="mt-3 h-1.5 overflow-hidden rounded bg-cyan/10" aria-hidden>
-            <div
-              key={`${active.since}|${ready}`}
-              className={`h-1.5 rounded ${ready ? "bg-gold" : "court-fill bg-cyan"}`}
-              style={
-                ready
-                  ? undefined
-                  : { animationDuration: `${full}ms`, animationDelay: `-${elapsed}ms` }
-              }
-            />
-          </div>
-          <p className="mt-2 text-xs text-muted">
-            {ready
-              ? `The stopwatch runs until you tap Done, after ${active.target.toLocaleString()} reps.`
-              : `Recite it ${active.target.toLocaleString()} times. Done opens after ${clock(full)} (${R.secondsPerRep} s a rep); the stopwatch runs with the screen off too.`}
-          </p>
-        </div>
-        <button
-          type="button"
-          className={`btn mt-3 min-h-20 w-full flex-col gap-0 text-lg ${ready ? "btn-gold" : "opacity-70"}`}
-          disabled={!ready}
-          onClick={done}
-        >
-          <span className="flex items-center gap-2">
-            <Check className="size-5" aria-hidden />
-            {ready
-              ? `Done: +${active.target.toLocaleString()} in ${clock(watch)}`
-              : `Done in ${clock(left, true)}`}
-          </span>
-          <span className="text-[0.7rem] tracking-normal normal-case opacity-90">
-            {((item(active.id)?.total ?? 0) + active.target).toLocaleString()} in{" "}
-            {clock((item(active.id)?.ms ?? 0) + watch)} all told
-          </span>
-        </button>
-        {asking?.kind === "cancel" ? (
-          <Confirm
-            text="Cancel this set? Nothing is added."
-            yes="Yes, cancel it"
-            no="No, go on"
-            onYes={() => {
-              save(cancelSet(state));
-              setAsking(null);
-            }}
-            onNo={() => setAsking(null)}
-          />
-        ) : (
-          <button
-            type="button"
-            className="btn mt-2 w-full"
-            onClick={() => setAsking({ kind: "cancel" })}
-          >
-            <X className="size-4" aria-hidden />
-            Cancel the set
-          </button>
-        )}
-      </div>
+      <RestSet
+        state={state}
+        onChange={save}
+        title="Reps"
+        onDone={(d) =>
+          setSaved({ id: d.id, added: d.added, total: d.total, took: d.took, time: d.time })
+        }
+      />
     );
   }
 
