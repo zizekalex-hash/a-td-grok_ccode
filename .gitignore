@@ -14,3 +14,4 @@ mobile/android/capacitor-cordova-android-plugins/
 
 # Local preview server state
 .grok/preview.pid
+grok-bundle/

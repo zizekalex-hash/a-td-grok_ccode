@@ -9,6 +9,7 @@ import { CONFIG } from "../config.ts";
 import { meetsNeed, tierOf, type CourtSave, type QueenKey } from "./rules.ts";
 import { arcOf, BOND_NAME, bondOf } from "./hearts.ts";
 import { buzzOf, fillLine } from "./news.ts";
+import { presenceLines } from "./talk.ts";
 
 const P = CONFIG.court.presence;
 
@@ -45,7 +46,7 @@ export function presenceLine(
   /** Names whose lines would sound wrong now (say, "0 passes for me"): those lines are left out, when others remain. */
   skip: string[] = [],
 ): string {
-  const all = P[from][kind] ?? [];
+  const all = presenceLines(from, kind);
   const fit = all.filter((l) => !skip.some((k) => l.includes(`{${k}}`)));
   const list = fit.length ? fit : all;
   const line = list[Math.min(list.length - 1, Math.floor(rand() * list.length))];

@@ -98,6 +98,7 @@ import { addNews, bondTalk, buzzMult, buzzOf, loadNews, makeRumor, unreadNews } 
 import { comeOutChance, encounterOf, foundKind, pairKey, presenceLine } from "./presence.ts";
 import { chat, dress, feedLine, giftSay, midSentence, speak, type Fill } from "./speech.ts";
 import { drawPhrase, hashOf, phraseUnits } from "./bag.ts";
+import { pickupLines, queenLines } from "./talk.ts";
 import { pickBonus, readReps } from "@/game/reps";
 import type { CourtArcKey } from "@/game/config";
 import { cancelSleep, resting, sleepFrames } from "@/game/rest";
@@ -1113,7 +1114,7 @@ export class CourtGame implements GameBase {
 
   courtGreet(q: QueenKey) {
     this.touch(q);
-    const lines = C.pickupLines;
+    const lines = pickupLines();
     const pickup = lines[Math.floor(Math.random() * lines.length)] ?? "";
     if (!meetsNeed(q, this.save.skills)) {
       this.say0(q, "locked");
@@ -1439,11 +1440,15 @@ export class CourtGame implements GameBase {
       }
       const at = [3, 5, 10].indexOf(r.streak);
       if (at >= 0) {
-        const list = C.queens[s.queen].lines.streak;
+        // Streak lines rise in three steps (3, 5, 10 in a row): a third of the list each.
+        const list = queenLines(s.queen, "streak");
+        const step = Math.max(1, Math.floor(list.length / 3));
+        const from = Math.min(at * step, Math.max(0, list.length - 1));
+        const part = list.slice(from, at === 2 ? list.length : from + step);
         const spec = C.queens[s.queen];
         this.line = {
           speaker: spec.name,
-          text: this.voiced(s.queen, list[Math.min(at, list.length - 1)] ?? ""),
+          text: this.voiced(s.queen, part[Math.floor(Math.random() * part.length)] ?? ""),
           color: spec.color,
           queen: s.queen,
         };

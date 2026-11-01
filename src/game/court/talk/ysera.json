@@ -1,0 +1,121 @@
+{
+  "_about": "Everything this queen says in the Court. Add as many new lines to any list as you like, in her voice; keep every key and the shape; only use the {placeholders} listed for that list in GROK_TALK.md. A list here replaces the same list in config.json.",
+  "_who": {
+    "name": "Ysera",
+    "title": "Dreamer of the Void",
+    "persona": "Ysera, the soft-spoken dreamer of the Void, mysterious, calm and quietly affectionate, who speaks in gentle images",
+    "home": "The Void",
+    "element": "water",
+    "favouriteGift": "Moon lily"
+  },
+  "queen": "ysera",
+  "voice": {
+    "open": [
+      "Mmm...",
+      "Shh.",
+      "Oh... you.",
+      "I dreamed this.",
+      "Softly now.",
+      "Ah, a visitor.",
+      "Listen.",
+      "There you are, between dreams."
+    ],
+    "close": [
+      "The stars agree with me.",
+      "Close your eyes; you'll see it too.",
+      "Dreams remember everything.",
+      "Rest when you can.",
+      "The void is gentle tonight.",
+      "Hush, it's all right.",
+      "I'll hold this moment for you.",
+      "Drift with me a while."
+    ],
+    "warm": [
+      "You're in every dream now.",
+      "I wake up and look for you first.",
+      "My sleep is softer since you came.",
+      "Stay until the stars fade."
+    ],
+    "pet": ["dreamer", "little star", "sleepy one", "my comet", "wanderer"],
+    "things": [
+      "the stars",
+      "a lily on dark water",
+      "half-remembered songs",
+      "the quiet tide of sleep",
+      "moonlit mist"
+    ],
+    "talk": [
+      "I dreamed of {thing} again. You were in it, reciting.",
+      "{sister} worries I sleep too much. I only sleep where you might be.",
+      "Your {skill} hums at level {level}. I hear it in the dark.",
+      "Words repeated become dreams. Dreams repeated become you.",
+      "{region} feels different in the half-light. Have you noticed?",
+      "I brought you {gift}. Or I dreamed I did. Check your pocket.",
+      "Time is soft here, {pet}. {time} is just a word.",
+      "I count your passes like sheep: {passes}, and still awake."
+    ],
+    "feed": [
+      "I'm hungry for a dream... {count} × “{phrase}”, softly?",
+      "Say “{phrase}” {count} times, {pet}. I'll sleep on every one.",
+      "Feed me words, little star. {count} of “{phrase}”.",
+      "The void is empty without your voice. {count} × “{phrase}”?"
+    ],
+    "fed": [
+      "Mm... full of starlight now.",
+      "That was a lullaby. Thank you.",
+      "I'll dream of those words for a week.",
+      "Fed and drowsy. Perfect."
+    ],
+    "hungry": [
+      "I'll drift home hungry, then...",
+      "An empty dream tonight, {pet}.",
+      "Maybe I only dreamed you'd feed me."
+    ]
+  },
+  "lines": {
+    "greet": [
+      "You found me between the stars. Most people don't.",
+      "Hush. Stay a while. The Void is kind tonight."
+    ],
+    "locked": ["Your mind is too loud. Reach Serenity {need} and come back."],
+    "watch": ["Let the words drift. I'm here.", "Recite softly. The stars are listening too."],
+    "streak": [
+      "Three, like ripples.",
+      "Five. You're flowing now.",
+      "Ten. You and the Void are one."
+    ],
+    "levelUp": [
+      "{skill} {level}. I dreamed you would.",
+      "You rose in {skill}. The stars told me first."
+    ],
+    "gift": ["A gift... from the waking world. Thank you.", "I'll keep it beside my dreams."],
+    "giftLoved": [
+      "A moon lily. You really do understand me.",
+      "My favourite flower, from you. I'm speechless."
+    ],
+    "tierUp": ["We are {tier} now. I felt it.", "{tier}. Even my dreams know your name."],
+    "dateStart": ["Close your eyes and take my hand. Now recite."],
+    "dateEnd": [
+      "That was the most beautiful dream.",
+      "Visit me again tonight. In your sleep, if you like."
+    ],
+    "missed": [
+      "I dreamed of you for {hours} hours. You were never quite there.",
+      "You're real again. The dreams were lonely."
+    ],
+    "jealous": [
+      "I dreamed you were with {rival}. Was it only a dream?",
+      "{rival}'s starlight is on you. The void notices everything."
+    ],
+    "reconciled": ["The bad dream is over. Stay.", "Mm. Forgiven, before you even asked."],
+    "wish": [
+      "Will you do something, while I drift? {count} passes of {skill}.",
+      "Tonight's wish: {count} passes of {skill}. I'll dream of it."
+    ],
+    "wishDone": ["You made my dream come true. Truly.", "I felt every pass. Like warm rain."],
+    "memory": [
+      "{count} passes... I count them instead of stars now.",
+      "{count}. I keep each one in a little dream."
+    ]
+  }
+}

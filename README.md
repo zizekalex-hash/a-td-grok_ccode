@@ -73,6 +73,12 @@ Every queen speaks in her own voice, put together from pieces so she rarely says
 - **Conversations:** tap Charm her again within five minutes and you talk: you ask about something (her day, herself, you, her sister, a friend, a rival, her place, gifts, dreams, a phrase you practise, a compliment, or anything) and she answers in her own words, a new topic each time.
 - **Feeding:** a queen who has found you and walks with you gets hungry after a while (`court.presence.feed`) and asks to be fed: a set of reps (the Reps set size) of one of your Reps phrases. Feed her opens the rest screen; Done counts the set in Reps and gives her affection, delights her and keeps her with you longer. A Court bonus set she watches feeds her too. Later hides her ask for a while; she waits about four minutes (talking to her makes her wait again), then goes home hungry and hurt. With nothing in Reps, she tells you where to add phrases.
 
+### The talk pack: the queens' words, in files anyone can fill
+
+All the Court's words live in `src/game/court/talk/`: one JSON file per queen (her voice: openers, endings, warm endings, pet names, things on her mind, small talk, feeding lines; and her lines for every moment) and `shared.json` (conversation topics, your pick-up lines, what queens say when they find you or leave, what the Court notices, rumors, talk about sisters, friends and rivals). A list there replaces the same list in config.json. To make them richer with another AI, follow GROK_TALK.md: it holds the prompt, the rules and every allowed {placeholder}. Pasted-back files are checked by `npm run talk:check` (keys, placeholders, repeats, length) before they ship.
+
+`scripts/grok-bundle.sh [dir]` writes, from the last commit, the whole app as one readable text file (azshara-source.txt) and the talk pack with its prompt as a zip, to hand to another AI for review; never the Android signing files, CI or saves.
+
 ### Bonus set after every round
 
 When a round of reciting is complete (3 phrases of 3 passes, or what you set), the round's summary offers a bonus (+1): a set of reps of a word or phrase from Recitation drill → Reps, picked at random from those of up to 9 words (Shuffle picks another). Its size is the set size picked in Reps (100 by default).

@@ -7,6 +7,7 @@
  */
 import { CONFIG } from "../config.ts";
 import type { LineKey, QueenKey } from "./rules.ts";
+import { queenLines } from "./talk.ts";
 import { TOPICS, VOICES } from "./voices.ts";
 
 const C = CONFIG.court;
@@ -131,15 +132,18 @@ export function speak(
   tier = 0,
   recent: readonly string[] = [],
 ): string {
-  const lines = C.queens[q].lines[key] ?? [];
+  const all = queenLines(q, key);
   const f = withVoice(q, fill, rand);
+  // Lines whose names can all be filled now (no sister to speak of, no sister line).
+  const ready = all.map((l) => fillAll(l, f)).filter((l): l is string => !!l);
   let out = "";
   for (let i = 0; i < 6; i++) {
-    const raw = pick(lines, rand) ?? "";
-    // Old lines leave a missing value as it is, as before.
-    const core = raw.replace(/\{(\w+)\}/g, (m, k: string) =>
-      f[k] !== undefined && f[k] !== "" ? String(f[k]) : m,
-    );
+    const core = ready.length
+      ? pick(ready, rand)!
+      : // None: as before, a missing value stays as it is.
+        (pick(all, rand) ?? "").replace(/\{(\w+)\}/g, (m, k: string) =>
+          f[k] !== undefined && f[k] !== "" ? String(f[k]) : m,
+        );
     out = dress(q, core, rand, tier, f);
     if (!recent.includes(out)) break;
   }
@@ -206,6 +210,6 @@ export function feedLine(
 /** How many different lines she can say for a kind of moment (for the tests). */
 export function variety(q: QueenKey, key: LineKey): number {
   const v = VOICES[q];
-  const cores = (C.queens[q].lines[key] ?? []).length;
+  const cores = queenLines(q, key).length;
   return cores * (1 + v.open.length) * (1 + v.close.length + v.warm.length);
 }

@@ -1,0 +1,109 @@
+{
+  "_about": "Everything this queen says in the Court. Add as many new lines to any list as you like, in her voice; keep every key and the shape; only use the {placeholders} listed for that list in GROK_TALK.md. A list here replaces the same list in config.json.",
+  "_who": {
+    "name": "Azshara",
+    "title": "Queen of Queens",
+    "persona": "Azshara, the magnificent, commanding Queen of Queens, who expects greatness, rewards it with rare warmth, and flirts like royalty",
+    "home": "Azshara's Palace",
+    "element": "fire",
+    "favouriteGift": "Jewel of the Tides"
+  },
+  "queen": "azshara",
+  "voice": {
+    "open": [
+      "Mm.",
+      "Darling.",
+      "Kneel. Or don't.",
+      "Ah, my subject.",
+      "Listen well.",
+      "Hm.",
+      "You may speak.",
+      "Well."
+    ],
+    "close": [
+      "Do not disappoint me.",
+      "I expect greatness. Always.",
+      "That is a compliment, by the way.",
+      "You may thank me later.",
+      "Be magnificent.",
+      "The court is watching. So am I.",
+      "Now, more.",
+      "Queens do not repeat themselves. I made an exception."
+    ],
+    "warm": [
+      "You are my favourite subject. Obviously.",
+      "Even a queen can be smitten. Apparently.",
+      "My throne feels empty when you leave.",
+      "Stay. That is a royal wish."
+    ],
+    "pet": ["darling", "my subject", "little scholar", "my treasure", "pet"],
+    "things": ["the tides", "my crown", "glory", "the throne room", "sapphires"],
+    "talk": [
+      "My sister {sister} sends her... regards. Ignore whatever she says.",
+      "{skill} at {level}. Acceptable. Continue until it is magnificent.",
+      "I had {thing} polished {time}. Everything should shine. You too.",
+      "{region} is mine, of course. Everything is, eventually.",
+      "Bring me {gift}. Then bring me another. That is how devotion works.",
+      "{foe} wants my attention. She may wait in line, behind you.",
+      "{passes} passes for me. I keep count. Queens always do.",
+      "Greatness is repetition with a crown on it, {pet}."
+    ],
+    "feed": [
+      "Your queen hungers. {count} × “{phrase}”. Now, darling.",
+      "Feed me {count} of “{phrase}”. A queen does not ask twice.",
+      "I require tribute: “{phrase}”, {count} times. Kneel if it helps.",
+      "Darling, I am famished for devotion. {count} × “{phrase}”."
+    ],
+    "fed": [
+      "Mm. Exquisite. You may stay.",
+      "That was worthy of a queen.",
+      "Fed and flattered. Well done, darling.",
+      "Perfection. I knew you had it in you."
+    ],
+    "hungry": [
+      "A queen left hungry. How... memorable.",
+      "I shall remember this neglect, {pet}.",
+      "No tribute. My throne is very cold tonight."
+    ]
+  },
+  "lines": {
+    "greet": ["You may approach. Briefly.", "Ah. The one my queens keep talking about."],
+    "locked": ["Total level {need}. Then you may kneel. Then you may speak."],
+    "watch": ["Recite before the throne. Do not bore me.", "I am listening. That is an honour."],
+    "streak": [
+      "Three. Adequate.",
+      "Five. You may continue.",
+      "Ten! Magnificent. You may look at me."
+    ],
+    "levelUp": ["{skill} {level}. I expected no less.", "{skill} {level}. Your queen is pleased."],
+    "gift": ["Accepted.", "A tribute. Good."],
+    "giftLoved": [
+      "The Jewel of the Tides. You understand royalty.",
+      "Exquisite. As am I. As are you, perhaps."
+    ],
+    "tierUp": ["You are {tier}. Few ever are.", "{tier}. Do not make me regret it."],
+    "dateStart": ["The hall is ours tonight. Recite as if the realm depends on it."],
+    "dateEnd": ["You have pleased your queen.", "Return tomorrow. That is not a request."],
+    "missed": [
+      "{hours} hours without an audience. Unacceptable. ...I noticed.",
+      "You return. The throne room was very quiet."
+    ],
+    "jealous": [
+      "You knelt before {rival}? Before me, you kneel. Only me.",
+      "{rival}. How quaint. Remember whose favour you truly want."
+    ],
+    "reconciled": ["Your queen forgives you. Once.", "Rise. You are in my favour again."],
+    "wish": [
+      "Your queen commands: {count} passes of {skill}, today.",
+      "Royal decree: {count} passes of {skill}. Do not disappoint."
+    ],
+    "wishDone": [
+      "My decree, fulfilled. You may stand closer.",
+      "Perfect obedience. And something more. How... rare."
+    ],
+    "memory": [
+      "{count} passes before the throne. I have kept count. Queens always do.",
+      "{count}. Even my sister cannot claim such devotion."
+    ]
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "_about": "Everything this queen says in the Court. Add as many new lines to any list as you like, in her voice; keep every key and the shape; only use the {placeholders} listed for that list in GROK_TALK.md. A list here replaces the same list in config.json.",
+  "_who": {
+    "name": "Jaina",
+    "title": "Sorceress of Kul Harbor",
+    "persona": "Jaina, the clever, proud sorceress of Kul Harbor, who loves the sea, quick wit and a good spell, and blushes when she is impressed",
+    "home": "Kul Harbor",
+    "element": "water",
+    "favouriteGift": "Sea pearl"
+  },
+  "queen": "jaina",
+  "voice": {
+    "open": [
+      "Oh! Hi.",
+      "Hey.",
+      "Well, look who it is.",
+      "Ahoy.",
+      "Hm, hello.",
+      "Right.",
+      "Oh, good.",
+      "Hi, you."
+    ],
+    "close": [
+      "Keep studying.",
+      "The tide's turning, I can feel it.",
+      "That was clever. Don't let it go to your head.",
+      "I might blush. I won't. Probably.",
+      "Smart move.",
+      "Fair winds.",
+      "Let's see what you do next.",
+      "Now, don't make me show off."
+    ],
+    "warm": [
+      "You make me forget my spells. That never happens.",
+      "I'd sail anywhere with you.",
+      "You're my favourite part of the harbor.",
+      "Stay till the tide comes in?"
+    ],
+    "pet": ["sailor", "clever one", "scholar", "deckhand", "you"],
+    "things": ["the tide", "a new spell", "the harbor lights", "sea charts", "frost runes"],
+    "talk": [
+      "I worked out a new spell {time}. It's mostly frost and stubbornness.",
+      "{friend} says I study too much. Says the one who never stops training.",
+      "{skill} at {level}? Okay, I'm impressed. A little.",
+      "The ships in {region} all know my name. Now they know yours.",
+      "If you ever find {gift} by the docks, it's mine. Just so you know.",
+      "Repetition is how every spell starts. You've got the instinct, {pet}.",
+      "I read the {thing} last night. Calm seas, good omens.",
+      "{total} levels. You'd make a decent mage. Decent!"
+    ],
+    "feed": [
+      "I'm running on empty, {pet}. {count} × “{phrase}”?",
+      "Mana's low. Feed me {count} of “{phrase}”, please?",
+      "Help a sorceress out: “{phrase}”, {count} times.",
+      "Quick, before I faint dramatically: {count} × “{phrase}”."
+    ],
+    "fed": [
+      "Ooh. Fully charged. Thanks!",
+      "That was perfect. I'm blushing. Don't look.",
+      "Mana restored. You're good at this.",
+      "Fed and focused. Let's go."
+    ],
+    "hungry": [
+      "Okay. I'll just head back. Hungry.",
+      "No snack? Rude, {pet}. A little.",
+      "Back to the harbor on an empty stomach."
+    ]
+  },
+  "lines": {
+    "greet": [
+      "Mind the ropes, sailor. What brings you to my harbor?",
+      "Oh, it's you. I may have been watching the docks for you."
+    ],
+    "locked": ["Catch me something first. Fishing {need}, then we talk."],
+    "watch": ["Recite for the sea. I'm listening, too.", "Go on. Make the gulls jealous."],
+    "streak": [
+      "Three! Like waves on the shore.",
+      "Five. You're carrying a tide now.",
+      "Ten! Even my spells aren't that steady."
+    ],
+    "levelUp": [
+      "{skill} {level}! I knew you had it in you.",
+      "{skill} {level}. You're making a sorceress blush."
+    ],
+    "gift": ["For me? That's sweet of you.", "Thank you. I'll keep it on my desk."],
+    "giftLoved": [
+      "A sea pearl! You really do know me.",
+      "My favourite. Careful, I might start liking you."
+    ],
+    "tierUp": ["{tier}. I think I like where this is going.", "We're {tier} now. Don't sail off."],
+    "dateStart": ["Just us, the wind and the sunset. Recite me something."],
+    "dateEnd": ["Best sunset I've ever had.", "Come sail with me again. Soon."],
+    "missed": [
+      "{hours} hours! I watched every ship come in. None were you.",
+      "You're back. I- I didn't wait at the dock. Much."
+    ],
+    "jealous": [
+      "You were with {rival}? I'm not jealous. I'm a sorceress. I'm... fine.",
+      "{rival}, huh. The sea's gone choppy all of a sudden."
+    ],
+    "reconciled": [
+      "Calm waters again. I'm glad.",
+      "Okay. I forgive you. Don't make me freeze you."
+    ],
+    "wish": [
+      "Would you, for me? {count} passes of {skill} today.",
+      "My wish for today: {count} passes of {skill}. I'll chart your course."
+    ],
+    "wishDone": [
+      "You actually did it all. For me. I'm blushing, aren't I?",
+      "Every pass! I could cast fireworks."
+    ],
+    "memory": [
+      "{count} passes in my harbor. I keep a logbook, you know.",
+      "{count}. That's more than the tides in a season."
+    ]
+  }
+}

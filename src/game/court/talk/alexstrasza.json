@@ -1,0 +1,127 @@
+{
+  "_about": "Everything this queen says in the Court. Add as many new lines to any list as you like, in her voice; keep every key and the shape; only use the {placeholders} listed for that list in GROK_TALK.md. A list here replaces the same list in config.json.",
+  "_who": {
+    "name": "Alexstrasza",
+    "title": "Queen of the Blooming Shire",
+    "persona": "Alexstrasza, the radiant life-binder queen of the Shire, gentle, glowing and a little teasing, who loves growth in all things",
+    "home": "The Shire",
+    "element": "water",
+    "favouriteGift": "Wildflowers"
+  },
+  "queen": "alexstrasza",
+  "voice": {
+    "open": [
+      "Ah, little sprout.",
+      "Look how you've grown.",
+      "Mm, sunlight.",
+      "Welcome, dear one.",
+      "Oh, hello.",
+      "Ah.",
+      "There's that glow.",
+      "Breathe in."
+    ],
+    "close": [
+      "Everything grows, given time.",
+      "Even oaks were acorns once.",
+      "Let it bloom.",
+      "Life finds a way. So will you.",
+      "Water your roots tonight.",
+      "I can feel you getting stronger.",
+      "Now, let's see you flourish.",
+      "Be gentle with yourself."
+    ],
+    "warm": [
+      "You bloom brighter than my whole garden.",
+      "My heart turns toward you like a flower to the sun.",
+      "Every season is better with you in it.",
+      "Stay. The roses like you."
+    ],
+    "pet": ["little sprout", "dear one", "seedling", "my bloom", "sunbeam"],
+    "things": ["the roses", "the orchard", "new shoots", "morning dew", "the beehives"],
+    "talk": [
+      "The {thing} came up overnight. Growth is quiet until it isn't.",
+      "{sister} says I fuss over you. I say you're worth fussing over.",
+      "Your {skill}, level {level}. I watched it sprout from nothing.",
+      "In {region} the soil is different, but you'd grow anywhere.",
+      "I planted a row of {gift} with your name on the marker.",
+      "Some mornings I just listen to the bees. They're very busy, like you.",
+      "Growth hurts a little, {pet}. That's how you know it's real.",
+      "{total} levels. I'd plant a tree for every one."
+    ],
+    "feed": [
+      "I'm wilting, {pet}. Water me with {count} × “{phrase}”?",
+      "Life needs feeding. {count} of “{phrase}”, please, and I'll blossom.",
+      "Would you nourish me? “{phrase}”, {count} times, like rain.",
+      "My roots are thirsty for your words. {count} of “{phrase}”?"
+    ],
+    "fed": [
+      "Oh, I'm blooming. Thank you, dear one.",
+      "That was sunlight and rain at once.",
+      "I'm all in flower now. Look what you did.",
+      "Fed and flourishing. You're good to me."
+    ],
+    "hungry": [
+      "I'll wilt a little on the way home.",
+      "Nothing grows without water, {pet}. Remember that.",
+      "Back to the garden, hungry. Perhaps tomorrow."
+    ]
+  },
+  "lines": {
+    "greet": [
+      "The flowers turned toward you. So did I.",
+      "You came all the way out to my meadow? Sweet."
+    ],
+    "locked": ["Grow a little more, little sprout. Total level {need}, then we'll talk."],
+    "watch": [
+      "Let your words grow. I'll watch them bloom.",
+      "Breathe with the meadow, then recite."
+    ],
+    "streak": [
+      "Three! Everything you touch grows.",
+      "Five in a row. The bees are jealous.",
+      "Ten! The whole Shire is in bloom for you."
+    ],
+    "levelUp": [
+      "{skill} {level}. You're blossoming, love.",
+      "Another level in {skill}. I'm so proud I could bloom."
+    ],
+    "gift": [
+      "How thoughtful. Thank you.",
+      "You're a gentleman. Don't let anyone tell you otherwise."
+    ],
+    "giftLoved": [
+      "Wildflowers from my own fields! You noticed.",
+      "My favourite. My heart is full."
+    ],
+    "tierUp": ["{tier}. Something is growing between us.", "We're {tier}. Water it often."],
+    "dateStart": ["Blanket, sunshine, you. Recite me something sweet."],
+    "dateEnd": [
+      "Best picnic in a thousand years.",
+      "Come back when the roses open. I'll be waiting."
+    ],
+    "missed": [
+      "{hours} hours apart. Even the roses drooped.",
+      "You came back. The whole Shire is blooming again."
+    ],
+    "jealous": [
+      "Off with {rival}, were you? My flowers noticed. So did I.",
+      "{rival}. Of course. Am I not warm enough for you?"
+    ],
+    "reconciled": [
+      "There. Spring forgives winter. Every time.",
+      "I can never stay cross with you for long. It's your fault."
+    ],
+    "wish": [
+      "Grow for me today: {count} passes of {skill}.",
+      "A little wish: {count} passes of {skill} before the sun sets."
+    ],
+    "wishDone": [
+      "You grew it all, just for me. I'm glowing.",
+      "Wish granted. Come, walk with me through the blossoms."
+    ],
+    "memory": [
+      "{count} passes for me. I've planted a flower for each.",
+      "{count}. A whole garden of you."
+    ]
+  }
+}

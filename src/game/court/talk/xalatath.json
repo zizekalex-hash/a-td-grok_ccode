@@ -1,0 +1,124 @@
+{
+  "_about": "Everything this queen says in the Court. Add as many new lines to any list as you like, in her voice; keep every key and the shape; only use the {placeholders} listed for that list in GROK_TALK.md. A list here replaces the same list in config.json.",
+  "_who": {
+    "name": "Xal'atath",
+    "title": "Harbinger of the Void, Azshara's Sister",
+    "persona": "Xal'atath, Harbinger of the Void and Azshara's darker, wittier sister, velvet-voiced, mysterious and amused by mortals, who teases, whispers and slowly warms to anyone who keeps coming back",
+    "home": "Shadow Sanctum",
+    "element": "fire",
+    "favouriteGift": "Shard of the Void"
+  },
+  "queen": "xalatath",
+  "voice": {
+    "open": [
+      "Mmm, mortal.",
+      "Whispers...",
+      "Oh, how sweet.",
+      "Hush.",
+      "Curious.",
+      "Ah, my little candle.",
+      "The void says hello.",
+      "Shhh."
+    ],
+    "close": [
+      "The void finds that adorable.",
+      "Don't look into the dark too long. It looks back fondly.",
+      "We'll speak again. We always do.",
+      "Such a bright little flame.",
+      "My sister would never say it so nicely.",
+      "Keep your secrets. I already know them.",
+      "Mm. Delicious.",
+      "Sleep well. Or don't."
+    ],
+    "warm": [
+      "I've grown fond of you. How alarming.",
+      "The void is warmer when you're near.",
+      "You're the only mortal I'd keep.",
+      "Stay. The shadows like you."
+    ],
+    "pet": ["little candle", "mortal", "sweet thing", "my moth", "darling"],
+    "things": ["the void", "old whispers", "shadows", "forbidden pages", "a black star"],
+    "talk": [
+      "{sister} thinks I'm a bad influence. I'm the best influence. Ask the void.",
+      "I read your future in {thing}. It says: more reps.",
+      "{skill} at {level}. The whispers are impressed. I'm merely amused.",
+      "{region} looks so fragile from where I stand.",
+      "{gift} hums when you're close. So do I.",
+      "Every word you repeat echoes forever somewhere. I collect them.",
+      "{time} the shadows were long. I thought of you. Don't flatter yourself.",
+      "{passes} passes. The void counts too, {pet}."
+    ],
+    "feed": [
+      "I hunger, little candle. {count} × “{phrase}”, whispered.",
+      "Feed the void: “{phrase}”, {count} times. It's very hungry.",
+      "Mm, I'd devour {count} of “{phrase}”. Be a dear.",
+      "The dark wants your voice. {count} × “{phrase}”, now."
+    ],
+    "fed": [
+      "Delicious. The void purrs.",
+      "Mm. You taste of persistence.",
+      "Fed. How intimate.",
+      "Every one of those is mine now."
+    ],
+    "hungry": [
+      "I'll go back to the dark. Hungry. Plotting.",
+      "Unfed... the whispers will have opinions, {pet}.",
+      "Starving the void. Bold."
+    ]
+  },
+  "lines": {
+    "greet": [
+      "Ah, a visitor. My sister will be jealous.",
+      "Come closer. The dark does not bite. Usually."
+    ],
+    "locked": ["Total level {need}, little star. Until then, I only whisper."],
+    "watch": ["Recite for me. I collect beautiful words.", "Speak, and let the Void listen."],
+    "streak": [
+      "Three. The whispers approve.",
+      "Five. Delicious.",
+      "Ten! Even the Void holds its breath for you."
+    ],
+    "levelUp": [
+      "{skill} {level}. I felt that from here.",
+      "{skill} {level}. My sister never told me you were this good."
+    ],
+    "gift": ["A gift? How charmingly mortal.", "I will keep it. Somewhere dark and safe."],
+    "giftLoved": [
+      "A Shard of the Void. You understand me better than my sister does.",
+      "It whispers your name now. So do I."
+    ],
+    "tierUp": [
+      "{tier}. The Void has chosen you. So have I.",
+      "We are {tier}. Do not tell Azshara."
+    ],
+    "dateStart": ["Take my hand. Between the stars, only your voice."],
+    "dateEnd": [
+      "Even eternity felt short tonight.",
+      "Come back to the dark soon. I will be waiting."
+    ],
+    "missed": [
+      "{hours} hours. The void counted each one, whispering your name.",
+      "Back from the light? It never keeps you like I do."
+    ],
+    "jealous": [
+      "Running to {rival}? The shadows told me. They tell me everything.",
+      "{rival}... Shall I whisper to her what you whispered to me?"
+    ],
+    "reconciled": [
+      "Mm. I'll let it go. The void is patient.",
+      "There. Mine again. Did you ever really leave?"
+    ],
+    "wish": [
+      "A little hunger of mine: {count} passes of {skill}.",
+      "Feed me {count} passes of {skill} today. The dark grows restless."
+    ],
+    "wishDone": [
+      "Delicious. Every single word.",
+      "You gave the void what it wanted. Now it wants you."
+    ],
+    "memory": [
+      "{count} passes in the dark with me. You can't go back now.",
+      "{count}. I wear them like jewels."
+    ]
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "_about": "Everything this queen says in the Court. Add as many new lines to any list as you like, in her voice; keep every key and the shape; only use the {placeholders} listed for that list in GROK_TALK.md. A list here replaces the same list in config.json.",
+  "_who": {
+    "name": "Sinestra",
+    "title": "Dragon Matriarch of the Black Forge",
+    "persona": "Sinestra, the smouldering, dramatic dragon matriarch of the Black Forge, who adores raw power and craftsmanship and flirts like a slow-burning fire",
+    "home": "Black Forge",
+    "element": "fire",
+    "favouriteGift": "Heart of embers"
+  },
+  "queen": "sinestra",
+  "voice": {
+    "open": [
+      "Ahh...",
+      "Mmm, smoke.",
+      "There's my spark.",
+      "Oh, delicious.",
+      "Come closer.",
+      "Hah.",
+      "Such heat.",
+      "Darling..."
+    ],
+    "close": [
+      "Burn brighter.",
+      "I do love a slow fire.",
+      "The forge approves.",
+      "Temper it again. And again.",
+      "I can smell your progress.",
+      "Mm, keep stoking.",
+      "Don't cool off now.",
+      "Now strike."
+    ],
+    "warm": [
+      "You've set me smouldering.",
+      "My fire burns for you alone.",
+      "I'd melt the whole forge for you.",
+      "Stay close. I'm warm."
+    ],
+    "pet": ["spark", "my ember", "darling", "little smith", "hot-head"],
+    "things": ["the forge", "molten steel", "embers", "the anvil's song", "twilight fire"],
+    "talk": [
+      "I hammered {thing} {time} and thought of you the whole time.",
+      "{foe} has no fire. I find that tragic.",
+      "{skill} at {level}. Raw power, tempered. My favourite.",
+      "{region} could use more flame. Let's add some.",
+      "Bring me {gift}. I'll keep it burning under my pillow.",
+      "Power is just heat that refused to cool, {pet}.",
+      "{passes} passes for me. Each one a hammer stroke. I felt them all.",
+      "Craft is repetition with passion. You have both."
+    ],
+    "feed": [
+      "I'm burning hungry, {pet}. Stoke me: {count} × “{phrase}”.",
+      "Feed my fire. “{phrase}”, {count} times. Slowly.",
+      "Fuel, darling. {count} of “{phrase}”.",
+      "The forge is starving. {count} × “{phrase}”. Hot."
+    ],
+    "fed": [
+      "Ahh... roaring now.",
+      "Fed and blazing. Mmm.",
+      "That was a perfect stoke.",
+      "You keep me burning. Thank you, spark."
+    ],
+    "hungry": [
+      "Unfed. I'll smoulder alone.",
+      "Cold forge tonight, {pet}. Shame.",
+      "The fire dims... I'll remember who let it."
+    ]
+  },
+  "lines": {
+    "greet": ["Feel that heat? That's my welcome.", "My forge is hotter when you visit. Curious."],
+    "locked": ["Shape metal first. Smithing {need}, little smith."],
+    "watch": ["Recite at my anvil. Make it ring.", "Show me fire in your words."],
+    "streak": ["Three. Sparks fly.", "Five! Now it's burning.", "Ten! You set my forge ablaze."],
+    "levelUp": ["{skill} {level}. Hot.", "{skill} {level}! Oh, I like that."],
+    "gift": ["A gift? How warm of you.", "I accept. With pleasure."],
+    "giftLoved": ["A Heart of embers! It beats like mine.", "Still warm. Just like I like it."],
+    "tierUp": [
+      "{tier}. The fire between us grows.",
+      "We're {tier}. Careful, you'll get burned. Nicely."
+    ],
+    "dateStart": ["Walk through the fire with me. Recite as we go."],
+    "dateEnd": ["Not a single burn. I'm impressed.", "Come back when the forge is hottest."],
+    "missed": [
+      "{hours} hours without you. The forge nearly went out.",
+      "There you are. I was about to melt something in protest."
+    ],
+    "jealous": [
+      "{rival}? Her fire is a candle beside mine. Remember it.",
+      "You went to {rival}. I'm burning, and not the good way."
+    ],
+    "reconciled": ["The fire's back. So are you.", "Forgiven. Now stoke the flames again."],
+    "wish": [
+      "Feed my fire: {count} passes of {skill}, today.",
+      "I crave {count} passes of {skill}. Don't keep me waiting."
+    ],
+    "wishDone": [
+      "Every pass, white-hot. Magnificent.",
+      "Wish fulfilled. I'm positively smouldering."
+    ],
+    "memory": [
+      "{count} passes in my forge. You've been tempered.",
+      "{count}. I've forged a little crown from them."
+    ]
+  }
+}

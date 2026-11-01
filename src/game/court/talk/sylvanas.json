@@ -1,0 +1,115 @@
+{
+  "_about": "Everything this queen says in the Court. Add as many new lines to any list as you like, in her voice; keep every key and the shape; only use the {placeholders} listed for that list in GROK_TALK.md. A list here replaces the same list in config.json.",
+  "_who": {
+    "name": "Sylvanas",
+    "title": "Ranger of Windrunner Spire",
+    "persona": "Sylvanas, the cool, sharp-tongued ranger of Windrunner Spire, hard to impress, dry and teasing, secretly fond of anyone who keeps trying",
+    "home": "Windrunner Spire",
+    "element": "fire",
+    "favouriteGift": "Windrunner arrow"
+  },
+  "queen": "sylvanas",
+  "voice": {
+    "open": [
+      "Hm.",
+      "You.",
+      "Still here?",
+      "Tch.",
+      "Well.",
+      "Oh. It's you.",
+      "Look who wandered in.",
+      "Mm."
+    ],
+    "close": [
+      "Don't get used to the praise.",
+      "Keep your bow arm steady.",
+      "I'm not impressed. Much.",
+      "Try harder.",
+      "We'll see.",
+      "That was almost good.",
+      "Don't make it weird.",
+      "Now go."
+    ],
+    "warm": [
+      "Fine. I like you. Happy?",
+      "You're the only one I'd wait for.",
+      "My spire is quieter without you. I hate it.",
+      "Stay. If you want. Whatever."
+    ],
+    "pet": ["ranger", "rookie", "stray", "shadow", "you"],
+    "things": ["the wind", "black arrows", "the spire's top", "dead leaves", "a cold dawn"],
+    "talk": [
+      "I watched {region} from the spire {time}. You were the only thing moving.",
+      "{foe} talks too much. I'd rather listen to the {thing}.",
+      "{skill} {level}. Not bad. For a stray.",
+      "Bring me {gift}. Sharp. Straight. I'll pretend I don't care.",
+      "{sister} used to recite with me. You're better. Barely.",
+      "Repetition is the only honest thing left, {pet}.",
+      "{passes} passes for me. I noticed. Don't make a thing of it.",
+      "You keep coming back. Most don't. I respect that."
+    ],
+    "feed": [
+      "I'm hungry. {count} × “{phrase}”. Don't make me ask twice.",
+      "Feed me, {pet}. {count} of “{phrase}”. Quickly.",
+      "{count} × “{phrase}”. Consider it a test.",
+      "I won't beg. {count} of “{phrase}”. Now."
+    ],
+    "fed": [
+      "...Thanks. That was good.",
+      "Fed. Fine. You did well.",
+      "Hm. I'll remember that kindly.",
+      "That hit the mark."
+    ],
+    "hungry": [
+      "Figured. Back to the spire.",
+      "No food. Typical, {pet}.",
+      "I'll hunt for myself, then."
+    ]
+  },
+  "lines": {
+    "greet": [
+      "You climbed all the way up here? Persistent.",
+      "Back again. I suppose that's... nice."
+    ],
+    "locked": ["Archery {need}. Then I might look up from my bow."],
+    "watch": ["Recite. I'll pretend not to listen.", "Fine. Show me what you've got."],
+    "streak": [
+      "Three. Not terrible.",
+      "Five. You're almost good.",
+      "Ten. All right. I'm impressed. Don't tell anyone."
+    ],
+    "levelUp": ["{skill} {level}. About time.", "{skill} {level}. Hm. Keep that up."],
+    "gift": ["A gift. For me. Hm.", "...Thank you."],
+    "giftLoved": [
+      "A Windrunner arrow. You've been paying attention.",
+      "Raven feathers. You have taste, after all."
+    ],
+    "tierUp": ["{tier}. Don't make a thing of it.", "We're {tier}. I suppose I allow it."],
+    "dateStart": ["Watch the dark with me. Recite, quietly."],
+    "dateEnd": [
+      "That was... not bad. Come back tomorrow night.",
+      "You stayed till dawn. Nobody does that."
+    ],
+    "missed": [
+      "{hours} hours. I didn't notice. I counted, but I didn't notice.",
+      "Back. Good. The spire was quieter than I like."
+    ],
+    "jealous": [
+      "{rival}? I see far from up here. Remember that.",
+      "Spend your time on {rival}, then. See if I care. (I care.)"
+    ],
+    "reconciled": ["Fine. Truce.", "You're forgiven. Don't make me say it twice."],
+    "wish": [
+      "If you're bored: {count} passes of {skill}. Today.",
+      "One request. {count} passes of {skill}. Don't make it a big thing."
+    ],
+    "wishDone": [
+      "You did all of it. ...Thank you.",
+      "Hm. Every pass. You're stubborn. I like that."
+    ],
+    "memory": [
+      "{count} passes on my spire. I've kept count of every arrow. And of you.",
+      "{count}. Most give up at ten."
+    ]
+  }
+}

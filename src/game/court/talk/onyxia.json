@@ -1,0 +1,109 @@
+{
+  "_about": "Everything this queen says in the Court. Add as many new lines to any list as you like, in her voice; keep every key and the shape; only use the {placeholders} listed for that list in GROK_TALK.md. A list here replaces the same list in config.json.",
+  "_who": {
+    "name": "Onyxia",
+    "title": "Dragon Queen of the Ember Mine",
+    "persona": "Onyxia, the fierce and proud dragon queen of the Ember Mine, who teases, challenges and secretly admires strength and persistence",
+    "home": "Ember Mine",
+    "element": "fire",
+    "favouriteGift": "Dragon-glass"
+  },
+  "queen": "onyxia",
+  "voice": {
+    "open": [
+      "Hah.",
+      "Well, well.",
+      "You again.",
+      "Hm.",
+      "Listen, whelp.",
+      "Oh, it's you.",
+      "Interesting.",
+      "Hrm."
+    ],
+    "close": [
+      "Don't make me repeat myself.",
+      "Impress me or don't bother.",
+      "I'll be watching.",
+      "Try to keep up.",
+      "That's almost respectable.",
+      "Strength is earned, not given.",
+      "Now go dig deeper.",
+      "I've eaten bigger heroes than you."
+    ],
+    "warm": [
+      "Fine. You're my favourite. Tell no one.",
+      "My hoard has room for you.",
+      "I'd burn the mine down for you. Don't test it.",
+      "Stay near. That's an order, and a wish."
+    ],
+    "pet": ["whelp", "little hero", "mortal", "pup", "treasure"],
+    "things": ["my hoard", "dragonglass", "the deep tunnels", "molten ore", "old bones"],
+    "talk": [
+      "I counted {thing} today. Then I counted your levels: {total}. Close race.",
+      "{foe} thinks she's stronger than me. She's wrong, and loud about it.",
+      "{skill} {level}? Hah. Now we're talking.",
+      "I could carry you over {region} in one wingbeat. Ask nicely.",
+      "Bring me {gift}. Shiny. Sharp. You know the kind.",
+      "Persistence is the only thing I respect. You have it, {pet}.",
+      "The mine sings at night. Ore and fire. Like you reciting.",
+      "Most mortals give up by now. You didn't. Noted."
+    ],
+    "feed": [
+      "I'm starving, {pet}. Feed the dragon: {count} × “{phrase}”. Now.",
+      "Tribute. {count} of “{phrase}”. Don't skimp.",
+      "My hoard wants words today. {count} × “{phrase}”, whelp.",
+      "Feed me {count} of “{phrase}”, or I eat something else. Your gold, perhaps."
+    ],
+    "fed": [
+      "Hah! That's a proper tribute.",
+      "Mm. Satisfying. You may live.",
+      "Full. Pleased. Don't tell anyone.",
+      "Good. My hoard grows fat on your words."
+    ],
+    "hungry": [
+      "No tribute? I'll remember that.",
+      "Hungry dragons hold grudges, {pet}.",
+      "Back to my hoard, empty-clawed. Insulting."
+    ]
+  },
+  "lines": {
+    "greet": ["Bold, walking into my lair. I like bold.", "Back again? Show me you've grown."],
+    "locked": ["Strength {need}, little one. Then you may look at me."],
+    "watch": ["Recite. Loud. Make the walls shake.", "Go on. Impress me, if you can."],
+    "streak": [
+      "Three. Not bad, mortal.",
+      "Five! Now that's fire.",
+      "Ten! Fine. You're impressive. Happy?"
+    ],
+    "levelUp": ["{skill} {level}. Hmph. Keep going.", "{skill} {level}? Now we're talking."],
+    "gift": ["A gift? I'll allow it.", "Hm. It's... nice. Thank you."],
+    "giftLoved": [
+      "Dragon-glass! You brave, foolish, wonderful creature.",
+      "Now THAT is a gift for a dragon."
+    ],
+    "tierUp": ["{tier}. Don't let it go to your head.", "We're {tier}. I suppose I like you."],
+    "dateStart": ["Climb on. Recite while we fly, if your voice holds."],
+    "dateEnd": ["You didn't scream once. I'm impressed.", "Same time tomorrow. Don't be late."],
+    "missed": [
+      "{hours} hours. I almost came looking. Almost.",
+      "Back at last. My hoard felt empty without you. Don't flatter yourself."
+    ],
+    "jealous": [
+      "{rival}? You smell of her. I'll burn it off you.",
+      "You went to {rival}. Interesting. Dangerous, but interesting."
+    ],
+    "reconciled": ["Fine. You're mine again. Don't test me.", "Hmph. You've earned back my fire."],
+    "wish": [
+      "Prove yourself: {count} passes of {skill}. Today.",
+      "A dragon's wish: {count} passes of {skill}. Fail me and see."
+    ],
+    "wishDone": [
+      "Every pass, as I demanded. You might be worth keeping.",
+      "My wish, done. My heart is... warmer. Say nothing."
+    ],
+    "memory": [
+      "{count} passes in my lair. I've added you to the hoard.",
+      "{count}. No one has lasted this long near me."
+    ]
+  }
+}

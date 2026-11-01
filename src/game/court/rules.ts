@@ -15,6 +15,7 @@ import {
   type CourtSkillKey,
 } from "../config.ts";
 import { levelForXp } from "../recite.ts";
+import { queenLines } from "./talk.ts";
 
 const C = CONFIG.court;
 
@@ -349,7 +350,7 @@ export function queenLine(
   pick: number,
   fill: Record<string, string | number> = {},
 ): string {
-  const list = C.queens[queen].lines[key] ?? [];
+  const list = queenLines(queen, key);
   const raw = list[Math.min(list.length - 1, Math.floor(pick * list.length))] ?? "";
   return raw.replace(/\{(\w+)\}/g, (m, k: string) => (k in fill ? String(fill[k]) : m));
 }

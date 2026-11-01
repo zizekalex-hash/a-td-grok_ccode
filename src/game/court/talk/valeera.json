@@ -1,0 +1,99 @@
+{
+  "_about": "Everything this queen says in the Court. Add as many new lines to any list as you like, in her voice; keep every key and the shape; only use the {placeholders} listed for that list in GROK_TALK.md. A list here replaces the same list in config.json.",
+  "_who": {
+    "name": "Valeera",
+    "title": "Champion of the Blade Arena",
+    "persona": "Valeera, the quick, cheeky arena champion, all grins and daggers, who loves speed, style and anyone who can keep up with her",
+    "home": "Blade Arena",
+    "element": "fire",
+    "favouriteGift": "Gilded dagger"
+  },
+  "queen": "valeera",
+  "voice": {
+    "open": ["Heh.", "Yo!", "Hey, speedy.", "Oh, hey.", "Ha!", "Look who's here.", "Psst.", "Ayy."],
+    "close": [
+      "Keep up!",
+      "Not bad, not bad.",
+      "Faster next time.",
+      "Ha, you're fun.",
+      "Catch me if you can.",
+      "Style points: high.",
+      "Don't trip.",
+      "Now let's go again!"
+    ],
+    "warm": [
+      "You're my favourite sparring partner. And not just sparring.",
+      "I'd let you win. Once. Maybe.",
+      "You're quick enough to catch me. Lucky you.",
+      "Stick around, champ."
+    ],
+    "pet": ["speedy", "champ", "rookie", "partner", "hotshot"],
+    "things": [
+      "my daggers",
+      "the arena crowd",
+      "a fast round",
+      "the scoreboard",
+      "a perfect dodge"
+    ],
+    "talk": [
+      "I won three bouts {time}. The crowd chanted. I pretended to be humble.",
+      "{friend} bet against you. I bet on you. Pay up, {friend}.",
+      "{skill} {level}! Okay, okay, I see you.",
+      "Race you across {region}. Loser buys {gift}.",
+      "Speed is just repetition you stopped thinking about, {pet}.",
+      "The {thing} misses you. I don't. Okay, a little.",
+      "{passes} passes for me. That's a lot of laps.",
+      "{total} levels. You'd last at least a round in my arena."
+    ],
+    "feed": [
+      "I'm starving, {pet}! Quick: {count} × “{phrase}”!",
+      "Fuel me up: {count} of “{phrase}”. Go go go!",
+      "Snack time! “{phrase}”, {count} times. Race you.",
+      "Feed me, champ. {count} × “{phrase}”. No slacking."
+    ],
+    "fed": [
+      "Ha! Full speed again.",
+      "Perfect. You're a lifesaver.",
+      "Fed and fast. Let's go!",
+      "That hit the spot, champ."
+    ],
+    "hungry": [
+      "No snack? Boo. I'm off.",
+      "Hungry and leaving. Your loss, {pet}.",
+      "I'll grab something on the way. Not from you, apparently."
+    ]
+  },
+  "lines": {
+    "greet": ["Hey, hotshot. Here to watch me win?", "There's my favourite fan."],
+    "locked": ["Total level {need}. Then you can keep up with me."],
+    "watch": ["Recite fast. I like fast.", "Go on, the crowd's watching. So am I."],
+    "streak": ["Three! Nice moves.", "Five! Okay, show-off.", "Ten! Marry me. Kidding. Mostly."],
+    "levelUp": ["{skill} {level}! That's my champ.", "{skill} {level}. Look at you go."],
+    "gift": ["Ooh, shiny. Thanks!", "For me? You're cute when you're generous."],
+    "giftLoved": ["A gilded dagger! You get me.", "Sharp and pretty. Just my type."],
+    "tierUp": ["{tier}! Took you long enough.", "We're {tier}. Try to keep up."],
+    "dateStart": ["Fights are done. Your turn to impress me."],
+    "dateEnd": ["Best night out all season.", "Same time after the next fight?"],
+    "missed": [
+      "{hours} hours, hotshot! I got bored enough to sharpen everything twice.",
+      "Look who's back. I totally didn't check the door every five minutes."
+    ],
+    "jealous": [
+      "{rival}? Really? I'm faster, funnier and I have daggers.",
+      "Saw you with {rival}. Want a rematch for my attention?"
+    ],
+    "reconciled": ["Okay, okay. We're good. High five.", "Forgiven! But you owe me a race."],
+    "wish": [
+      "Bet you can't do {count} passes of {skill} today.",
+      "Today's challenge: {count} passes of {skill}. Go!"
+    ],
+    "wishDone": [
+      "You did it! Okay, I'm impressed. Don't tell anyone.",
+      "Every single pass! You're my champion now."
+    ],
+    "memory": [
+      "{count} passes in my arena. You're a legend here.",
+      "{count}. That's a record, and I keep the records."
+    ]
+  }
+}

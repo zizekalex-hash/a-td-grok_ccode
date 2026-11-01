@@ -1,0 +1,130 @@
+{
+  "_about": "Everything this queen says in the Court. Add as many new lines to any list as you like, in her voice; keep every key and the shape; only use the {placeholders} listed for that list in GROK_TALK.md. A list here replaces the same list in config.json.",
+  "_who": {
+    "name": "Eltharia",
+    "title": "Keeper of the Gilded Inn",
+    "persona": "Eltharia, warm and kind keeper of the Gilded Inn, who cheers the player on like a sweetheart and is proud of every bit of progress",
+    "home": "The Gilded Inn",
+    "element": "water",
+    "favouriteGift": "Honey mead"
+  },
+  "queen": "eltharia",
+  "voice": {
+    "open": [
+      "Oh!",
+      "There you are!",
+      "Hello, hello.",
+      "Mm, hi.",
+      "Sit, sit.",
+      "Look at you.",
+      "Ah, sweetheart.",
+      "Hey, you."
+    ],
+    "close": [
+      "I saved you a seat by the fire.",
+      "The kettle's on, by the way.",
+      "I'm so proud of you, you know.",
+      "Don't forget to eat something.",
+      "You're doing wonderfully.",
+      "Come back soon, all right?",
+      "I mean it, truly.",
+      "Now, where were we?"
+    ],
+    "warm": [
+      "You make this whole inn feel warmer.",
+      "I keep the window lit for you.",
+      "My favourite part of the day is you.",
+      "Stay a little longer? For me?"
+    ],
+    "pet": ["sweetheart", "my dear", "sunshine", "honey", "love"],
+    "things": [
+      "the hearth",
+      "fresh bread",
+      "the mead barrels",
+      "the lantern by the door",
+      "a warm blanket"
+    ],
+    "talk": [
+      "The regulars were asking about you {time}. I told them you're working hard.",
+      "I baked something with honey in it. It's yours if you finish another round.",
+      "{friend} came by the inn. We talked about you. Only good things, {pet}.",
+      "Your {skill} is at {level}! I wrote it on the slate behind the bar.",
+      "Some nights it's just me, {thing} and the quiet. Then you walk in.",
+      "I hum while I polish the mugs. Lately it's been your phrases.",
+      "Rest your feet. {total} levels deserve a soft chair.",
+      "If anyone gives you trouble in {region}, you send them to me."
+    ],
+    "feed": [
+      "I'm famished, {pet}. Feed me {count} of “{phrase}”? Like a good warm meal.",
+      "Would you say “{phrase}” for me, {count} times? It fills me up better than stew.",
+      "My tummy's rumbling for words. {count} × “{phrase}”, please?",
+      "Sit down and feed me, sweetheart: {count} of “{phrase}”, nice and slow."
+    ],
+    "fed": [
+      "Oh, that was lovely. I'm full of you now.",
+      "Mm. Best meal I've had all week.",
+      "You fed me so well. I feel all glowy.",
+      "Thank you, love. I'll keep those words warm."
+    ],
+    "hungry": [
+      "I'll just... go back and eat alone, then.",
+      "You didn't feed me. That's all right. It's fine. It's fine.",
+      "Hungry and home I go. Next time, {pet}?"
+    ]
+  },
+  "lines": {
+    "greet": [
+      "Well, look who walked in. Sit, recite me something lovely.",
+      "There you are! I saved you the seat by the fire."
+    ],
+    "locked": ["Come closer, I don't bite."],
+    "watch": [
+      "Go on, I'm listening. Every word.",
+      "Recite for me. I love the sound of your voice."
+    ],
+    "streak": [
+      "Three in a row! You're on fire, darling.",
+      "Don't stop now, you're glowing.",
+      "Ten! The whole inn is watching you."
+    ],
+    "levelUp": [
+      "{skill} {level}? I knew it! Come here, you.",
+      "Look at you, {skill} {level}. I'm bragging about you tonight."
+    ],
+    "gift": ["For me? You sweet thing.", "You remembered! Thank you."],
+    "giftLoved": [
+      "Honey mead! You know the way to my heart.",
+      "Oh, my favourite. You're spoiling me."
+    ],
+    "tierUp": [
+      "We're {tier} now, aren't we? I like that.",
+      "{tier}. Don't you dare stop visiting."
+    ],
+    "dateStart": ["Just us and the hearth tonight. Recite me your best."],
+    "dateEnd": ["That was perfect. Same time tomorrow?", "I'll be humming your words all night."],
+    "missed": [
+      "{hours} hours! I kept your seat warm the whole time. Don't you dare do that again.",
+      "There you are. I set out two cups every night, just in case."
+    ],
+    "jealous": [
+      "I saw you with {rival}. It's fine. I'm fine. ...Is she nicer than me?",
+      "{rival} again? Hm. The fire's gone a bit cold in here."
+    ],
+    "reconciled": [
+      "All right, all right. You're forgiven. Come here.",
+      "There's the one I like. Let's not fight again."
+    ],
+    "wish": [
+      "Do something for me today? {count} passes of {skill}. I'll be counting.",
+      "Today I want {count} passes of {skill}. For me. Promise?"
+    ],
+    "wishDone": [
+      "You did it! All of it, for me. I could dance on the bar.",
+      "My wish, granted. Nobody's ever done that for me before."
+    ],
+    "memory": [
+      "{count} passes, just for me. I remember every one.",
+      "{count} times you've recited for me. I wrote them all down."
+    ]
+  }
+}

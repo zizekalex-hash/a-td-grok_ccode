@@ -20,6 +20,7 @@ import {
   type SkillKey,
 } from "./rules.ts";
 import { BOND_NAME, bondsOf, hoursAway, missesYou, wishOf } from "./hearts.ts";
+import { bondTalkLines, rumorLines } from "./talk.ts";
 
 const C = CONFIG.court;
 const N = C.news;
@@ -111,7 +112,7 @@ export function rumorsNow(
     other: QueenKey | null,
     values: Record<string, string | number> = {},
   ) => {
-    if (!(N.rumors[kind]?.length ?? 0)) return;
+    if (!rumorLines(kind).length) return;
     const names = {
       queen: queen ? C.queens[queen].name : "",
       other: other ? C.queens[other].name : "",
@@ -197,7 +198,7 @@ export function makeRumor(
   const of = all.filter((c) => c.kind === kind);
   const others = of.filter((c) => !avoid.queen || c.queen !== avoid.queen);
   const c = pick(others.length ? others : of, rand)!;
-  const line = pick(N.rumors[kind] ?? [], rand) ?? "";
+  const line = pick(rumorLines(kind), rand) ?? "";
   return { kind, queen: c.queen, other: c.other, text: fillLine(line, c.values) };
 }
 
@@ -206,10 +207,10 @@ export function bondTalk(
   q: QueenKey,
   rand: () => number,
 ): { other: QueenKey; text: string } | null {
-  const bonds = bondsOf(q).filter((b) => (N.talk[b.kind]?.length ?? 0) > 0);
+  const bonds = bondsOf(q).filter((b) => bondTalkLines(b.kind).length > 0);
   const b = pick(bonds, rand);
   if (!b) return null;
-  const line = pick(N.talk[b.kind] ?? [], rand) ?? "";
+  const line = pick(bondTalkLines(b.kind), rand) ?? "";
   return { other: b.queen, text: fillLine(line, { other: C.queens[b.queen].name }) };
 }
 
