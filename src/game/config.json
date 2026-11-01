@@ -2663,12 +2663,13 @@
     }
   },
   "reps": {
-    "_about": "The Reps tab of the Recitation drill: write a word or phrase, then do sets of reps of it, adding each finished set to its total. setSizes: the quick set sizes; set: the size picked at first (up to maxSet). A set of N reps takes at least N times secondsPerRep before Done can be tapped. xpPerWordRep: Recitation XP for each word of each rep in a finished set (0 for none).",
+    "_about": "The Reps tab of the Recitation drill: write a word or phrase, then do sets of reps of it, adding each finished set to its total. setSizes: the quick set sizes; set: the size picked at first (up to maxSet). A set of N reps takes at least N times secondsPerRep before Done can be tapped. xpPerWordRep: Recitation XP for each word of each rep in a finished set (0 for none). historyKeep: how many finished sets and resets the History tab keeps (resets do not clear it).",
     "setSizes": [10, 50, 100],
     "set": 100,
     "maxSet": 10000,
     "secondsPerRep": 1,
-    "xpPerWordRep": 1
+    "xpPerWordRep": 1,
+    "historyKeep": 3000
   },
   "core": {
     "_about": "The wake core's level follows the Recitation skill from the drill. Each level above 1 adds this much shot damage in core defense, up to the cap.",

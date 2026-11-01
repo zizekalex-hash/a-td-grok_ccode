@@ -73,6 +73,12 @@ Recitation drill (on the title screen), tab Reps: count reps of your own words a
   - Totals add up: 100 in 5:33, then 200 in 10:00 after another set. The list shows each phrase's reps, time, sets, seconds a rep and last set, and the time for all of them.
   - Another starts the next set at once. Cancel asks first and adds nothing.
 - **Reset all to 0:** asks yes or no first, sets every count and time back to 0 and keeps the words and phrases (for a fresh start after sleep).
+- **History** (the tab next to Reps) shows everything:
+  - **Totals:** today, since the last reset and all time, in reps and time.
+  - **Every word and phrase:** all time, with its reps, time, sets and seconds a rep.
+  - **Every set, by day:** "08:21 100 xyz · 5:33", with each day's total and resets marked (with what they cleared).
+  - Resets in Reps do not clear the history. Clear history does, after asking yes or no, and leaves the totals in Reps.
+  - It keeps the last 3000 sets and resets (`reps.historyKeep`).
 - **Saving and XP:** everything is saved on the device. Each finished set gives Recitation XP.
 - **Tuning:** `reps` in config.json (`secondsPerRep` is the least time per rep).
 

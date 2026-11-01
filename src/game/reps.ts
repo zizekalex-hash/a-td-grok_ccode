@@ -34,15 +34,32 @@ export interface ActiveSet {
   since: number;
 }
 
+/** A line in the history: a finished set (its phrase as it was, reps and time), or a reset (what it cleared). */
+export interface LogEntry {
+  kind: "set" | "reset";
+  /** When (ms since 1970). */
+  at: number;
+  text: string;
+  reps: number;
+  ms: number;
+}
+
 export interface RepsState {
   items: RepItem[];
   /** Reps in a set. */
   set: number;
   active: ActiveSet | null;
+  /** Every finished set and reset, newest first, up to reps.historyKeep. Resets do not clear it. */
+  log: LogEntry[];
 }
 
 export function newReps(): RepsState {
-  return { items: [], set: clampSet(R.set), active: null };
+  return { items: [], set: clampSet(R.set), active: null, log: [] };
+}
+
+/** Adds a line to the history, newest first, keeping up to reps.historyKeep. */
+function logged(s: RepsState, e: LogEntry): RepsState {
+  return { ...s, log: [e, ...s.log].slice(0, Math.max(0, R.historyKeep)) };
 }
 
 /** Words in a phrase (at least 1, so a single word counts). */
@@ -137,12 +154,96 @@ export function setTime(a: ActiveSet, now: number): number {
 export function finishSet(s: RepsState, now: number): RepsState {
   const a = s.active;
   if (!a || timeLeft(a, now) > 0) return s;
-  return { ...addReps(s, a.id, a.target, setTime(a, now)), active: null };
+  const text = s.items.find((i) => i.id === a.id)?.text ?? "";
+  const ms = setTime(a, now);
+  return logged(
+    { ...addReps(s, a.id, a.target, ms), active: null },
+    { kind: "set", at: now, text, reps: a.target, ms },
+  );
 }
 
 /** Every count and time back to 0; the words and phrases stay. */
-export function resetAll(s: RepsState): RepsState {
-  return { ...s, items: s.items.map((i) => ({ ...i, total: 0, sets: 0, ms: 0, last: 0 })) };
+export function resetAll(s: RepsState, now = Date.now()): RepsState {
+  const cleared = {
+    ...s,
+    items: s.items.map((i) => ({ ...i, total: 0, sets: 0, ms: 0, last: 0 })),
+  };
+  // The history keeps everything, and marks the reset with what it cleared.
+  return logged(cleared, {
+    kind: "reset",
+    at: now,
+    text: "",
+    reps: grandTotal(s),
+    ms: grandTime(s),
+  });
+}
+
+/** Empties the history; the totals in Reps stay. */
+export function clearHistory(s: RepsState): RepsState {
+  return { ...s, log: [] };
+}
+
+/** A day number in local time, so days change at midnight. */
+export function localDay(ms: number): number {
+  return Math.floor((ms - new Date(ms).getTimezoneOffset() * 60_000) / 86_400_000);
+}
+
+export interface Tally {
+  reps: number;
+  ms: number;
+  sets: number;
+}
+
+/**
+ * What the history adds up to: all time, today, each phrase (most reps first), and
+ * each day (newest first) with its lines.
+ */
+export function historyOf(
+  log: LogEntry[],
+  now: number,
+): {
+  all: Tally;
+  today: Tally;
+  phrases: (Tally & { text: string })[];
+  days: (Tally & { day: number; at: number; entries: LogEntry[] })[];
+} {
+  const tally = (): Tally => ({ reps: 0, ms: 0, sets: 0 });
+  const add = (t: Tally, e: LogEntry) => {
+    t.reps += e.reps;
+    t.ms += e.ms;
+    t.sets += 1;
+  };
+  const all = tally();
+  const today = tally();
+  const phrases = new Map<string, Tally & { text: string }>();
+  const days = new Map<number, Tally & { day: number; at: number; entries: LogEntry[] }>();
+  const todayN = localDay(now);
+  for (const e of log) {
+    const d = localDay(e.at);
+    let day = days.get(d);
+    if (!day) {
+      day = { ...tally(), day: d, at: e.at, entries: [] };
+      days.set(d, day);
+    }
+    day.entries.push(e);
+    if (e.kind !== "set") continue;
+    add(all, e);
+    add(day, e);
+    if (d === todayN) add(today, e);
+    const key = e.text.toLowerCase();
+    let p = phrases.get(key);
+    if (!p) {
+      p = { ...tally(), text: e.text };
+      phrases.set(key, p);
+    }
+    add(p, e);
+  }
+  return {
+    all,
+    today,
+    phrases: [...phrases.values()].sort((a, b) => b.reps - a.reps || b.ms - a.ms),
+    days: [...days.values()].sort((a, b) => b.day - a.day),
+  };
 }
 
 export function grandTotal(s: RepsState): number {
@@ -191,6 +292,20 @@ export function loadReps(data: unknown): RepsState {
       ms: whole(i.ms),
       last: whole(i.last),
       at: whole(i.at),
+    });
+  }
+  for (const raw of Array.isArray(d.log) ? d.log : []) {
+    if (s.log.length >= R.historyKeep) break;
+    if (!raw || typeof raw !== "object") continue;
+    const e = raw as Record<string, unknown>;
+    const kind = e.kind === "reset" ? "reset" : e.kind === "set" ? "set" : null;
+    if (!kind) continue;
+    s.log.push({
+      kind,
+      at: whole(e.at),
+      text: typeof e.text === "string" ? e.text.slice(0, 300) : "",
+      reps: whole(e.reps),
+      ms: whole(e.ms),
     });
   }
   const a = d.active as Record<string, unknown> | null | undefined;

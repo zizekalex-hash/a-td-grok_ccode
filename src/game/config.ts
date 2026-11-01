@@ -681,6 +681,7 @@ export interface GameConfig {
     maxSet: number;
     secondsPerRep: number;
     xpPerWordRep: number;
+    historyKeep: number;
   };
   core: { damagePerLevel: number; maxDamageBonus: number };
   textPool: string[];

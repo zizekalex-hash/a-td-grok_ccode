@@ -6,6 +6,9 @@ import {
   addReps,
   cancelSet,
   clampSet,
+  clearHistory,
+  historyOf,
+  localDay,
   clock,
   finishSet,
   grandTime,
@@ -137,5 +140,70 @@ describe("reps", () => {
     const fresh = loadReps(null);
     assert.equal(fresh.items.length, 0);
     assert.equal(fresh.set, R.set);
+  });
+
+  it("keeps a history of every set and reset, that resets do not clear", () => {
+    const DAY = 86_400_000;
+    const T = 1_700_000_000_000;
+    let s = addItem({ ...newReps(), set: 10 }, "xyz", 1, "a").state;
+    s = addItem(s, "abc", 2, "b").state;
+    s = finishSet(startSet(s, "a", T - DAY), T - DAY + 12_000); // yesterday: 10 xyz in 0:12
+    s = finishSet(startSet(s, "a", T), T + 20_000); // today: 10 xyz in 0:20
+    s = finishSet(startSet(s, "b", T + 60_000), T + 75_000); // today: 10 abc in 0:15
+    assert.deepEqual(
+      s.log.map((e) => [e.kind, e.text, e.reps, e.ms]),
+      [
+        ["set", "abc", 10, 15_000],
+        ["set", "xyz", 10, 20_000],
+        ["set", "xyz", 10, 12_000],
+      ],
+      "newest first",
+    );
+    s = resetAll(s, T + 90_000);
+    assert.deepEqual(
+      [s.log[0]!.kind, s.log[0]!.reps, s.log[0]!.ms],
+      ["reset", 30, 47_000],
+      "a reset is marked with what it cleared",
+    );
+    assert.equal(s.log.length, 4, "and the sets stay");
+    const h = historyOf(s.log, T + 100_000);
+    assert.deepEqual(h.all, { reps: 30, ms: 47_000, sets: 3 });
+    assert.deepEqual(h.today, { reps: 20, ms: 35_000, sets: 2 });
+    assert.deepEqual(
+      h.phrases.map((p) => [p.text, p.reps, p.ms, p.sets]),
+      [
+        ["xyz", 20, 32_000, 2],
+        ["abc", 10, 15_000, 1],
+      ],
+    );
+    assert.deepEqual(
+      h.days.map((d) => [d.day - localDay(T), d.reps, d.entries.length]),
+      [
+        [0, 20, 3],
+        [-1, 10, 1],
+      ],
+      "days newest first, with the reset among today's lines",
+    );
+    // Deleting a phrase keeps its history; clearing the history keeps the totals.
+    s = finishSet(startSet(s, "a", T + 100_000), T + 112_000);
+    s = removeItem(s, "b");
+    assert.ok(s.log.some((e) => e.text === "abc"));
+    const cleared = clearHistory(s);
+    assert.equal(cleared.log.length, 0);
+    assert.equal(cleared.items[0]!.total, 10);
+    // It reads back from a save.
+    const back = loadReps(JSON.parse(JSON.stringify(s)));
+    assert.deepEqual(back.log, s.log);
+    assert.deepEqual(
+      loadReps({ log: [{ kind: "set", at: 5, text: "x", reps: 2.5, ms: -1 }, { kind: "?" }, 7] })
+        .log,
+      [{ kind: "set", at: 5, text: "x", reps: 2, ms: 0 }],
+    );
+    // The history is capped.
+    let big = addItem(newReps(), "q", 1, "q").state;
+    big = { ...big, set: 1 };
+    for (let i = 0; i < R.historyKeep + 5; i++)
+      big = finishSet(startSet(big, "q", i * 10_000), i * 10_000 + 5000);
+    assert.equal(big.log.length, R.historyKeep);
   });
 });

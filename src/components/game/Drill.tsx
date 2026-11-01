@@ -22,15 +22,16 @@ import {
 } from "@/game/recite";
 import { useGame } from "@/game/store";
 import { RepsTab } from "@/components/game/RepsTab";
+import { RepsHistory } from "@/components/game/RepsHistory";
 
-type DrillTab = "rehearse" | "recall" | "reps";
+type DrillTab = "rehearse" | "recall" | "reps" | "history";
 const TAB_KEY = "azshara-drill-tab";
 
 /** The tab last used, so the drill opens where you left it. */
 function lastTab(): DrillTab {
   try {
     const t = localStorage.getItem(TAB_KEY);
-    return t === "recall" || t === "reps" ? t : "rehearse";
+    return t === "recall" || t === "reps" || t === "history" ? t : "rehearse";
   } catch {
     return "rehearse";
   }
@@ -227,14 +228,15 @@ export function DrillPanel() {
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
           <SkillBar skill="recitation" />
           {/* Reps only gives Recitation XP: the rest stays out of the way of your phrases. */}
-          {tab !== "reps" && (
+          {tab !== "reps" && tab !== "history" && (
             <>
               <SkillBar skill="recall" />
               <CoreLine />
             </>
           )}
 
-          <div className="mt-4 grid grid-cols-3 gap-2">
+          {/* Four tabs: two rows of two on a phone. */}
+          <div className="mt-4 grid grid-cols-4 gap-2 max-[480px]:grid-cols-2">
             <button type="button" className="btn" data-on={tab === "rehearse"} aria-pressed={tab === "rehearse"} onClick={() => setTab("rehearse")}>
               Rehearse
             </button>
@@ -244,12 +246,13 @@ export function DrillPanel() {
             <button type="button" className="btn" data-on={tab === "reps"} aria-pressed={tab === "reps"} onClick={() => setTab("reps")}>
               Reps
             </button>
+            <button type="button" className="btn" data-on={tab === "history"} aria-pressed={tab === "history"} onClick={() => setTab("history")}>
+              History
+            </button>
           </div>
 
-          {tab === "reps" ? (
-            <div className="mt-4">
-              <RepsTab />
-            </div>
+          {tab === "reps" || tab === "history" ? (
+            <div className="mt-4">{tab === "reps" ? <RepsTab /> : <RepsHistory />}</div>
           ) : (
             <>
               <div className="mt-4 flex items-center justify-between gap-2">

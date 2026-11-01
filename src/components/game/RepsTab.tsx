@@ -40,7 +40,7 @@ function buzz(ms: number) {
 }
 
 /** Two buttons to say yes or no, the safe answer first. */
-function Confirm({
+export function Confirm({
   text,
   yes,
   no,
