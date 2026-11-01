@@ -14,7 +14,7 @@ import { Engine } from "@/game/engine";
 import type { GameBase } from "@/game/registry";
 import { TdGame } from "@/game/td/tdgame";
 import { bootDone } from "@/game/cfg";
-import { CFG_STATUS } from "@/game/config";
+import { CFG_STATUS, RESTORED } from "@/game/config";
 import { flashToast } from "@/game/engine";
 import { onEscape } from "@/game/menu";
 import { useGame } from "@/game/store";
@@ -53,7 +53,8 @@ export function Stage() {
 
   // The game is up: changes from Options → Advanced did not stop it starting.
   useEffect(() => {
-    if (CFG_STATUS.paused) flashToast("Cfg changes are off: the last start failed. See Options → Advanced.");
+    if (RESTORED) flashToast("Backup loaded: everything is as it was on the other device.");
+    else if (CFG_STATUS.paused) flashToast("Cfg changes are off: the last start failed. See Options → Advanced.");
     const id = window.setTimeout(bootDone, 3000);
     return () => window.clearTimeout(id);
   }, []);

@@ -20,9 +20,19 @@ npm run preview:restart  # serves the build on http://127.0.0.1:8081
 
 ## Menu, options and cfg
 
-Esc (or the Menu button on a phone) opens the game menu, which holds the fight: Resume, Options, Controls, Tome, Restart, Quit to title. Options has tabs for Game, Display (frame-rate cap and counter, render resolution, interface size), Text, Sound (on/off and volume), Controls (every key and tap) and Advanced. Option changes show at once, with the game running.
+Esc (or the Menu button on a phone) opens the game menu, which holds the fight: Resume, Options, Controls, Tome, Restart, Quit to title. Options has tabs for Game, Display (frame-rate cap and counter, render resolution, interface size), Text, Sound (on/off and volume), Controls (every key and tap), Backup and Advanced. Option changes show at once, with the game running.
 
 Advanced is the cfg: every number, switch and name in `config.json` as a searchable list (`td.startGold`, `chess.pieces.knight.maxHit`, ...). Edits are checked (a value that must be above 0 stays above 0, lists keep their length), saved on the device, and apply after a restart; ↺ puts one value back and Reset all puts back the shipped config. Export, Copy and Import move a cfg file (options and cfg changes together) between devices. If the game ever fails to start with your changes, the next start leaves them off and Advanced says so, so a bad value cannot lock you out.
+
+## Backup: move everything to another phone
+
+Options → Backup puts everything the game keeps on the device into one file: options, loaded texts, skills and best scores, advanced settings, the Court, Reps and their history, chess, tower defense (with a run in progress) and the narrator.
+
+- **Save a backup:** in the app, Share file (Quick Share, Drive, a chat with yourself, ...) or Save to Documents; in a browser, Save file downloads `azshara-backup-YYYY-MM-DD.json`. Copy as text puts the same file on the clipboard.
+- **Load a backup:** on the other phone, install the APK, open Options → Backup, then Load file (or Paste text). It shows the backup's date, size and what it holds, and asks yes or no. Yes replaces everything the game has on that device and restarts the game, which says "Backup loaded".
+- A file that is not a backup of this game, or from a newer version, is turned away with a plain message and nothing changes.
+- If you set a narrator API key, it is in the file too, so send it only to yourself.
+- How it works: `src/game/backup.ts`. Loading is staged and applied at the next start, before anything reads a save, so nothing still running can write its old save over the backup.
 
 ## Court
 

@@ -1,4 +1,5 @@
 import { BookOpen, ImageDown, RotateCcw, X } from "lucide-react";
+import { BackupPanel } from "@/components/game/BackupPanel";
 import { CfgEditor } from "@/components/game/CfgEditor";
 import { FileLoad, SliderRow, TextList } from "@/components/game/Chrome";
 import { saveRawJpg } from "@/game/coreImage";
@@ -213,6 +214,7 @@ export function OptionsWindow() {
                   </dl>
                 </section>
               ))}
+            {tab.id === "backup" && <BackupPanel />}
             {tab.id === "advanced" && (
               <div className="mt-3">
                 <CfgEditor />

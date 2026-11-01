@@ -246,6 +246,16 @@ function persistShared() {
   }
 }
 
+/** Writes every save now, the running game's too, so a backup has the latest. */
+export function saveAllNow() {
+  persistShared();
+  try {
+    getGame()?.persist();
+  } catch {
+    /* the game keeps its save on the next change */
+  }
+}
+
 function schedulePersist() {
   window.clearTimeout(persistTimer);
   persistTimer = window.setTimeout(() => {

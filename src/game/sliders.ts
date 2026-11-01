@@ -198,5 +198,6 @@ export const OPTION_TABS: OptionsTabSpec[] = [
     toggles: [{ key: "muted", label: "Sound", copy: "Every game sound, on or off.", invert: true }],
   },
   { id: "controls", title: "Controls", sliders: [], toggles: [] },
+  { id: "backup", title: "Backup", sliders: [], toggles: [] },
   { id: "advanced", title: "Advanced", sliders: [], toggles: [] },
 ];

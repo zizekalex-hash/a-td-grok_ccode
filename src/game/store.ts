@@ -18,7 +18,7 @@ export type Mode = "field" | "chaos" | "sphere";
 /** Which playable game the stage is running. */
 export type GameMode = "arcade" | "td" | "chess" | "court";
 /** Tabs of the options window. */
-export type OptionsTab = "game" | "display" | "text" | "sound" | "controls" | "advanced";
+export type OptionsTab = "game" | "display" | "text" | "sound" | "controls" | "backup" | "advanced";
 /** Panels laid over the title or the battle. */
 export type Panel = "none" | "drill" | "agents";
 

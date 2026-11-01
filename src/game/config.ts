@@ -6,6 +6,7 @@
  */
 import raw from "./config.json" with { type: "json" };
 import { bootCfg, type CfgStatus } from "./cfg.ts";
+import { applyPendingRestore, deviceStore } from "./backup.ts";
 
 export interface Range {
   min: number;
@@ -707,4 +708,17 @@ export const DEFAULT_CONFIG: GameConfig = structuredClone(raw satisfies GameConf
 export const CONFIG: GameConfig = raw satisfies GameConfig;
 
 /** Changes from Options → Advanced, laid over config.json for this run. */
+/**
+ * A backup chosen in Options replaces this device's saves here, at the start,
+ * before anything reads one (see backup.ts). True on the visit it did.
+ */
+export const RESTORED: boolean = (() => {
+  const store = deviceStore();
+  try {
+    return !!store && applyPendingRestore(store);
+  } catch {
+    return false;
+  }
+})();
+
 export const CFG_STATUS: CfgStatus = bootCfg(CONFIG);
