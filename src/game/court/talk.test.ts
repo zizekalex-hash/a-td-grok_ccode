@@ -14,6 +14,7 @@ import {
   BOND_TALK_FILLS,
   DUO_FILLS,
   FEED_FILLS,
+  PRAY_FILLS,
   LINE_FILLS,
   PRESENCE_FILLS,
   QUEEN_TALK,
@@ -23,7 +24,19 @@ import {
 
 const C = CONFIG.court;
 const MAX_LEN = 240;
-const VOICE_KEYS = ["open", "close", "warm", "pet", "things", "talk", "feed", "fed", "hungry"];
+const VOICE_KEYS = [
+  "open",
+  "close",
+  "warm",
+  "pet",
+  "things",
+  "talk",
+  "feed",
+  "fed",
+  "hungry",
+  "pray",
+  "prayed",
+];
 const LINE_KEYS = Object.keys(C.queens.azshara.lines) as LineKey[];
 
 /** Problems with one list of lines, as readable messages. */
@@ -78,7 +91,11 @@ describe("talk pack", () => {
       extra(`${q}.json`, t, ["queen", "voice", "lines"], problems);
       extra(`${q}.json voice`, t.voice ?? {}, VOICE_KEYS, problems);
       for (const k of VOICE_KEYS) {
-        const allowed = ["feed", "fed", "hungry"].includes(k) ? FEED_FILLS : BASE_FILLS;
+        const allowed = ["feed", "fed", "hungry"].includes(k)
+          ? FEED_FILLS
+          : ["pray", "prayed"].includes(k)
+            ? PRAY_FILLS
+            : BASE_FILLS;
         check(
           `${q}.json voice.${k}`,
           (t.voice as unknown as Record<string, unknown>)?.[k],
@@ -89,6 +106,9 @@ describe("talk pack", () => {
       for (const line of t.voice?.feed ?? [])
         if (!line.includes("{count}") || !line.includes("{phrase}"))
           problems.push(`${q}.json voice.feed: needs {count} and {phrase}: "${line}"`);
+      for (const line of t.voice?.pray ?? [])
+        if (!line.includes("{minutes}") || !line.includes("{phrase}"))
+          problems.push(`${q}.json voice.pray: needs {minutes} and {phrase}: "${line}"`);
       for (const line of t.voice?.pet ?? [])
         if (/[{}]/.test(line)) problems.push(`${q}.json voice.pet: no placeholders in a pet name`);
       extra(`${q}.json lines`, t.lines ?? {}, LINE_KEYS, problems);

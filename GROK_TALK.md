@@ -47,7 +47,7 @@ I will give you one JSON file of the game's words. Make it much richer:
 - Keep the lines already there (you may polish their wording), and add many new
   ones to every list. Targets per list, at least:
   - queen files, "voice": open 25, close 25, warm 12, pet 10, things 12,
-    talk 25, feed 10, fed 10, hungry 8.
+    talk 25, feed 10, fed 10, hungry 8, pray 10, prayed 10.
   - queen files, "lines": 10 for each moment (greet, locked, watch, streak,
     levelUp, gift, giftLoved, tierUp, dateStart, dateEnd, missed, jealous,
     reconciled, wish, wishDone, memory). "streak" rises in three steps (3, 5
@@ -91,6 +91,9 @@ Placeholders allowed:
   passes you recited for her, {dates} dates you have had with her (lines
   using it are only said after a first date).
 - also in "feed", "fed" and "hungry": {count}, the number of reps.
+- also in "pray" and "prayed": {minutes}, the prayer's length. "pray" lines
+  ask for a prayer (a timed set: the phrase repeated nonstop) and must contain
+  both {minutes} and "{phrase}"; "prayed" thanks you for one.
 - also in "lines": locked {need}; levelUp {skill} {level} (the skill that just
   levelled); tierUp {tier}; missed {hours}; jealous {rival}; wish {count}
   {skill}; memory {count}.

@@ -10,6 +10,7 @@ import {
   addItem,
   addMany,
   phrasesFromText,
+  clampMinutes,
   clampSet,
   clock,
   grandTime,
@@ -38,6 +39,7 @@ export function RepsTab() {
   const [state, setState] = useState<RepsState>(() => readReps());
   const [draft, setDraft] = useState("");
   const [setText, setSetText] = useState(String(state.set));
+  const [minText, setMinText] = useState(String(state.minutes));
   const [asking, setAsking] = useState<
     null | { kind: "reset" } | { kind: "delete"; id: string } | { kind: "cancel" }
   >(null);
@@ -49,6 +51,7 @@ export function RepsTab() {
     /** How long the set took, and all the time for this phrase (ms). */
     took: number;
     time: number;
+    timed: boolean;
   }>(null);
   /** A text's phrases being picked from (only the picked ones are kept), and the loaded texts' list being open. */
   const [source, setSource] = useState<null | { name: string; phrases: string[] }>(null);
@@ -121,6 +124,16 @@ export function RepsTab() {
     setSetText(String(set));
   };
 
+  const pickMinutes = (n: number) => {
+    const minutes = clampMinutes(n);
+    save({ ...state, minutes });
+    setMinText(String(minutes));
+  };
+
+  /** What a set is now, in words: "100" or "3 min". */
+  const timed = state.mode !== "count";
+  const setLabel = timed ? `${state.minutes} min` : state.set.toLocaleString();
+
   // ---- A set in progress: the rest screen, over everything ----
   if (active) {
     return (
@@ -129,7 +142,14 @@ export function RepsTab() {
         onChange={save}
         title="Reps"
         onDone={(d) =>
-          setSaved({ id: d.id, added: d.added, total: d.total, took: d.took, time: d.time })
+          setSaved({
+            id: d.id,
+            added: d.added,
+            total: d.total,
+            took: d.took,
+            time: d.time,
+            timed: d.timed,
+          })
         }
       />
     );
@@ -175,8 +195,9 @@ export function RepsTab() {
   return (
     <div>
       <p className="text-sm leading-relaxed text-muted">
-        Your words and phrases stay here. Tap one to start a set; Done adds it with its time (a set
-        of {R.setSizes.at(-1)} takes at least {clock(setMs(R.setSizes.at(-1) ?? 100))}).
+        Your words and phrases stay here. Tap one to start a set: a number of reps (100 takes at
+        least {clock(setMs(100))}), or a timer to repeat it nonstop until the time is up. Done adds
+        it with its time.
       </p>
       <form
         className="mt-2 flex gap-2"
@@ -266,8 +287,65 @@ export function RepsTab() {
         </ul>
       )}
 
-      <p className="mt-3 text-xs tracking-wider text-muted uppercase">Reps in a set</p>
-      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+      <p className="mt-3 text-xs tracking-wider text-muted uppercase">A set is</p>
+      <div className="mt-1 grid grid-cols-3 gap-1.5" role="group" aria-label="A set is">
+        {(
+          [
+            ["count", "Reps", "a number of reps"],
+            ["timer", "Timer", "a time, repeating nonstop"],
+            ["both", "Both", "a time, with its reps counted"],
+          ] as const
+        ).map(([mode, label, hint]) => (
+          <button
+            key={mode}
+            type="button"
+            className="btn min-h-11 flex-col gap-0"
+            data-on={state.mode === mode}
+            aria-pressed={state.mode === mode}
+            onClick={() => save({ ...state, mode })}
+          >
+            {label}
+            <span className="text-[0.55rem] tracking-normal normal-case opacity-80">{hint}</span>
+          </button>
+        ))}
+      </div>
+      {timed && (
+        <>
+          <p className="mt-3 text-xs tracking-wider text-muted uppercase">Minutes</p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {R.timer.choices.map((n) => (
+              <button
+                key={n}
+                type="button"
+                className="btn min-w-10 px-2"
+                data-on={state.minutes === n}
+                aria-pressed={state.minutes === n}
+                onClick={() => pickMinutes(n)}
+              >
+                {n}
+              </button>
+            ))}
+            <input
+              className="text-input w-20"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={R.timer.maxMinutes}
+              value={minText}
+              onChange={(e) => setMinText(e.target.value)}
+              onBlur={() => pickMinutes(Number(minText))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") pickMinutes(Number(minText));
+              }}
+              aria-label="Minutes in a timed set"
+            />
+          </div>
+        </>
+      )}
+      <p className={`mt-3 text-xs tracking-wider text-muted uppercase ${timed ? "hidden" : ""}`}>
+        Reps in a set
+      </p>
+      <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${timed ? "hidden" : ""}`}>
         {R.setSizes.map((n) => (
           <button
             key={n}
@@ -295,14 +373,38 @@ export function RepsTab() {
           aria-label="Reps in a set"
         />
       </div>
+      <label className="mt-3 flex items-center justify-between gap-3 text-sm">
+        <span>
+          Start sets on a blank screen
+          <span className="block text-xs text-muted">
+            All black from the first second; tap it to see the clock and Done.
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          className="size-6 shrink-0 accent-cyan"
+          checked={state.blank}
+          onChange={(e) => save({ ...state, blank: e.target.checked })}
+        />
+      </label>
 
       {saved && item(saved.id) && (
         <div className="mt-3 rounded-md border border-gold/60 p-3 text-center" role="status">
           <p className="text-sm">
-            Completed {saved.added.toLocaleString()}{" "}
-            <span className="break-words">{item(saved.id)?.text}</span> in{" "}
-            <span className="font-display text-gold">{clock(saved.took)}</span>{" "}
-            <span className="text-muted">({seconds(saved.took).toLocaleString()} s)</span>
+            {saved.timed ? (
+              <>
+                Completed <span className="font-display text-gold">{clock(saved.took)}</span> of{" "}
+                <span className="break-words">{item(saved.id)?.text}</span>
+                {saved.added > 0 && <> · {saved.added.toLocaleString()} reps</>}
+              </>
+            ) : (
+              <>
+                Completed {saved.added.toLocaleString()}{" "}
+                <span className="break-words">{item(saved.id)?.text}</span> in{" "}
+                <span className="font-display text-gold">{clock(saved.took)}</span>{" "}
+                <span className="text-muted">({seconds(saved.took).toLocaleString()} s)</span>
+              </>
+            )}
           </p>
           <p className="mt-1 font-display text-lg text-gold">
             {saved.total.toLocaleString()} · {clock(saved.time)}
@@ -313,7 +415,7 @@ export function RepsTab() {
             onClick={() => start(saved.id)}
           >
             <RotateCcw className="size-4" aria-hidden />
-            Another {state.set.toLocaleString()}
+            Another {setLabel}
           </button>
         </div>
       )}
@@ -330,7 +432,7 @@ export function RepsTab() {
                 type="button"
                 className="min-w-0 flex-1 rounded-md p-1 text-left hover:bg-cyan/5 active:bg-cyan/10"
                 onClick={() => start(it.id)}
-                aria-label={`${it.total} ${it.text}, ${clock(it.ms)}. Start a set of ${state.set} reps`}
+                aria-label={`${it.total} ${it.text}, ${clock(it.ms)}. ${timed ? `Start ${state.minutes} min` : `Start a set of ${state.set} reps`}`}
               >
                 <span className="block break-words">
                   <span className="font-display text-xl text-gold">
@@ -342,17 +444,21 @@ export function RepsTab() {
                 <span className="block text-xs text-muted">
                   {it.sets > 0
                     ? `${it.sets} set${it.sets === 1 ? "" : "s"} · ${perRep(it)} s a rep · last set ${clock(it.last)}`
-                    : `Tap to start a set of ${state.set.toLocaleString()}`}
+                    : `Tap to start ${timed ? `${state.minutes} min` : `a set of ${setLabel}`}`}
                 </span>
               </button>
               <button
                 type="button"
                 className="btn btn-gold shrink-0"
                 onClick={() => start(it.id)}
-                aria-label={`Start a set of ${state.set} reps of ${it.text}`}
+                aria-label={
+                  timed
+                    ? `Start ${state.minutes} min of ${it.text}`
+                    : `Start a set of ${state.set} reps of ${it.text}`
+                }
               >
                 <Play className="size-4" aria-hidden />
-                {state.set.toLocaleString()}
+                {setLabel}
               </button>
               <button
                 type="button"

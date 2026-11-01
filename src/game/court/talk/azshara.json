@@ -98,6 +98,20 @@
       "No tribute. My throne is very cold tonight.",
       "A queen, unfed. History will judge you.",
       "I shall dine on disappointment tonight."
+    ],
+    "pray": [
+      "Pray to your queen: {minutes} minutes of “{phrase}”.",
+      "Kneel and recite “{phrase}” for {minutes} minutes. Devotion becomes you.",
+      "Your queen desires a prayer: “{phrase}”, {minutes} minutes, unbroken.",
+      "{minutes} minutes of “{phrase}”, darling. Every word for me.",
+      "Offer me {minutes} minutes of “{phrase}”. I shall listen."
+    ],
+    "prayed": [
+      "Exquisite devotion. Your queen is moved.",
+      "That prayer was worthy of the throne.",
+      "Mm. You may rise now. Gracefully.",
+      "The tides themselves stood still to listen.",
+      "Your queen is pleased. Rarely so pleased."
     ]
   },
   "lines": {

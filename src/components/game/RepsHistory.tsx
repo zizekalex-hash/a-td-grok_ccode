@@ -143,7 +143,15 @@ export function RepsHistory() {
                         {timeOf(e.at)}
                       </span>
                       <span className="min-w-0 break-words">
-                        <span className="text-gold">{e.reps.toLocaleString()}</span> {e.text}{" "}
+                        {e.timed && (
+                          <span className="mr-1 text-violet" title="A timed set">
+                            ⏱
+                          </span>
+                        )}
+                        {(!e.timed || e.reps > 0) && (
+                          <span className="text-gold">{e.reps.toLocaleString()} </span>
+                        )}
+                        {e.text}{" "}
                         <span className="whitespace-nowrap text-cyan">· {clock(e.ms)}</span>
                       </span>
                     </li>

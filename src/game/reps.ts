@@ -27,11 +27,19 @@ export interface RepItem {
   at: number;
 }
 
-/** A set in progress: of which phrase, how many reps, and when it began (ms since 1970). */
+/**
+ * How a set is done: a number of reps (Done opens after a second a rep), a
+ * time (repeat nonstop until it is up), or both (a time, and the reps counted).
+ */
+export type SetMode = "count" | "timer" | "both";
+
+/** A set in progress: of which phrase, how many reps, and when it began (ms since 1970); a timed set's length (ms). */
 export interface ActiveSet {
   id: string;
   target: number;
   since: number;
+  mode?: SetMode;
+  duration?: number;
 }
 
 /** A line in the history: a finished set (its phrase as it was, reps and time), or a reset (what it cleared). */
@@ -42,19 +50,54 @@ export interface LogEntry {
   text: string;
   reps: number;
   ms: number;
+  /** A timed set (a time rather than a number of reps). */
+  timed?: boolean;
 }
 
 export interface RepsState {
   items: RepItem[];
   /** Reps in a set. */
   set: number;
+  /** Count, timer or both; a timed set's minutes; and whether sets start on a blank screen. */
+  mode: SetMode;
+  minutes: number;
+  blank: boolean;
   active: ActiveSet | null;
   /** Every finished set and reset, newest first, up to reps.historyKeep. Resets do not clear it. */
   log: LogEntry[];
 }
 
 export function newReps(): RepsState {
-  return { items: [], set: clampSet(R.set), active: null, log: [] };
+  return {
+    items: [],
+    set: clampSet(R.set),
+    mode: "count",
+    minutes: clampMinutes(R.timer.minutes),
+    blank: false,
+    active: null,
+    log: [],
+  };
+}
+
+/** Minutes for a timed set, from 1 to reps.timer.maxMinutes, whole. */
+export function clampMinutes(n: number): number {
+  return Number.isFinite(n)
+    ? Math.max(1, Math.min(R.timer.maxMinutes, Math.round(n)))
+    : R.timer.minutes;
+}
+
+export function isSetMode(v: unknown): v is SetMode {
+  return v === "count" || v === "timer" || v === "both";
+}
+
+/** A timed set (timer or both). */
+export function isTimed(a: ActiveSet): boolean {
+  return a.mode === "timer" || a.mode === "both";
+}
+
+/** Reps a timed set is reckoned at, at reps.timer.estimateSeconds a rep. */
+export function estimateReps(ms: number): number {
+  return Math.floor(Math.max(0, ms) / (Math.max(0.1, R.timer.estimateSeconds) * 1000));
 }
 
 /** Adds a line to the history, newest first, keeping up to reps.historyKeep. */
@@ -77,9 +120,14 @@ export function setMs(target: number): number {
   return Math.max(0, target) * R.secondsPerRep * 1000;
 }
 
+/** How long before Done opens (ms): a second a rep, or a timed set's whole time. */
+export function doneAfter(a: ActiveSet): number {
+  return isTimed(a) ? Math.max(0, a.duration ?? 0) : setMs(a.target);
+}
+
 /** Time left before Done can be tapped (ms; 0 when it can). */
 export function timeLeft(a: ActiveSet, now: number): number {
-  return Math.max(0, a.since + setMs(a.target) - now);
+  return Math.max(0, a.since + doneAfter(a) - now);
 }
 
 /** "1:40", "0:04", "1:02:03": whole seconds, rounded down (a stopwatch), or up for a countdown. */
@@ -120,10 +168,22 @@ export function removeItem(s: RepsState, id: string): RepsState {
   };
 }
 
-/** Starts a set of the chosen size for a phrase, now. */
-export function startSet(s: RepsState, id: string, now: number): RepsState {
+/**
+ * Starts a set for a phrase, now: of the chosen size, or for the chosen minutes
+ * in timer or both mode (or as given: the Court asks for a prayer of so long).
+ */
+export function startSet(
+  s: RepsState,
+  id: string,
+  now: number,
+  how: { mode?: SetMode; minutes?: number; target?: number } = {},
+): RepsState {
   if (!s.items.some((i) => i.id === id)) return s;
-  return { ...s, active: { id, target: s.set, since: now } };
+  const mode = how.mode ?? s.mode;
+  if (mode === "count")
+    return { ...s, active: { id, target: clampSet(how.target ?? s.set), since: now, mode } };
+  const minutes = clampMinutes(how.minutes ?? s.minutes);
+  return { ...s, active: { id, target: 0, since: now, mode, duration: minutes * 60_000 } };
 }
 
 export function cancelSet(s: RepsState): RepsState {
@@ -150,15 +210,43 @@ export function setTime(a: ActiveSet, now: number): number {
   return Math.max(0, now - a.since);
 }
 
-/** Finishes the set in progress once its time is up: all its reps go to the phrase. Unchanged before then. */
-export function finishSet(s: RepsState, now: number): RepsState {
+/** Adds a finished set to a phrase: its reps (none for a timer set) and its time. */
+function addSet(s: RepsState, id: string, reps: number, ms: number): RepsState {
+  const n = Math.max(0, Math.floor(reps));
+  const t = Math.max(0, Math.round(ms));
+  if (!n && !t) return s;
+  return {
+    ...s,
+    items: s.items.map((i) =>
+      i.id === id
+        ? { ...i, total: i.total + n, sets: i.sets + 1, ms: i.ms + t, last: t || i.last }
+        : i,
+    ),
+  };
+}
+
+/** The reps a finished set adds: its target, none for a timer, or (both) as counted or estimated. */
+export function repsOf(a: ActiveSet, counted?: number): number {
+  if (a.mode === "timer") return 0;
+  if (a.mode === "both") return Math.max(0, Math.floor(counted ?? estimateReps(a.duration ?? 0)));
+  return a.target;
+}
+
+/**
+ * Finishes the set in progress once its time is up: all its reps go to the
+ * phrase, with the time (a timed set counts its own length, however long after
+ * Done was tapped). Unchanged before then. `counted`: reps in both mode.
+ */
+export function finishSet(s: RepsState, now: number, counted?: number): RepsState {
   const a = s.active;
   if (!a || timeLeft(a, now) > 0) return s;
   const text = s.items.find((i) => i.id === a.id)?.text ?? "";
-  const ms = setTime(a, now);
+  const timed = isTimed(a);
+  const ms = timed ? (a.duration ?? 0) : setTime(a, now);
+  const reps = repsOf(a, counted);
   return logged(
-    { ...addReps(s, a.id, a.target, ms), active: null },
-    { kind: "set", at: now, text, reps: a.target, ms },
+    { ...addSet(s, a.id, reps, ms), active: null },
+    { kind: "set", at: now, text, reps, ms, ...(timed ? { timed: true } : {}) },
   );
 }
 
@@ -368,6 +456,9 @@ export function loadReps(data: unknown): RepsState {
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : NaN);
   const whole = (v: unknown) => (Number.isFinite(num(v)) ? Math.max(0, Math.floor(num(v))) : 0);
   if (Number.isFinite(num(d.set))) s.set = clampSet(num(d.set));
+  if (isSetMode(d.mode)) s.mode = d.mode;
+  if (Number.isFinite(num(d.minutes))) s.minutes = clampMinutes(num(d.minutes));
+  s.blank = d.blank === true;
   const seen = new Set<string>();
   for (const raw of Array.isArray(d.items) ? d.items : []) {
     if (!raw || typeof raw !== "object") continue;
@@ -397,12 +488,19 @@ export function loadReps(data: unknown): RepsState {
       text: typeof e.text === "string" ? e.text.slice(0, 300) : "",
       reps: whole(e.reps),
       ms: whole(e.ms),
+      ...(e.timed === true ? { timed: true } : {}),
     });
   }
   const a = d.active as Record<string, unknown> | null | undefined;
   if (a && typeof a === "object" && typeof a.id === "string" && seen.has(a.id)) {
-    const target = Number.isFinite(num(a.target)) ? clampSet(num(a.target)) : s.set;
-    s.active = { id: a.id, target, since: whole(a.since) };
+    const mode = isSetMode(a.mode) ? a.mode : "count";
+    if (mode === "count") {
+      const target = Number.isFinite(num(a.target)) ? clampSet(num(a.target)) : s.set;
+      s.active = { id: a.id, target, since: whole(a.since), mode };
+    } else {
+      const duration = clampMinutes(whole(a.duration) / 60_000) * 60_000;
+      s.active = { id: a.id, target: 0, since: whole(a.since), mode, duration };
+    }
   }
   return s;
 }

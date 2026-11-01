@@ -98,6 +98,20 @@
       "Back to my hoard, empty-clawed. Insulting.",
       "Hungry dragons remember faces.",
       "No food. I'll sulk in the lava."
+    ],
+    "pray": [
+      "Pray to the dragon, whelp. {minutes} minutes of “{phrase}”.",
+      "On your knees: “{phrase}”, {minutes} minutes, nonstop.",
+      "{minutes} minutes of “{phrase}”. Prove your devotion.",
+      "Worship, mortal. “{phrase}”, for {minutes} minutes.",
+      "I want {minutes} minutes of “{phrase}”. Don't stop early."
+    ],
+    "prayed": [
+      "Hah. That's worship worth hoarding.",
+      "Good. Very good. I felt that one.",
+      "You didn't stop once. Impressive.",
+      "My scales are tingling. Don't tell anyone.",
+      "Acceptable. More than acceptable."
     ]
   },
   "lines": {

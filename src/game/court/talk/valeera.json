@@ -102,6 +102,20 @@
       "I'll grab something on the way. Not from you, apparently.",
       "No snack? Lame. Bye!",
       "Running on empty. Thanks a lot."
+    ],
+    "pray": [
+      "Quick prayer, champ? {minutes} minutes of “{phrase}”!",
+      "Pray for my next match: “{phrase}”, {minutes} minutes!",
+      "{minutes} minutes of “{phrase}”, no breaks! Go!",
+      "Good-luck prayer: “{phrase}”, for {minutes} minutes.",
+      "Say “{phrase}” nonstop for {minutes} minutes. I'll time you."
+    ],
+    "prayed": [
+      "Ha! I feel lucky already!",
+      "That's the spirit! Thanks, champ.",
+      "Prayed and ready. Let's go!",
+      "You didn't miss a beat. Nice!",
+      "Best prayer ever. Don't tell the others."
     ]
   },
   "lines": {

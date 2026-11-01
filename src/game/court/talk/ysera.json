@@ -104,6 +104,20 @@
       "Maybe I only dreamed you'd feed me.",
       "A hungry dream, tonight...",
       "I'll drift home empty, little star."
+    ],
+    "pray": [
+      "Pray me to sleep... {minutes} minutes of “{phrase}”.",
+      "Whisper “{phrase}” for {minutes} minutes, and I'll dream of you.",
+      "A dream prayer, little star: “{phrase}”, {minutes} minutes.",
+      "Say “{phrase}” softly, over and over, for {minutes} minutes.",
+      "Hold the night with me: {minutes} minutes of “{phrase}”."
+    ],
+    "prayed": [
+      "Mm... the stars are listening now.",
+      "That was a lullaby the void will remember.",
+      "I'll dream of every word.",
+      "So peaceful. Thank you, dreamer.",
+      "Your prayer is still echoing in my sleep."
     ]
   },
   "lines": {

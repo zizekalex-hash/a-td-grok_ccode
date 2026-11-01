@@ -97,6 +97,20 @@
       "I'll hunt for myself, then.",
       "Of course. Never mind.",
       "I'll eat later. Alone. Like always."
+    ],
+    "pray": [
+      "Pray. For me. {minutes} minutes of “{phrase}”.",
+      "{minutes} minutes of “{phrase}”. Steady. Don't stop.",
+      "If you're going to stand there, say “{phrase}” for {minutes} minutes.",
+      "A prayer. “{phrase}”. {minutes} minutes. Please.",
+      "Recite “{phrase}” until the wind stops. {minutes} minutes."
+    ],
+    "prayed": [
+      "...That helped. Thanks.",
+      "You didn't stop. I noticed.",
+      "Fine. That was good. Really good.",
+      "Quiet now. Better.",
+      "Thank you. I mean it."
     ]
   },
   "lines": {

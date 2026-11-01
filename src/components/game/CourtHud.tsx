@@ -59,7 +59,16 @@ import {
 } from "@/game/court/hearts";
 import { ago } from "@/game/court/news";
 import { xpForLevel } from "@/game/recite";
-import { clock, pickBonus, readReps, startSet, writeReps, type RepsState } from "@/game/reps";
+import {
+  clock,
+  estimateReps,
+  isTimed,
+  pickBonus,
+  readReps,
+  startSet,
+  writeReps,
+  type RepsState,
+} from "@/game/reps";
 import { getGame } from "@/game/registry";
 import { useGame, type CourtView } from "@/game/store";
 
@@ -864,6 +873,7 @@ function QueenSheet({ q, v }: { q: QueenKey; v: CourtView }) {
           </span>
         </button>
       </div>
+      {ok && <Devotion q={q} v={v} />}
       <p className="mt-3 text-xs tracking-wider text-muted uppercase">Give a gift</p>
       {owned.length ? (
         <div className="mt-1 grid grid-cols-2 gap-1.5">
@@ -1152,6 +1162,79 @@ function phraseClass(phrase: string): string {
 }
 
 /**
+ * Feed her (a set of reps) or Pray for her (a timed set, repeating nonstop):
+ * one of your Reps phrases, on the rest screen. Whenever you like; if she is
+ * asking for it, it is the phrase she asked for, and pleases her most.
+ */
+function Devotion({ q, v }: { q: QueenKey; v: CourtView }) {
+  const [reps, setReps] = useState<RepsState | null>(null);
+  const [kind, setKind] = useState<"feed" | "pray">("feed");
+  const spec = C.queens[q];
+  const asked = v.hungry?.queens.includes(q) ? v.hungry : null;
+  const start = (k: "feed" | "pray") => {
+    let next = readReps();
+    if (!next.active) {
+      const id = asked?.id ?? pickBonus(next, Math.random, C.presence.feed.maxWords)?.id;
+      if (!id) return;
+      next =
+        k === "pray"
+          ? startSet(next, id, Date.now(), {
+              mode: "timer",
+              minutes: asked?.kind === "pray" ? asked.minutes : next.minutes,
+            })
+          : startSet(next, id, Date.now(), { mode: "count", target: next.set });
+    }
+    if (!next.active) return;
+    writeReps(next);
+    setKind(k);
+    setReps(next);
+  };
+  // Read once when her sheet opens, not on every update.
+  const [none] = useState(() => !readReps().items.length);
+  return (
+    <div className="mt-2">
+      <div className="grid grid-cols-2 gap-1.5">
+        <button
+          type="button"
+          className={`btn ${asked?.kind === "feed" ? "btn-gold" : ""}`}
+          disabled={none}
+          onClick={() => start("feed")}
+        >
+          Feed her{asked?.kind === "feed" ? " ★" : ""}
+        </button>
+        <button
+          type="button"
+          className={`btn ${asked?.kind === "pray" ? "btn-gold" : ""}`}
+          disabled={none}
+          onClick={() => start("pray")}
+        >
+          Pray for her{asked?.kind === "pray" ? " ★" : ""}
+        </button>
+      </div>
+      <p className="mt-1 text-[0.65rem] text-muted">
+        {none
+          ? "Add words or phrases in Recitation drill → Reps to feed her or pray for her."
+          : asked
+            ? `She is asking for ${asked.kind === "pray" ? `a prayer: ${asked.minutes} min` : `${asked.size} ×`} “${asked.text}”.`
+            : "Feeding is a set of reps, a prayer a timed set; both count in Reps. Most welcome when she asks."}
+      </p>
+      {reps?.active && (
+        <RestSet
+          state={reps}
+          title={kind === "pray" ? `Praying for ${spec.name}` : `Feeding ${spec.name}`}
+          color={spec.color}
+          onChange={(next) => {
+            writeReps(next);
+            setReps(next.active ? next : null);
+          }}
+          onDone={(d) => game()?.courtOffer(q, kind, d.text, d.added, d.took)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
  * A queen who walks with you is hungry: feed her a set of reps of one of your
  * Reps phrases (on the rest screen), or put her off for a little while. She
  * waits a few minutes, then goes home hungry and hurt.
@@ -1171,7 +1254,11 @@ function FeedCard({ v }: { v: CourtView }) {
   const feed = () => {
     let next = readReps();
     // A set already going in Reps feeds her too; else a new one of what she asked for.
-    if (!next.active) next = startSet(next, h.id, Date.now());
+    if (!next.active)
+      next =
+        h.kind === "pray"
+          ? startSet(next, h.id, Date.now(), { mode: "timer", minutes: h.minutes })
+          : startSet(next, h.id, Date.now(), { mode: "count", target: h.size });
     if (!next.active) return;
     writeReps(next);
     setReps(next);
@@ -1189,11 +1276,27 @@ function FeedCard({ v }: { v: CourtView }) {
       <QueenAvatar q={h.queen} size={44} mood="longing" />
       <div className="min-w-0 flex-1">
         <p className="font-display text-[0.7rem] tracking-[0.14em]" style={{ color: spec.color }}>
-          {who.toUpperCase()} {names.length > 1 ? "ARE" : "IS"} HUNGRY
+          {who.toUpperCase()}{" "}
+          {h.kind === "pray"
+            ? names.length > 1
+              ? "ASK FOR A PRAYER"
+              : "ASKS FOR A PRAYER"
+            : names.length > 1
+              ? "ARE HUNGRY"
+              : "IS HUNGRY"}
         </p>
         <p className="text-sm leading-snug break-words">
-          Feed {names.length > 1 ? "them" : "her"}{" "}
-          <span className="text-gold">{h.size.toLocaleString()}</span> × “{h.text}”
+          {h.kind === "pray" ? (
+            <>
+              Pray <span className="text-gold">{h.minutes} min</span> of “{h.text}”, repeating it
+              nonstop
+            </>
+          ) : (
+            <>
+              Feed {names.length > 1 ? "them" : "her"}{" "}
+              <span className="text-gold">{h.size.toLocaleString()}</span> × “{h.text}”
+            </>
+          )}
         </p>
         <p className="text-[0.65rem] text-muted">
           {names.length > 1 ? "They wait" : "She waits"} about {minutes} min, then{" "}
@@ -1202,7 +1305,7 @@ function FeedCard({ v }: { v: CourtView }) {
       </div>
       <div className="flex shrink-0 flex-col gap-1.5">
         <button type="button" className="btn btn-gold min-h-10 px-3" onClick={feed}>
-          {names.length > 1 ? "Feed them ▶" : "Feed her ▶"}
+          {h.kind === "pray" ? "Pray ▶" : names.length > 1 ? "Feed them ▶" : "Feed her ▶"}
         </button>
         <button
           type="button"
@@ -1215,9 +1318,9 @@ function FeedCard({ v }: { v: CourtView }) {
       {reps?.active && (
         <RestSet
           state={reps}
-          title={`Feeding ${who}`}
+          title={h.kind === "pray" ? `Praying for ${who}` : `Feeding ${who}`}
           color={spec.color}
-          reward={`On Done: ${who} ${names.length > 1 ? "are" : "is"} fed (+${C.presence.feed.affection} ♥ each)`}
+          reward={`On Done: ${who} ${names.length > 1 ? "are" : "is"} ${h.kind === "pray" ? "prayed for" : "fed"} (+${C.presence.feed.affection} ♥ each)`}
           onChange={(next) => {
             writeReps(next);
             // Stopped without Done (no new set in the history): she waits again.
@@ -1225,7 +1328,9 @@ function FeedCard({ v }: { v: CourtView }) {
             setReps(next.active ? next : null);
           }}
           onDone={(d) => {
-            for (const q of h.queens) game()?.courtFed(q, d.text, d.added);
+            for (const q of h.queens)
+              if (h.kind === "pray") game()?.courtPrayed(q, d.text, d.took);
+              else game()?.courtFed(q, d.text, d.added);
           }}
         />
       )}
@@ -1280,7 +1385,15 @@ function BonusRound({ v, color }: { v: CourtView; color: string }) {
     );
 
   const going = reps.active?.id === item.id;
-  const size = going && reps.active ? reps.active.target : reps.set;
+  // The set follows the drill's choice: a number of reps, or a timer (reckoned in reps for the reward).
+  const timedSet = going && reps.active ? isTimed(reps.active) : reps.mode !== "count";
+  const minutes =
+    going && reps.active?.duration ? Math.round(reps.active.duration / 60_000) : reps.minutes;
+  const size = timedSet
+    ? estimateReps(minutes * 60_000)
+    : going && reps.active
+      ? reps.active.target
+      : reps.set;
   const would = bonusReward(item.text, size, s.place, s.queen !== null);
   const start = () => {
     let next = readReps();
@@ -1295,7 +1408,15 @@ function BonusRound({ v, color }: { v: CourtView; color: string }) {
     <div className="mt-3 rounded-md border border-cyan/50 p-2 text-left">
       <p className="font-display text-xs tracking-[0.14em] text-cyan">BONUS +1 · FROM YOUR REPS</p>
       <p className="mt-1 text-base leading-snug break-words">
-        <span className="font-display text-gold">{size.toLocaleString()}</span> × {item.text}
+        {timedSet ? (
+          <>
+            <span className="font-display text-gold">{minutes} min</span> of {item.text}
+          </>
+        ) : (
+          <>
+            <span className="font-display text-gold">{size.toLocaleString()}</span> × {item.text}
+          </>
+        )}
       </p>
       <p className="text-xs text-muted">
         {item.total.toLocaleString()} so far · {clock(item.ms)} · on Done +
@@ -1326,7 +1447,11 @@ function BonusRound({ v, color }: { v: CourtView; color: string }) {
           color={color}
           reward={`On Done: +${Math.round(would.xp).toLocaleString()} ${skill.name} XP · +${would.gold} gold`}
           onDone={(d) => {
-            const r = game()?.courtBonus(d.text, d.added);
+            const r = game()?.courtBonus(
+              d.text,
+              d.added || (d.timed ? estimateReps(d.took) : 0),
+              d.timed ? d.took : 0,
+            );
             setPaid({
               text: d.text,
               added: d.added,

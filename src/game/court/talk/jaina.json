@@ -98,6 +98,20 @@
       "Back to the harbor on an empty stomach.",
       "Rations, then. Without you.",
       "No snack? I'll just stare at the sea."
+    ],
+    "pray": [
+      "Can you pray for the ships? {minutes} minutes of “{phrase}”.",
+      "A tide prayer: “{phrase}”, {minutes} minutes. Please?",
+      "Help me focus: {minutes} minutes of “{phrase}”, nonstop.",
+      "Pray with me by the water: “{phrase}”, {minutes} minutes.",
+      "{minutes} minutes of “{phrase}”. It's like a long spell."
+    ],
+    "prayed": [
+      "The sea feels calmer. Thank you.",
+      "That was beautiful. Really.",
+      "I felt the tide turn. You did that.",
+      "Okay, that was better than any spell.",
+      "Thank you. I needed that."
     ]
   },
   "lines": {

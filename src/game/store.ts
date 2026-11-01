@@ -265,8 +265,11 @@ export type CourtView = {
   /** A queen with you who asks to be fed a set of reps, and when she gives up (ms). */
   hungry: {
     queen: QueenKey;
-    /** Every hungry queen with you: one set feeds them all. */
+    /** Every queen with you who wants the same: one set does for them all. */
     queens: QueenKey[];
+    /** Feeding (a set of reps) or a prayer (a timed set of `minutes`). */
+    kind: "feed" | "pray";
+    minutes: number;
     id: string;
     text: string;
     size: number;

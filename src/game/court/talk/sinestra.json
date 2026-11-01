@@ -98,6 +98,20 @@
       "The fire dims... I'll remember who let it.",
       "Embers only, tonight.",
       "The forge cools. So do I."
+    ],
+    "pray": [
+      "Pray into the flames: {minutes} minutes of “{phrase}”.",
+      "A smith's prayer, darling: “{phrase}”, {minutes} minutes, hot and steady.",
+      "Keep the fire lit: “{phrase}” for {minutes} minutes.",
+      "{minutes} minutes of “{phrase}”. Let it burn slowly.",
+      "Temper me with prayer: “{phrase}”, nonstop, {minutes} minutes."
+    ],
+    "prayed": [
+      "The forge sings with it. Mmm.",
+      "That prayer burned beautifully.",
+      "I'm glowing. Thank you, spark.",
+      "Perfectly tempered devotion.",
+      "Hotter than any forge. Thank you."
     ]
   },
   "lines": {

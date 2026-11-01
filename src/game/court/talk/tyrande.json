@@ -97,6 +97,20 @@
       "The moon is a cold supper, {pet}.",
       "I'll fast tonight. Elune understands.",
       "The moonwell will have to do."
+    ],
+    "pray": [
+      "Pray with me to Elune: {minutes} minutes of “{phrase}”.",
+      "Under the moon, “{phrase}”, for {minutes} minutes.",
+      "A temple prayer, dear heart: “{phrase}”, {minutes} minutes.",
+      "Offer {minutes} minutes of “{phrase}” to the night.",
+      "Kneel by the moonwell and say “{phrase}” for {minutes} minutes."
+    ],
+    "prayed": [
+      "Elune heard you. So did I.",
+      "A beautiful prayer. My heart is full.",
+      "The moon shines brighter now.",
+      "Thank you. That was true devotion.",
+      "Peace be with you, as you brought it to me."
     ]
   },
   "lines": {

@@ -98,6 +98,20 @@
       "Back to the garden, hungry. Perhaps tomorrow.",
       "I'll fade a little till you come back.",
       "My garden will be thirsty tonight."
+    ],
+    "pray": [
+      "Pray with me for the garden: {minutes} minutes of “{phrase}”.",
+      "A growing prayer, dear one? “{phrase}”, for {minutes} minutes.",
+      "Let your words rain on me: {minutes} minutes of “{phrase}”.",
+      "Pray for the seedlings: “{phrase}”, nonstop, {minutes} minutes.",
+      "Sit among the roses and pray “{phrase}” for {minutes} minutes."
+    ],
+    "prayed": [
+      "The whole garden heard you. Thank you.",
+      "I feel the roots stir. What a prayer.",
+      "You prayed like spring rain.",
+      "Everything is greener now. Thank you, dear one.",
+      "That prayer will bloom for weeks."
     ]
   },
   "lines": {

@@ -42,8 +42,12 @@ export interface Voice {
   feed: string[];
   /** Fed. */
   fed: string[];
-  /** Going home unfed. */
+  /** Going home unfed (or not prayed for). */
   hungry: string[];
+  /** Asking for a prayer: {minutes} minutes of “{phrase}”, repeated nonstop. */
+  pray: string[];
+  /** Prayed for. */
+  prayed: string[];
 }
 
 /** A conversation topic: what you ask, and answers any queen gives in her own words. */
@@ -120,6 +124,8 @@ export const LINE_FILLS: Partial<Record<LineKey, string[]>> = {
 
 /** Feeding lines also know {count}; asks must use {count} and {phrase}. */
 export const FEED_FILLS = [...BASE_FILLS, "count"];
+/** Prayer lines also know {minutes}; asks must use {minutes} and {phrase}. */
+export const PRAY_FILLS = [...BASE_FILLS, "minutes"];
 
 /** What queens say when they find you, and when they leave. */
 const FOUND = ["hours", "rival", "passes", "streak", "dates"];

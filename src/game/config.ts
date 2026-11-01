@@ -686,6 +686,10 @@ export interface GameConfig {
         affection: number;
         waitMinutes: number;
         snoozeSeconds: number;
+        prayChance: number;
+        prayMinutes: number;
+        unaskedMult: number;
+        perDay: number;
       };
       lines: Record<string, string[]>;
       notices: Record<string, string[]>;
@@ -721,6 +725,8 @@ export interface GameConfig {
     secondsPerRep: number;
     xpPerWordRep: number;
     historyKeep: number;
+    /** Timed sets (see reps.timer._about). */
+    timer: { minutes: number; choices: number[]; maxMinutes: number; estimateSeconds: number };
     /** The rest screen while a set runs (see reps.wall._about). */
     wall: BinaryWallConfig;
   };

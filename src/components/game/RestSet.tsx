@@ -10,8 +10,11 @@ import { levelForXp } from "@/game/recite";
 import {
   cancelSet,
   clock,
+  doneAfter,
+  estimateReps,
   finishSet,
-  setMs,
+  isTimed,
+  repsOf,
   setTime,
   setXp,
   timeLeft,
@@ -30,8 +33,10 @@ export interface SetDone {
   /** The phrase's new total and all its time (ms). */
   total: number;
   time: number;
-  /** How long this set took (ms). */
+  /** How long this set took (ms): for a timed set, its own length. */
   took: number;
+  /** A timed set (timer or both). */
+  timed: boolean;
 }
 
 /**
@@ -63,8 +68,10 @@ export function RestSet({
   const item = active ? state.items.find((i) => i.id === active.id) : undefined;
   const [now, setNow] = useState(() => Date.now());
   const [asking, setAsking] = useState(false);
-  /** Blank: the screen is all black, nothing drawn or updated, until tapped. */
-  const [blank, setBlank] = useState(false);
+  /** Blank: the screen is all black, nothing drawn or updated, until tapped (from the start, if chosen in Reps). */
+  const [blank, setBlank] = useState(() => state.blank);
+  /** Both mode: the reps to add, as counted (empty: the estimate). */
+  const [counted, setCounted] = useState("");
 
   // The rest lasts while the set runs.
   const on = !!active;
@@ -77,7 +84,7 @@ export function RestSet({
     const left = timeLeft(active, Date.now());
     if (blank) {
       if (left <= 0) return;
-      const id = window.setTimeout(() => buzz(80), left);
+      const id = window.setTimeout(() => buzz(isTimed(active) ? 400 : 80), left);
       return () => window.clearTimeout(id);
     }
     let wasReady = left <= 0;
@@ -85,7 +92,7 @@ export function RestSet({
       const t = Date.now();
       setNow(t);
       const ready = timeLeft(active, t) <= 0;
-      if (ready && !wasReady) buzz(80);
+      if (ready && !wasReady) buzz(isTimed(active) ? 400 : 80);
       wasReady = ready;
     }, 1000);
     return () => window.clearInterval(timer);
@@ -96,14 +103,20 @@ export function RestSet({
   const left = timeLeft(active, now);
   const ready = left <= 0;
   const watch = setTime(active, now);
+  const timed = isTimed(active);
+  const length = doneAfter(active);
+  const estimate = estimateReps(length);
+  const typed = Number.parseInt(counted, 10);
+  const reps = repsOf(active, Number.isFinite(typed) ? typed : undefined);
 
   const done = () => {
     const t = Date.now();
-    const next = finishSet(state, t);
+    const next = finishSet(state, t, Number.isFinite(typed) ? typed : undefined);
     if (next === state) return;
     onChange(next);
     const before = levelForXp(useGame.getState().skills.recitation);
-    grantSkillXp("recitation", setXp(text, active.target));
+    // A timer set's XP counts the reps it is reckoned at.
+    grantSkillXp("recitation", setXp(text, reps || (timed ? estimate : 0)));
     const after = levelForXp(useGame.getState().skills.recitation);
     if (after > before) flashToast(`Recitation level ${after}`);
     buzz(30);
@@ -111,10 +124,11 @@ export function RestSet({
     onDone?.({
       id: active.id,
       text,
-      added: active.target,
+      added: reps,
       total: now?.total ?? 0,
       time: now?.ms ?? 0,
-      took: setTime(active, t),
+      took: timed ? length : setTime(active, t),
+      timed,
     });
   };
 
@@ -124,7 +138,7 @@ export function RestSet({
       <button
         type="button"
         className="rest-screen fixed inset-0 z-[80] block h-full w-full cursor-default bg-black"
-        aria-label={`Screen blank while you recite ${active.target} ${text}. Tap to show the set.`}
+        aria-label={`Screen blank while you recite ${text}. Tap to show the set.`}
         onClick={() => {
           setNow(Date.now());
           setBlank(false);
@@ -137,12 +151,16 @@ export function RestSet({
     <div
       className="rest-screen fixed inset-0 z-[80] flex flex-col items-center justify-center bg-black p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] text-fg"
       role="dialog"
-      aria-label={`${title}: ${active.target} ${text}`}
+      aria-label={`${title}: ${timed ? clock(length) : active.target} ${text}`}
     >
       <BinaryWall text={text} color={color} spec={R.wall} />
       <div className="relative w-full max-w-md rounded-xl bg-black/85 p-4 text-center">
         <p className="text-xs tracking-wider text-muted uppercase">
-          {title} · set of {active.target.toLocaleString()} · {item.total.toLocaleString()} so far
+          {title} ·{" "}
+          {timed
+            ? `${clock(length)} timer${active.mode === "both" ? " + reps" : ""}`
+            : `set of ${active.target.toLocaleString()}`}{" "}
+          · {item.total.toLocaleString()} so far
         </p>
         <p className="mt-2 text-2xl leading-snug break-words" style={{ color }}>
           {text}
@@ -150,13 +168,35 @@ export function RestSet({
         <p
           className={`mt-3 font-display text-5xl leading-none tabular-nums ${ready ? "text-gold" : "text-fg"}`}
           aria-live="off"
-          aria-label={`Stopwatch ${clock(watch)}`}
+          aria-label={timed ? `Time left ${clock(left, true)}` : `Stopwatch ${clock(watch)}`}
         >
-          {clock(watch)}
+          {timed ? clock(left, true) : clock(watch)}
         </p>
         <p className="mt-1 text-xs tracking-wider text-muted uppercase">
-          {ready ? "Ready: tap Done when you finish" : `Done opens in ${clock(left, true)}`}
+          {timed
+            ? ready
+              ? "Time's up: tap Done"
+              : "Repeat it nonstop until the time is up"
+            : ready
+              ? "Ready: tap Done when you finish"
+              : `Done opens in ${clock(left, true)}`}
         </p>
+        {active.mode === "both" && ready && (
+          <label className="mt-3 flex items-center justify-center gap-2 text-sm">
+            Reps
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              className="w-24 rounded-md border border-cyan/40 bg-black px-2 py-1 text-center text-fg"
+              placeholder={String(estimate)}
+              value={counted}
+              onChange={(e) => setCounted(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+              aria-label={`Reps done, about ${estimate}`}
+            />
+            <span className="text-xs text-muted">about {estimate.toLocaleString()}</span>
+          </label>
+        )}
         {reward && <p className="mt-2 text-xs text-gold">{reward}</p>}
         <button type="button" className="btn mt-4 min-h-14 w-full" onClick={() => setBlank(true)}>
           <EyeOff className="size-5" aria-hidden />
@@ -171,11 +211,14 @@ export function RestSet({
           <span className="flex items-center gap-2">
             <Check className="size-5" aria-hidden />
             {ready
-              ? `Done: +${active.target.toLocaleString()} in ${clock(watch)}`
+              ? timed
+                ? `Done: ${reps ? `+${reps.toLocaleString()} in ` : ""}${clock(length)} ⏱`
+                : `Done: +${active.target.toLocaleString()} in ${clock(watch)}`
               : `Done in ${clock(left, true)}`}
           </span>
           <span className="text-[0.7rem] tracking-normal normal-case opacity-90">
-            {(item.total + active.target).toLocaleString()} in {clock(item.ms + watch)} all told
+            {(item.total + reps).toLocaleString()} in {clock(item.ms + (timed ? length : watch))}{" "}
+            all told
           </span>
         </button>
         {asking ? (
@@ -196,9 +239,10 @@ export function RestSet({
           </button>
         )}
         <p className="mt-3 text-[0.7rem] text-muted">
-          Recite it {active.target.toLocaleString()} times; Done opens after{" "}
-          {clock(setMs(active.target))}. The game rests meanwhile, and the stopwatch runs with the
-          screen off too.
+          {timed
+            ? `Recite it over and over for ${clock(length)}; a long buzz when the time is up.`
+            : `Recite it ${active.target.toLocaleString()} times; Done opens after ${clock(length)}.`}{" "}
+          The game rests meanwhile, and the clock runs with the screen off too.
         </p>
       </div>
     </div>,

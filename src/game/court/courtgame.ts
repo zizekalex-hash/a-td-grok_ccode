@@ -159,7 +159,16 @@ interface Outing {
   was: CourtArcKey | null;
   /** When she will ask to be fed (ms; 0 for not at all), what she asks for, and whether she has been fed. */
   hungerAt: number;
-  hungry: { id: string; text: string; size: number; since: number; hiddenUntil: number } | null;
+  hungry: {
+    /** Feeding (a set of reps) or a prayer (a timed set). */
+    kind: "feed" | "pray";
+    id: string;
+    text: string;
+    size: number;
+    minutes: number;
+    since: number;
+    hiddenUntil: number;
+  } | null;
   fed: boolean;
   /** Where she goes back to: her own place, or for a companion from another region, where she came in. */
   homeAt: Spot;
@@ -325,6 +334,8 @@ export class CourtGame implements GameBase {
   private alsoWatching: QueenKey | null = null;
   private banterIn = G.banterSeconds;
   private doubleRivalAt = new Map<string, number>();
+  /** Feedings and prayers offered unasked today, by day and queen. */
+  private offered = new Map<string, number>();
   /** Notices waiting for room on screen: at most NOTICES_SHOWN at once, each for its full time. */
   private noticeQueue: { id: number; text: string; queen: QueenKey | null; color: string }[] = [];
   /** Time spent resting already counted, and the clock at the last tick (ms). */
@@ -1036,38 +1047,58 @@ export class CourtGame implements GameBase {
       return this.pushView(true);
     }
     const now = Date.now();
-    o.hungry = { id: item.id, text: item.text, size: reps.set, since: now, hiddenUntil: 0 };
+    // Now and then she asks for a prayer instead: a timed set, repeating nonstop.
+    const kind = Math.random() < F.prayChance ? "pray" : "feed";
+    const minutes = Math.max(1, Math.round(F.prayMinutes));
+    o.hungry = {
+      kind,
+      id: item.id,
+      text: item.text,
+      size: reps.set,
+      minutes,
+      since: now,
+      hiddenUntil: 0,
+    };
     sfx.ready();
     this.feel(q, "longing");
     this.speakLine({
       speaker: spec.name,
-      text: feedLine(q, "feed", Math.random, {
+      text: feedLine(q, kind, Math.random, {
         ...this.voiceFill(q),
         count: reps.set,
+        minutes,
         phrase: item.text,
       }),
       color: spec.color,
       queen: q,
     });
-    this.notice(`${spec.name} is hungry: feed her ${reps.set} × “${item.text}”`, q);
+    this.notice(
+      kind === "pray"
+        ? `${spec.name} asks for a prayer: ${minutes} min of “${item.text}”`
+        : `${spec.name} is hungry: feed her ${reps.set} × “${item.text}”`,
+      q,
+    );
     this.pushView(true);
   }
 
   /** The hungry queen to show, if any (not one whose ask you put off for now). */
   private hungryView(): CourtView["hungry"] {
     const now = Date.now();
-    const all = [...this.out].filter(([, o]) => o.hungry && !o.home && o.hungry.hiddenUntil <= now);
-    const first = all[0];
-    if (!first?.[1].hungry) return null;
-    const [q, o] = first;
-    const h = o.hungry!;
+    const asking = [...this.out].filter(
+      ([, o]) => o.hungry && !o.home && o.hungry.hiddenUntil <= now,
+    );
+    const first = asking[0]?.[1].hungry;
+    if (!first) return null;
+    // Those who want the same (feeding, or a prayer) are seen to together.
+    const all = asking.filter(([, o]) => o.hungry!.kind === first.kind);
     return {
-      queen: q,
-      // One set feeds every hungry queen with you.
+      queen: all[0]![0],
       queens: all.map(([k]) => k),
-      id: h.id,
-      text: h.text,
-      size: h.size,
+      kind: first.kind,
+      id: first.id,
+      text: first.text,
+      size: first.size,
+      minutes: first.minutes,
       until: Math.min(...all.map(([, x]) => x.hungry!.since)) + F.waitMinutes * 60_000,
     };
   }
@@ -1086,10 +1117,12 @@ export class CourtGame implements GameBase {
   }
 
   /**
-   * Fed: a set of reps done for her (on the rest screen, or a Court bonus set she
-   * watched). She is delighted, warmer, and stays with you a while longer.
+   * Fed (a set of reps) or prayed for (a timed set): done for her on the rest
+   * screen, or a Court bonus set she watched. She is delighted, warmer, and
+   * stays with you a while longer. `share` is the part of the affection she
+   * gets (less when she did not ask).
    */
-  courtFed(q: QueenKey, text: string, reps: number) {
+  private devoted(q: QueenKey, kind: "feed" | "pray", what: string, share = 1) {
     const o = this.out.get(q);
     const spec = C.queens[q];
     const now = Date.now();
@@ -1100,20 +1133,58 @@ export class CourtGame implements GameBase {
       o.home = false;
       if (o.foundAt) o.foundAt = now;
     }
-    const value = this.addAffection(q, F.affection * jealousMult(this.save, q), false);
+    if (share > 0) {
+      const value = this.addAffection(q, F.affection * share * jealousMult(this.save, q), false);
+      this.drop(`+${value} ♥ ${spec.name}`, spec.color);
+    }
     this.save.lastSeen[q] = now;
     this.feel(q, "delighted");
+    this.see(q);
     sfx.bless();
-    this.drop(`+${value} ♥ ${spec.name}`, spec.color);
     this.speakLine({
       speaker: spec.name,
-      text: this.voiced(q, feedLine(q, "fed", Math.random, this.voiceFill(q))),
+      text: this.voiced(
+        q,
+        feedLine(q, kind === "pray" ? "prayed" : "fed", Math.random, this.voiceFill(q)),
+      ),
       color: spec.color,
       queen: q,
     });
-    this.notice(`You fed ${spec.name} ${reps.toLocaleString("en")} × “${text}”`, q);
+    this.notice(what, q);
     this.persist();
     this.pushView(true);
+  }
+
+  courtFed(q: QueenKey, text: string, reps: number) {
+    this.devoted(q, "feed", `You fed ${C.queens[q].name} ${reps.toLocaleString("en")} × “${text}”`);
+  }
+
+  courtPrayed(q: QueenKey, text: string, ms: number) {
+    const min = Math.max(1, Math.round(ms / 60_000));
+    this.devoted(q, "pray", `You prayed ${min} min of “${text}” for ${C.queens[q].name}`);
+  }
+
+  /**
+   * Feed her or Pray for her, from her sheet, whenever you like. If she asked
+   * for it, it is what she wanted; unasked, it pleases her less, and only
+   * court.presence.feed.perDay times a day count.
+   */
+  courtOffer(q: QueenKey, kind: "feed" | "pray", text: string, reps: number, ms: number) {
+    if (this.out.get(q)?.hungry) {
+      if (kind === "pray") this.courtPrayed(q, text, ms);
+      else this.courtFed(q, text, reps);
+      return;
+    }
+    const key = `${dayOf(Date.now())}|${q}`;
+    const n = this.offered.get(key) ?? 0;
+    this.offered.set(key, n + 1);
+    const share = n < F.perDay ? F.unaskedMult : 0;
+    const name = C.queens[q].name;
+    const what =
+      kind === "pray"
+        ? `You prayed ${Math.max(1, Math.round(ms / 60_000))} min of “${text}” for ${name}`
+        : `You fed ${name} ${reps.toLocaleString("en")} × “${text}”`;
+    this.devoted(q, kind, share > 0 ? what : `${what} (she has had plenty today)`, share);
   }
 
   /** She is back at her place (or you left her region): no longer out. */
@@ -1611,7 +1682,7 @@ export class CourtGame implements GameBase {
    * as that many passes of its phrase, with gold, and pleases a queen who
    * watches. What it paid, for the round's summary.
    */
-  courtBonus(text: string, reps: number): { xp: number; gold: number } | null {
+  courtBonus(text: string, reps: number, ms = 0): { xp: number; gold: number } | null {
     const s = this.session;
     if (!s || !C.bonus.enabled) return null;
     const r = bonusReward(text, reps, s.place, s.queen !== null);
@@ -1632,9 +1703,13 @@ export class CourtGame implements GameBase {
       save.lastSeen[s.queen] = Date.now();
       this.notice(`${C.queens[s.queen].name} watched your ${reps} reps of “${text}”`, s.queen);
     }
-    // Hungry queens who watched it are fed by it too.
-    for (const w of [s.queen, this.alsoWatching])
-      if (w && this.out.get(w)?.hungry) this.courtFed(w, text, reps);
+    // Queens who watched it and wanted feeding or a prayer have it.
+    for (const w of [s.queen, this.alsoWatching]) {
+      const want = w ? this.out.get(w)?.hungry : null;
+      if (!w || !want) continue;
+      if (want.kind === "pray") this.courtPrayed(w, text, ms || reps * 2000);
+      else this.courtFed(w, text, reps);
+    }
     const after = skillLevel(save.skills[s.skill]);
     if (after > before) this.levelUp(s.skill, after);
     this.persist();

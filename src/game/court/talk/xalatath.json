@@ -98,6 +98,20 @@
       "Starving the void. Bold.",
       "Starving in the dark. How dramatic of you.",
       "The void will gnaw on this all night."
+    ],
+    "pray": [
+      "Pray into the dark, little candle: {minutes} minutes of “{phrase}”.",
+      "Whisper “{phrase}” to the void for {minutes} minutes.",
+      "A prayer for me? “{phrase}”, nonstop, {minutes} minutes.",
+      "Feed the silence: {minutes} minutes of “{phrase}”.",
+      "Say “{phrase}” until the void hums. {minutes} minutes should do."
+    ],
+    "prayed": [
+      "The void heard every word. So did I.",
+      "Mm. Such a devout little candle.",
+      "Delicious devotion. I'll keep it.",
+      "The whispers are quiet now. Content.",
+      "That prayer will echo forever. As promised."
     ]
   },
   "lines": {

@@ -1016,13 +1016,17 @@
       "secondWatcherXp": 0.15
     },
     "feed": {
-      "_about": "A queen who has found you and walks with you gets hungry after afterSeconds and asks to be fed: a set of reps (the size picked in Reps) of one of your Reps phrases (of at most maxWords words). Feed her opens the rest screen; Done counts the set in Reps and gives her affection, delights her and keeps her with you a while longer. A Court bonus set she watches feeds her too. She waits waitMinutes (talking to her makes her wait again), then goes home hungry and hurt. Later hides her ask for snoozeSeconds. enabled false turns it off.",
+      "_about": "A queen who has found you and walks with you gets hungry after afterSeconds and asks to be fed: a set of reps (the size picked in Reps) of one of your Reps phrases (of at most maxWords words). Feed her opens the rest screen; Done counts the set in Reps and gives her affection, delights her and keeps her with you a while longer. Sometimes (prayChance) she asks for a prayer instead: a timed set of prayMinutes, repeating the phrase nonstop. A Court bonus set she watches feeds her too. Feed her or Pray for her on her sheet works any time: unasked, it gives unaskedMult of the affection, up to perDay times a day for each queen. She waits waitMinutes (talking to her makes her wait again), then goes home hungry and hurt. Later hides her ask for snoozeSeconds. enabled false turns it off.",
       "enabled": true,
       "afterSeconds": 45,
       "maxWords": 9,
       "affection": 40,
       "waitMinutes": 4,
-      "snoozeSeconds": 90
+      "snoozeSeconds": 90,
+      "prayChance": 0.4,
+      "prayMinutes": 3,
+      "unaskedMult": 0.5,
+      "perDay": 3
     },
       "lines": {
         "seeking": [
@@ -2725,6 +2729,13 @@
     "secondsPerRep": 1,
     "xpPerWordRep": 1,
     "historyKeep": 3000,
+    "timer": {
+      "_about": "Timed sets: instead of a number of reps, a time (minutes, from the quick choices or up to maxMinutes): you repeat the word or phrase nonstop until the time is up, then one tap of Done adds the time (and, in Both mode, the reps: estimated at estimateSeconds a rep, changeable before Done). XP for a timed set counts the estimated reps.",
+      "minutes": 3,
+      "choices": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+      "maxMinutes": 60,
+      "estimateSeconds": 2
+    },
     "wall": {
       "_about": "While a set runs, the rest screen: black, the game below stops drawing, and the word or phrase stands behind the stopwatch in raw binary (like court.wall: whole copies spread evenly, the largest font from maxFont down to minFont that fills at least fill of the screen, else fallbackFont and smaller). enabled false leaves the screen plain black.",
       "enabled": true,

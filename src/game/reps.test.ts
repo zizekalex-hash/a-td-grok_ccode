@@ -7,6 +7,8 @@ import {
   addReps,
   phraseIndex,
   pickBonus,
+  estimateReps,
+  clampMinutes,
   phrasesFromText,
   cancelSet,
   clampSet,
@@ -56,7 +58,7 @@ describe("reps", () => {
     const T = 1_000_000;
     let s = addItem({ ...newReps(), set: 100 }, "xyz", 1, "a").state;
     s = startSet(s, "a", T);
-    assert.deepEqual(s.active, { id: "a", target: 100, since: T });
+    assert.deepEqual(s.active, { id: "a", target: 100, since: T, mode: "count" });
     assert.equal(setMs(100), 100 * R.secondsPerRep * 1000);
     assert.equal(timeLeft(s.active!, T + 40_000), setMs(100) - 40_000);
     // Too soon: nothing changes.
@@ -132,7 +134,7 @@ describe("reps", () => {
       ],
     });
     assert.equal(s.set, 50);
-    assert.deepEqual(s.active, { id: "a", target: 100, since: 1234 });
+    assert.deepEqual(s.active, { id: "a", target: 100, since: 1234, mode: "count" });
     assert.deepEqual(
       s.items.map((i) => [i.id, i.text, i.total, i.ms, i.last]),
       [
@@ -276,5 +278,45 @@ describe("reps", () => {
       pickBonus(newReps(), () => 0.5, 9),
       null,
     );
+  });
+
+  it("runs timed sets: repeat until the time is up, then the time (and, in both mode, the reps) count", () => {
+    const T = 5_000_000;
+    let s = addItem({ ...newReps(), mode: "timer" as const, minutes: 3 }, "xyz", 1, "a").state;
+    s = startSet(s, "a", T);
+    assert.deepEqual(s.active, { id: "a", target: 0, since: T, mode: "timer", duration: 180_000 });
+    assert.equal(timeLeft(s.active!, T + 60_000), 120_000, "a countdown");
+    assert.equal(finishSet(s, T + 179_999), s, "not before the time is up");
+    s = finishSet(s, T + 400_000);
+    assert.equal(s.items[0]!.total, 0, "a timer set adds no reps");
+    assert.equal(s.items[0]!.ms, 180_000, "just its own three minutes, however late Done was");
+    assert.equal(s.items[0]!.sets, 1);
+    assert.deepEqual([s.log[0]!.reps, s.log[0]!.ms, s.log[0]!.timed], [0, 180_000, true]);
+    // Both: the reps too, estimated or as counted.
+    s = finishSet(startSet(s, "a", T, { mode: "both", minutes: 2 }), T + 120_000);
+    assert.equal(s.items[0]!.total, estimateReps(120_000));
+    s = finishSet(startSet(s, "a", T, { mode: "both", minutes: 1 }), T + 60_000, 42);
+    assert.equal(s.items[0]!.total, estimateReps(120_000) + 42);
+    assert.equal(s.items[0]!.ms, 180_000 + 120_000 + 60_000);
+    // A count set as given, whatever the mode.
+    const c = startSet(s, "a", T, { mode: "count", target: 7 });
+    assert.deepEqual(c.active, { id: "a", target: 7, since: T, mode: "count" });
+    assert.equal(clampMinutes(0), 1);
+    assert.equal(clampMinutes(1e6), R.timer.maxMinutes);
+    // It reads back, mode and all.
+    const back = loadReps(
+      JSON.parse(JSON.stringify({ ...s, active: startSet(s, "a", T, { minutes: 4 }).active })),
+    );
+    assert.equal(back.mode, "timer");
+    assert.equal(back.minutes, 3);
+    assert.deepEqual(back.active, {
+      id: "a",
+      target: 0,
+      since: T,
+      mode: "timer",
+      duration: 240_000,
+    });
+    assert.equal(back.log[0]!.timed, true);
+    assert.equal(loadReps({ mode: "nonsense" }).mode, "count");
   });
 });

@@ -205,7 +205,7 @@ export function chat(
 /** Her ask to be fed ({count} reps of {phrase}), her thanks, or her goodbye unfed. */
 export function feedLine(
   q: QueenKey,
-  kind: "feed" | "fed" | "hungry",
+  kind: "feed" | "fed" | "hungry" | "pray" | "prayed",
   rand: () => number,
   fill: Fill = {},
 ): string {

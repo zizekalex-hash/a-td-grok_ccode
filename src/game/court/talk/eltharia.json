@@ -104,6 +104,20 @@
       "Hungry and home I go. Next time, {pet}?",
       "My tummy will just have to wait. Again.",
       "Back to the kitchen, then. Alone."
+    ],
+    "pray": [
+      "Would you say a little prayer for me, love? {minutes} minutes of “{phrase}”.",
+      "Sit with me and pray {minutes} minutes: “{phrase}”, over and over.",
+      "Pray for the inn, sweetheart? “{phrase}”, for {minutes} minutes.",
+      "Just {minutes} quiet minutes of “{phrase}”, for me. Would you?",
+      "Close your eyes and say “{phrase}” for {minutes} minutes. I'll hold your hand."
+    ],
+    "prayed": [
+      "That was the sweetest prayer. I feel all warm inside.",
+      "Thank you, love. The whole inn feels blessed.",
+      "I listened to every word. Bless you.",
+      "Now that's a prayer worth a whole pot of tea.",
+      "You prayed for me. Nobody does that."
     ]
   },
   "lines": {
