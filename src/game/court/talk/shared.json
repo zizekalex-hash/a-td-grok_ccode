@@ -104,6 +104,28 @@
         "Careful, {pet}. I might start believing you.",
         "I noticed. I always notice."
       ]
+    },
+    "secret": {
+      "ask": [
+        "Tell me a secret.",
+        "What's something nobody knows about you?",
+        "Can you keep a secret? Can I?"
+      ],
+      "answer": [
+        "A secret? I practise my best smile for when you walk in.",
+        "Nobody knows I keep {thing} hidden for the hard days.",
+        "My secret is simple, {pet}: I look forward to you.",
+        "I once tried to recite your favourite phrase. “{phrase}”. I got it wrong twice."
+      ]
+    },
+    "food": {
+      "ask": ["Are you hungry?", "What's your favourite food?", "Can I feed you something?"],
+      "answer": [
+        "Feed me words, {pet}. That's my favourite meal.",
+        "I'm always a little hungry when you're near. Funny, that.",
+        "Give me a hundred of “{phrase}” and I'll be full for a week.",
+        "Food? I'd rather have {gift}. And you, reciting."
+      ]
     }
   },
   "pickupLines": [
@@ -114,49 +136,107 @@
     "Do you believe in level-ups at first sight, or should I walk by again?",
     "Whoa, mama! My Charisma just went up a whole level looking at you.",
     "I memorise phrases for a living. Yours I will never forget.",
-    "Careful, baby. This much XP should come with a warning."
+    "Careful, baby. This much XP should come with a warning.",
+    "Are you a level-up? Because my heart just went ding.",
+    "I recited your name a hundred times. Still not tired of it.",
+    "If beauty were XP, you'd be level 99 in everything.",
+    "Do you have a map? I keep getting lost in your eyes.",
+    "I came for the XP. I stayed for you.",
+    "Every phrase I know, I'd trade for one smile from you.",
+    "My streak is perfect. Just like you.",
+    "I don't need the elixir. One look at you and I'm at double XP.",
+    "Some recite for gold. I recite for that look you just gave me.",
+    "I've been training all day. Mostly my courage, to talk to you.",
+    "Tell me your favourite phrase. I'll make it my next hundred reps.",
+    "Careful, your majesty. My Charisma is off the charts today."
   ],
   "presence": {
     "lines": {
       "seeking": [
         "There you are. I looked everywhere for you.",
         "I couldn't wait any longer. I came to find you.",
-        "Don't look so surprised. I missed you, that's all."
+        "Don't look so surprised. I missed you, that's all.",
+        "I followed your footsteps all the way here.",
+        "Finally. I've been searching the whole region.",
+        "I had a feeling I'd find you here."
       ],
       "lonely": [
         "{hours} hours. Do you know how long that is?",
-        "I counted the hours. {hours} of them. Never again, promise?"
+        "I counted the hours. {hours} of them. Never again, promise?",
+        "{hours} hours alone. Don't do that to me again.",
+        "It's been {hours} hours. I started to think you forgot me.",
+        "{hours} hours without you. Too many."
       ],
       "confront": [
         "We need to talk. About {rival}.",
         "Don't pretend you didn't see me. Or her. {rival}, really?",
-        "I came all this way to ask you one thing: why {rival}?"
+        "I came all this way to ask you one thing: why {rival}?",
+        "Before anything else: {rival}. Explain.",
+        "Everyone's talking about you and {rival}. Is it true?",
+        "I'm not leaving until you tell me about {rival}."
       ],
       "present": [
         "Walk with me a while?",
         "{passes} passes for me so far. I count every one.",
-        "Your best streak was {streak}. I was watching. I'm always watching."
+        "Your best streak was {streak}. I was watching. I'm always watching.",
+        "I just wanted to be near you.",
+        "Mind if I tag along? I won't be any trouble.",
+        "Your best streak is {streak}. Show me another?"
       ],
-      "leaveHappy": ["I'll go now. Smiling.", "Come find me later. I'll be waiting."],
+      "leaveHappy": [
+        "I'll go now. Smiling.",
+        "Come find me later. I'll be waiting.",
+        "That was lovely. I'll see you soon.",
+        "I'm going home with a smile, thanks to you.",
+        "Until next time. Don't keep me waiting."
+      ],
       "leaveHurt": [
         "You didn't even look at me.",
         "Fine. I'll go.",
-        "I came all this way for nothing."
+        "I came all this way for nothing.",
+        "I'll stop bothering you.",
+        "I hope whoever you're thinking of is worth it.",
+        "Next time, maybe I won't come."
       ]
     },
     "notices": {
-      "out": ["{queen} has come out looking for you.", "{queen} left the {place} to find you."],
-      "outConfront": ["{queen} is coming for you, and she looks upset 💢"],
-      "found": ["{queen} found you ♥"],
-      "leftHappy": ["{queen} went home happy ♥"],
-      "leftHurt": ["{queen} went home hurt. You ignored her 💔"],
+      "out": [
+        "{queen} has come out looking for you.",
+        "{queen} left the {place} to find you.",
+        "{queen} is wandering the paths, looking for you.",
+        "{queen} slipped out of the {place}. She's looking for you."
+      ],
+      "outConfront": [
+        "{queen} is coming for you, and she looks upset 💢",
+        "{queen} is marching your way, and she isn't smiling.",
+        "{queen} left in a hurry. Someone is in trouble."
+      ],
+      "found": [
+        "{queen} found you ♥",
+        "{queen} caught up with you.",
+        "{queen} is at your side now."
+      ],
+      "leftHappy": [
+        "{queen} went home happy ♥",
+        "{queen} went home humming.",
+        "{queen} waved goodbye, smiling."
+      ],
+      "leftHurt": [
+        "{queen} went home hurt. You ignored her 💔",
+        "{queen} walked away without looking back.",
+        "{queen} went home with her head down."
+      ],
       "rivals": [
         "{queen} and {other} meet, over you. The air turns cold 💢",
-        "{queen} and {other} pass each other without a word. Both look at you."
+        "{queen} and {other} pass each other without a word. Both look at you.",
+        "{queen} and {other} glare at each other. You are standing right between them.",
+        "{queen} turns her back on {other}. Both glance at you."
       ],
       "close": [
         "{queen} and her {bond} {other} whisper about you and giggle ♥",
-        "{queen} stops to hug her {bond} {other}. They both look your way."
+        "{queen} stops to hug her {bond} {other}. They both look your way.",
+        "{queen} links arms with her {bond} {other}. They're talking about you.",
+        "{queen} and her {bond} {other} share a secret smile your way."
       ]
     }
   },
@@ -164,80 +244,118 @@
     "buzz": [
       "All the Court is talking about {queen} today. Everything you do for her counts ×{mult} ♥ until midnight.",
       "The bards sing only of {queen} today. Win her now: ×{mult} ♥ until midnight.",
-      "{queen} is the talk of the town today, and she knows it. ×{mult} ♥ for her until midnight."
+      "{queen} is the talk of the town today, and she knows it. ×{mult} ♥ for her until midnight.",
+      "Every bard in town has a song about {queen} today. ×{mult} ♥ for her until midnight.",
+      "{queen} is the jewel of the day. Anything for her counts ×{mult} ♥ until midnight."
     ],
     "favored": [
       "A bard swears {queen} goes weak for anyone who is good at {skill}.",
       "They say {queen} watches the {skill} lessons from her window every evening.",
-      "Word at the Inn: the way to {queen}'s heart is {skill}."
+      "Word at the Inn: the way to {queen}'s heart is {skill}.",
+      "{queen} hums when someone practises {skill} under her window.",
+      "The fastest way to {queen}'s smile? Be good at {skill}."
     ],
     "gift": [
       "A merchant at the Moon Market says {queen} keeps every {gift} she is ever given.",
       "Rumor has it {queen} once wept over a gift of {gift}.",
-      "{queen}'s maid let it slip: nothing makes her smile like {gift}."
+      "{queen}'s maid let it slip: nothing makes her smile like {gift}.",
+      "{queen} keeps {gift} by her bed, they say.",
+      "If you want {queen} to blush, bring {gift}."
     ],
     "need": [
       "{queen} won't look twice at anyone under {need}. Some say she is waiting for you.",
-      "They say {queen} asks about you. Reach {need} and she might answer."
+      "They say {queen} asks about you. Reach {need} and she might answer.",
+      "{queen} told the guards: anyone below {need} gets turned away.",
+      "{queen} is waiting for someone with {need}. It could be you."
     ],
     "wish": [
       "{queen} has been sighing all day. She wants {count} passes of {skill}.",
-      "A maid let it slip: {queen} hopes someone recites {skill} for her today."
+      "A maid let it slip: {queen} hopes someone recites {skill} for her today.",
+      "{queen} keeps glancing at the training grounds. {count} passes of {skill}, she wants.",
+      "Word is {queen} will be over the moon for {count} passes of {skill} today."
     ],
     "stranger": [
       "{queen} asked the guards who you are.",
-      "{queen} pretended not to notice you today. She noticed."
+      "{queen} pretended not to notice you today. She noticed.",
+      "{queen} asked the bard who you were. The bard didn't know either.",
+      "{queen} watched you cross the square today. Just for a moment."
     ],
     "fond": [
       "Someone saw {queen} writing your name in the margin of a book.",
       "{queen} asked the bard to sing of you. Twice.",
-      "{queen} smiled at nothing all morning. The maids think it was you."
+      "{queen} smiled at nothing all morning. The maids think it was you.",
+      "{queen} laughs a little louder when you're near, people say.",
+      "{queen} keeps a flower you dropped. She thinks nobody knows."
     ],
     "devoted": [
       "{queen} told the whole Court she is yours. Nobody dared to argue.",
       "They say {queen} sleeps with your words under her pillow.",
-      "{queen} turned down a prince today. She said her heart is spoken for."
+      "{queen} turned down a prince today. She said her heart is spoken for.",
+      "{queen} has your name embroidered on her sleeve.",
+      "{queen} lights a candle for you every night."
     ],
     "jealous": [
       "{queen} has been asking everyone where you spend your evenings.",
       "{queen} threw a letter from {other} into the fire. Twice.",
-      "{queen} heard about you and {other}. Her halls are very quiet."
+      "{queen} heard about you and {other}. Her halls are very quiet.",
+      "{queen} hasn't touched her supper since she saw you with {other}.",
+      "{queen} is asking the guards about {other}. Pointed questions."
     ],
     "longing": [
       "{queen} keeps looking at the door. It has been {hours} hours.",
-      "{queen} left a candle in her window for you. It has burned for {hours} hours."
+      "{queen} left a candle in her window for you. It has burned for {hours} hours.",
+      "{queen} has asked about you every hour. That's {hours} questions.",
+      "It's been {hours} hours. {queen} pretends she isn't counting."
     ],
     "bond": [
       "{queen} and her {bond} {other} talked about you until dawn.",
       "{queen} told her {bond} {other} all about you. Now {other} wants to meet you.",
-      "{other} asked {queen} what you are like. {queen} blushed."
+      "{other} asked {queen} what you are like. {queen} blushed.",
+      "{queen} and her {bond} {other} have a bet about you.",
+      "{other} told {queen} you're the one. {queen} said she knew."
     ],
     "rival": [
       "{queen} and {other} are not speaking. Some say it is about you.",
       "{queen} and {other} wore the same colour today. On purpose. For you.",
-      "A duel of glances at the Market: {queen} and {other}, over you."
+      "A duel of glances at the Market: {queen} and {other}, over you.",
+      "{queen} and {other} both sent you flowers. Same day. Same hour.",
+      "{queen} says {other} is all talk. {other} says the same."
     ],
     "you": [
       "People say you reached {skill} {level}. The queens noticed.",
       "Your name came up at the Inn: {reps} passes recited, and counting.",
-      "Children in the street play at being you, reciting {skill}."
+      "Children in the street play at being you, reciting {skill}.",
+      "The guards whisper about your {skill}. Level {level}, they say.",
+      "{reps} passes and counting. The whole Court knows your name."
     ]
   },
   "bondTalk": {
     "sister": [
       "My sister {other} asks about you every day. I tell her nothing. Mostly.",
       "{other} says you have kind eyes. My sister is never wrong.",
-      "Be good to {other} too. She's my sister, and she likes you."
+      "Be good to {other} too. She's my sister, and she likes you.",
+      "{other} and I used to recite together as girls. You'd have liked it.",
+      "Don't tell {other} I said so, but she's the best of us.",
+      "My sister {other} thinks you're charming. She's right, for once.",
+      "{other} borrowed my favourite necklace again. Sisters."
     ],
     "friend": [
       "{other} told me about you. All good things, I promise.",
       "My friend {other} says I smile more since you came.",
-      "If you see {other}, say I said hello. And that you're mine."
+      "If you see {other}, say I said hello. And that you're mine.",
+      "{other} and I had tea this morning. Guess who we talked about.",
+      "{other} is a dear. She says I should keep you.",
+      "My friend {other} wants to meet you properly. Should I let her?",
+      "{other} always knows how to cheer me up. So do you."
     ],
     "rival": [
       "If {other} smiles at you, don't smile back.",
       "{other}? Please. You can do so much better.",
-      "I saw {other} looking at you. I didn't like it."
+      "I saw {other} looking at you. I didn't like it.",
+      "{other} thinks she's so special. She isn't.",
+      "If {other} invites you anywhere, say you're busy. With me.",
+      "{other} copied my hair again. Can you believe it?",
+      "I don't hate {other}. I just like you better than she does."
     ]
   }
 }

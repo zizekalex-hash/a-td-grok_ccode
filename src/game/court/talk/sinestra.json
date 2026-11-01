@@ -67,39 +67,110 @@
     ]
   },
   "lines": {
-    "greet": ["Feel that heat? That's my welcome.", "My forge is hotter when you visit. Curious."],
-    "locked": ["Shape metal first. Smithing {need}, little smith."],
-    "watch": ["Recite at my anvil. Make it ring.", "Show me fire in your words."],
-    "streak": ["Three. Sparks fly.", "Five! Now it's burning.", "Ten! You set my forge ablaze."],
-    "levelUp": ["{skill} {level}. Hot.", "{skill} {level}! Oh, I like that."],
-    "gift": ["A gift? How warm of you.", "I accept. With pleasure."],
-    "giftLoved": ["A Heart of embers! It beats like mine.", "Still warm. Just like I like it."],
+    "greet": [
+      "Feel that heat? That's my welcome.",
+      "My forge is hotter when you visit. Curious.",
+      "Ahh, my spark. The forge burns brighter already.",
+      "Come in, the anvil's hot and so am I.",
+      "There's my little smith."
+    ],
+    "locked": [
+      "Shape metal first. Smithing {need}, little smith.",
+      "Smithing {need}, darling. I only melt for craftsmen.",
+      "Come back at Smithing {need}. Then we'll strike sparks."
+    ],
+    "watch": [
+      "Recite at my anvil. Make it ring.",
+      "Show me fire in your words.",
+      "Recite like a hammer: strong and steady.",
+      "Stoke me with your words.",
+      "I'm listening. Make it burn."
+    ],
+    "streak": [
+      "Three. Sparks fly.",
+      "Five! Now it's burning.",
+      "Five. Now the steel glows.",
+      "Ten! You set my forge ablaze.",
+      "Ten! White hot! Magnificent!"
+    ],
+    "levelUp": [
+      "{skill} {level}. Hot.",
+      "{skill} {level}! Oh, I like that.",
+      "{skill} {level}. Tempered and stronger.",
+      "{skill} at {level}. The forge roars for you.",
+      "Level {level}. Hot work, darling."
+    ],
+    "gift": [
+      "A gift? How warm of you.",
+      "I accept. With pleasure.",
+      "Mm, a gift. How warming.",
+      "For me? You know how to stoke a fire.",
+      "Thank you, spark."
+    ],
+    "giftLoved": [
+      "A Heart of embers! It beats like mine.",
+      "Still warm. Just like I like it.",
+      "A heart of embers... you know me inside out.",
+      "My favourite. I'm burning for you.",
+      "Oh, this glows. Just like I do now."
+    ],
     "tierUp": [
       "{tier}. The fire between us grows.",
-      "We're {tier}. Careful, you'll get burned. Nicely."
+      "We're {tier}. Careful, you'll get burned. Nicely.",
+      "{tier}. Our fire grows hotter.",
+      "We're {tier}. The forge has never burned so bright."
     ],
-    "dateStart": ["Walk through the fire with me. Recite as we go."],
-    "dateEnd": ["Not a single burn. I'm impressed.", "Come back when the forge is hottest."],
+    "dateStart": [
+      "Walk through the fire with me. Recite as we go.",
+      "Tonight we forge something together. Recite to the flames.",
+      "Come close to the fire. Closer."
+    ],
+    "dateEnd": [
+      "Not a single burn. I'm impressed.",
+      "Come back when the forge is hottest.",
+      "You set me smouldering. Come back tomorrow.",
+      "That was a perfect heat. Go cool off."
+    ],
     "missed": [
       "{hours} hours without you. The forge nearly went out.",
-      "There you are. I was about to melt something in protest."
+      "There you are. I was about to melt something in protest.",
+      "{hours} hours. The forge went cold without you.",
+      "You left me {hours} hours with only embers.",
+      "Back at last. I'm burning to see you."
     ],
     "jealous": [
       "{rival}? Her fire is a candle beside mine. Remember it.",
-      "You went to {rival}. I'm burning, and not the good way."
+      "You went to {rival}. I'm burning, and not the good way.",
+      "{rival}? She has no fire. What were you thinking?",
+      "I smelled {rival}'s smoke on you. Weak smoke.",
+      "Choose the fire, darling. Not {rival}."
     ],
-    "reconciled": ["The fire's back. So are you.", "Forgiven. Now stoke the flames again."],
+    "reconciled": [
+      "The fire's back. So are you.",
+      "Forgiven. Now stoke the flames again.",
+      "Mm, forgiven. The fire's back.",
+      "Come here, spark. We're hot again.",
+      "All right. The forge is yours again."
+    ],
     "wish": [
       "Feed my fire: {count} passes of {skill}, today.",
-      "I crave {count} passes of {skill}. Don't keep me waiting."
+      "I crave {count} passes of {skill}. Don't keep me waiting.",
+      "Stoke my fire: {count} passes of {skill}.",
+      "I want {count} passes of {skill}, hot and fast.",
+      "A smith's wish: {count} passes of {skill}."
     ],
     "wishDone": [
       "Every pass, white-hot. Magnificent.",
-      "Wish fulfilled. I'm positively smouldering."
+      "Wish fulfilled. I'm positively smouldering.",
+      "Ahh, every pass. I'm glowing.",
+      "My wish, forged and finished. Beautiful.",
+      "You did it all. I'm on fire for you."
     ],
     "memory": [
       "{count} passes in my forge. You've been tempered.",
-      "{count}. I've forged a little crown from them."
+      "{count}. I've forged a little crown from them.",
+      "{count} passes in my forge. Each one a hammer strike.",
+      "{count}. I've cast them all in steel."
     ]
   }
 }

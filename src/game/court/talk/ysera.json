@@ -75,47 +75,109 @@
   "lines": {
     "greet": [
       "You found me between the stars. Most people don't.",
-      "Hush. Stay a while. The Void is kind tonight."
+      "Hush. Stay a while. The Void is kind tonight.",
+      "Mm... you came. I dreamed you would.",
+      "Hello, dreamer. Sit by the quiet with me.",
+      "Oh... it's really you. Not a dream this time."
     ],
-    "locked": ["Your mind is too loud. Reach Serenity {need} and come back."],
-    "watch": ["Let the words drift. I'm here.", "Recite softly. The stars are listening too."],
+    "locked": [
+      "Your mind is too loud. Reach Serenity {need} and come back.",
+      "Serenity {need} first, little star. Then you'll hear me.",
+      "Too loud inside, still. Come back at Serenity {need}."
+    ],
+    "watch": [
+      "Let the words drift. I'm here.",
+      "Recite softly. The stars are listening too.",
+      "Softly now. Let the words drift.",
+      "I'm listening with my eyes closed.",
+      "Recite like you're telling the night a secret."
+    ],
     "streak": [
       "Three, like ripples.",
+      "Three... like stars lining up.",
       "Five. You're flowing now.",
-      "Ten. You and the Void are one."
+      "Five. The void is humming along.",
+      "Ten. You and the Void are one.",
+      "Ten. I've never been so wide awake."
     ],
     "levelUp": [
       "{skill} {level}. I dreamed you would.",
-      "You rose in {skill}. The stars told me first."
+      "You rose in {skill}. The stars told me first.",
+      "{skill} {level}... I saw it in a dream first.",
+      "{skill} has reached {level}. The stars rearranged a little.",
+      "Level {level}. You're growing brighter, dreamer."
     ],
-    "gift": ["A gift... from the waking world. Thank you.", "I'll keep it beside my dreams."],
+    "gift": [
+      "A gift... from the waking world. Thank you.",
+      "I'll keep it beside my dreams.",
+      "For me? It feels like a wish come true.",
+      "Thank you... I'll keep it under my pillow.",
+      "How gentle of you."
+    ],
     "giftLoved": [
       "A moon lily. You really do understand me.",
-      "My favourite flower, from you. I'm speechless."
+      "My favourite flower, from you. I'm speechless.",
+      "A moon lily... it glows the way you do.",
+      "My favourite. I'll dream of this all week.",
+      "Oh... you remembered what I love."
     ],
-    "tierUp": ["We are {tier} now. I felt it.", "{tier}. Even my dreams know your name."],
-    "dateStart": ["Close your eyes and take my hand. Now recite."],
+    "tierUp": [
+      "We are {tier} now. I felt it.",
+      "{tier}. Even my dreams know your name.",
+      "{tier}... it feels like falling asleep happy.",
+      "We're {tier} now. I'll remember this when I wake."
+    ],
+    "dateStart": [
+      "Close your eyes and take my hand. Now recite.",
+      "Lie back. Count the stars with your words.",
+      "Tonight we drift together. Recite softly."
+    ],
     "dateEnd": [
       "That was the most beautiful dream.",
-      "Visit me again tonight. In your sleep, if you like."
+      "Visit me again tonight. In your sleep, if you like.",
+      "That was the loveliest dream I've ever had awake.",
+      "Sleep well. I'll find you in it."
     ],
     "missed": [
       "I dreamed of you for {hours} hours. You were never quite there.",
-      "You're real again. The dreams were lonely."
+      "You're real again. The dreams were lonely.",
+      "{hours} hours... I looked for you in every dream.",
+      "You've been away {hours} hours. The void felt bigger.",
+      "Oh, you're back. I kept the stars lit for you."
     ],
     "jealous": [
       "I dreamed you were with {rival}. Was it only a dream?",
-      "{rival}'s starlight is on you. The void notices everything."
+      "{rival}'s starlight is on you. The void notices everything.",
+      "{rival}... I dreamed of you two. I didn't like that dream.",
+      "You spent your hours with {rival}. I only had the dark.",
+      "Is {rival} softer than starlight? I wonder."
     ],
-    "reconciled": ["The bad dream is over. Stay.", "Mm. Forgiven, before you even asked."],
+    "reconciled": [
+      "The bad dream is over. Stay.",
+      "Mm. Forgiven, before you even asked.",
+      "Mm. It's all forgiven, like a bad dream fading.",
+      "Come back to the quiet. I missed you there.",
+      "There... the void is warm again."
+    ],
     "wish": [
       "Will you do something, while I drift? {count} passes of {skill}.",
-      "Tonight's wish: {count} passes of {skill}. I'll dream of it."
+      "Tonight's wish: {count} passes of {skill}. I'll dream of it.",
+      "I wished on a star for {count} passes of {skill}. Will you?",
+      "Would you recite {count} passes of {skill}, for me, today?",
+      "A dreamer's wish: {count} passes of {skill}."
     ],
-    "wishDone": ["You made my dream come true. Truly.", "I felt every pass. Like warm rain."],
+    "wishDone": [
+      "You made my dream come true. Truly.",
+      "I felt every pass. Like warm rain.",
+      "My star wish came true... because of you.",
+      "Every pass, softly done. Thank you.",
+      "I'll dream about this one forever."
+    ],
     "memory": [
       "{count} passes... I count them instead of stars now.",
-      "{count}. I keep each one in a little dream."
+      "{count}. I keep each one in a little dream.",
+      "{count} passes... I hear every one when I sleep.",
+      "{count}. A whole sky of your words."
     ]
   }
 }

@@ -69,47 +69,109 @@
   "lines": {
     "greet": [
       "You climbed all the way up here? Persistent.",
-      "Back again. I suppose that's... nice."
+      "Back again. I suppose that's... nice.",
+      "You again. Fine.",
+      "Hm. You climbed all this way. Again.",
+      "Back? I wasn't waiting. Much."
     ],
-    "locked": ["Archery {need}. Then I might look up from my bow."],
-    "watch": ["Recite. I'll pretend not to listen.", "Fine. Show me what you've got."],
+    "locked": [
+      "Archery {need}. Then I might look up from my bow.",
+      "Archery {need}. Then we'll talk.",
+      "Come back at Archery {need}. Until then, stay out of range."
+    ],
+    "watch": [
+      "Recite. I'll pretend not to listen.",
+      "Fine. Show me what you've got.",
+      "Go on. I'm watching. Don't miss.",
+      "Recite. Steady. Like drawing a bow.",
+      "Fine. Impress me."
+    ],
     "streak": [
       "Three. Not terrible.",
+      "Three. Not bad.",
       "Five. You're almost good.",
-      "Ten. All right. I'm impressed. Don't tell anyone."
+      "Five. Okay. I'm paying attention.",
+      "Ten. All right. I'm impressed. Don't tell anyone.",
+      "Ten. ...Fine. That was good."
     ],
-    "levelUp": ["{skill} {level}. About time.", "{skill} {level}. Hm. Keep that up."],
-    "gift": ["A gift. For me. Hm.", "...Thank you."],
+    "levelUp": [
+      "{skill} {level}. About time.",
+      "{skill} {level}. Hm. Keep that up.",
+      "{skill} {level}. Not bad, ranger.",
+      "{skill} at {level}. You keep surprising me.",
+      "Level {level}. Don't get cocky."
+    ],
+    "gift": [
+      "A gift. For me. Hm.",
+      "...Thank you.",
+      "...Thanks.",
+      "Hm. Fine. I'll keep it.",
+      "You didn't have to. ...Thank you."
+    ],
     "giftLoved": [
       "A Windrunner arrow. You've been paying attention.",
-      "Raven feathers. You have taste, after all."
+      "Raven feathers. You have taste, after all.",
+      "A Windrunner arrow. You noticed.",
+      "My favourite. Don't make a big deal of it.",
+      "...That's actually perfect. Thank you."
     ],
-    "tierUp": ["{tier}. Don't make a thing of it.", "We're {tier}. I suppose I allow it."],
-    "dateStart": ["Watch the dark with me. Recite, quietly."],
+    "tierUp": [
+      "{tier}. Don't make a thing of it.",
+      "We're {tier}. I suppose I allow it.",
+      "{tier}. Don't make it awkward.",
+      "We're {tier}. I suppose that's fine. Better than fine."
+    ],
+    "dateStart": [
+      "Watch the dark with me. Recite, quietly.",
+      "Up on the spire. Just us and the wind.",
+      "Recite to me under the dead trees. I like it here."
+    ],
     "dateEnd": [
       "That was... not bad. Come back tomorrow night.",
-      "You stayed till dawn. Nobody does that."
+      "You stayed till dawn. Nobody does that.",
+      "That was... nice. Don't tell anyone.",
+      "Go. Come back tomorrow. If you want."
     ],
     "missed": [
       "{hours} hours. I didn't notice. I counted, but I didn't notice.",
-      "Back. Good. The spire was quieter than I like."
+      "Back. Good. The spire was quieter than I like.",
+      "{hours} hours. I wasn't counting. I was counting.",
+      "You were gone {hours} hours. The spire was quiet. Too quiet.",
+      "Back. Good. I mean, whatever."
     ],
     "jealous": [
       "{rival}? I see far from up here. Remember that.",
-      "Spend your time on {rival}, then. See if I care. (I care.)"
+      "Spend your time on {rival}, then. See if I care. (I care.)",
+      "{rival}? Really. Hm.",
+      "You spent your time with {rival}. Fine. Go back to her.",
+      "I saw you with {rival}. Not that I care."
     ],
-    "reconciled": ["Fine. Truce.", "You're forgiven. Don't make me say it twice."],
+    "reconciled": [
+      "Fine. Truce.",
+      "You're forgiven. Don't make me say it twice.",
+      "Fine. Forgiven. Don't push it.",
+      "We're good. For now.",
+      "Hm. Okay. Come here."
+    ],
     "wish": [
       "If you're bored: {count} passes of {skill}. Today.",
-      "One request. {count} passes of {skill}. Don't make it a big thing."
+      "One request. {count} passes of {skill}. Don't make it a big thing.",
+      "{count} passes of {skill}. Today. Don't make me ask twice.",
+      "Want to impress me? {count} passes of {skill}.",
+      "{count} passes of {skill}. Consider it a test."
     ],
     "wishDone": [
       "You did all of it. ...Thank you.",
-      "Hm. Every pass. You're stubborn. I like that."
+      "Hm. Every pass. You're stubborn. I like that.",
+      "You did it. I'm... impressed.",
+      "Every pass. Hm. Thank you.",
+      "Done. You actually did it. Huh."
     ],
     "memory": [
       "{count} passes on my spire. I've kept count of every arrow. And of you.",
-      "{count}. Most give up at ten."
+      "{count}. Most give up at ten.",
+      "{count} passes for me. I noticed every one.",
+      "{count}. Nobody else ever bothered."
     ]
   }
 }

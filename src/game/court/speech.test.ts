@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { CONFIG } from "../config.ts";
 import { QUEEN_KEYS, type LineKey } from "./rules.ts";
 import { chat, dress, feedLine, fillAll, speak, variety } from "./speech.ts";
+import { queenLines } from "./talk.ts";
 import { TOPICS, VOICES } from "./voices.ts";
 
 const C = CONFIG.court;
@@ -90,7 +91,7 @@ describe("queens' voices", () => {
       const line = speak("azshara", "greet", rand, FULL, 4);
       assert.ok(!/\{(pet|thing)\}/.test(line), line);
       assert.ok(
-        C.queens.azshara.lines.greet!.some((g) => line.includes(g)),
+        queenLines("azshara", "greet").some((g) => line.includes(g)),
         line,
       );
       seen.add(line);
@@ -134,19 +135,7 @@ describe("queens' voices", () => {
       assert.ok(!c.answer.includes("{"), c.answer);
     }
     // Topics just talked about wait when there are others.
-    const recent = [
-      "day",
-      "her",
-      "you",
-      "sister",
-      "friend",
-      "foe",
-      "place",
-      "gift",
-      "dream",
-      "reps",
-      "flirt",
-    ];
+    const recent = Object.keys(TOPICS);
     assert.equal(chat("jaina", seq(2), FULL, 0, recent).topic, "own");
   });
 

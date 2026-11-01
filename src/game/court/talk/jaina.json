@@ -69,50 +69,109 @@
   "lines": {
     "greet": [
       "Mind the ropes, sailor. What brings you to my harbor?",
-      "Oh, it's you. I may have been watching the docks for you."
+      "Oh, it's you. I may have been watching the docks for you.",
+      "Oh, hey! Perfect timing, the tide's coming in.",
+      "Hi! I was just reading about you. Not really. Maybe.",
+      "Welcome to the harbor, scholar."
     ],
-    "locked": ["Catch me something first. Fishing {need}, then we talk."],
-    "watch": ["Recite for the sea. I'm listening, too.", "Go on. Make the gulls jealous."],
+    "locked": [
+      "Catch me something first. Fishing {need}, then we talk.",
+      "Get to Fishing {need} first. Trust me, it helps.",
+      "Fishing {need}, then come find me on the docks."
+    ],
+    "watch": [
+      "Recite for the sea. I'm listening, too.",
+      "Go on. Make the gulls jealous.",
+      "Okay, go. I'm taking notes.",
+      "Recite like a spell: clear, sharp, no wasted words.",
+      "I'm listening. Make it count."
+    ],
     "streak": [
       "Three! Like waves on the shore.",
+      "Three! Nice rhythm.",
       "Five. You're carrying a tide now.",
-      "Ten! Even my spells aren't that steady."
+      "Five! Okay, you're good at this.",
+      "Ten! Even my spells aren't that steady.",
+      "Ten! That's basically a spell. I'm impressed."
     ],
     "levelUp": [
       "{skill} {level}! I knew you had it in you.",
-      "{skill} {level}. You're making a sorceress blush."
+      "{skill} {level}. You're making a sorceress blush.",
+      "{skill} {level}! I'm writing that down.",
+      "Level {level} in {skill}. Okay, show-off.",
+      "{skill} {level}. You're catching up to me. Careful."
     ],
-    "gift": ["For me? That's sweet of you.", "Thank you. I'll keep it on my desk."],
+    "gift": [
+      "For me? That's sweet of you.",
+      "Thank you. I'll keep it on my desk.",
+      "Oh! Thank you. That's really sweet.",
+      "For me? Okay, I'm blushing a little.",
+      "You didn't have to. I'm glad you did."
+    ],
     "giftLoved": [
       "A sea pearl! You really do know me.",
-      "My favourite. Careful, I might start liking you."
+      "My favourite. Careful, I might start liking you.",
+      "A sea pearl! Where did you even find this?",
+      "My favourite. You really pay attention, don't you?",
+      "Okay, now I'm definitely blushing."
     ],
-    "tierUp": ["{tier}. I think I like where this is going.", "We're {tier} now. Don't sail off."],
-    "dateStart": ["Just us, the wind and the sunset. Recite me something."],
-    "dateEnd": ["Best sunset I've ever had.", "Come sail with me again. Soon."],
+    "tierUp": [
+      "{tier}. I think I like where this is going.",
+      "We're {tier} now. Don't sail off.",
+      "{tier}? I think I like the sound of that.",
+      "We're {tier} now. Don't make it weird. Okay, a little weird."
+    ],
+    "dateStart": [
+      "Just us, the wind and the sunset. Recite me something.",
+      "Come sail with me. Recite to the waves.",
+      "The harbor lights are on. Just us tonight."
+    ],
+    "dateEnd": [
+      "Best sunset I've ever had.",
+      "Come sail with me again. Soon.",
+      "That was lovely. Really lovely. Same time tomorrow?",
+      "Fair winds home. I'll be thinking about tonight."
+    ],
     "missed": [
       "{hours} hours! I watched every ship come in. None were you.",
-      "You're back. I- I didn't wait at the dock. Much."
+      "You're back. I- I didn't wait at the dock. Much.",
+      "{hours} hours! I thought you'd sailed off without me.",
+      "You were gone {hours} hours. I cast three spells to pass the time.",
+      "There you are! The harbor was boring without you."
     ],
     "jealous": [
       "You were with {rival}? I'm not jealous. I'm a sorceress. I'm... fine.",
-      "{rival}, huh. The sea's gone choppy all of a sudden."
+      "{rival}, huh. The sea's gone choppy all of a sudden.",
+      "{rival}? Really? I thought we had something.",
+      "Oh, you were with {rival}. That's fine. Totally fine.",
+      "I saw you and {rival}. I'm not upset. I'm a little upset."
     ],
     "reconciled": [
       "Calm waters again. I'm glad.",
-      "Okay. I forgive you. Don't make me freeze you."
+      "Okay. I forgive you. Don't make me freeze you.",
+      "Okay, okay. Friends again. More than friends.",
+      "Forgiven. Don't do that again, though.",
+      "All right, I can't stay mad at you."
     ],
     "wish": [
       "Would you, for me? {count} passes of {skill} today.",
-      "My wish for today: {count} passes of {skill}. I'll chart your course."
+      "My wish for today: {count} passes of {skill}. I'll chart your course.",
+      "Can you do {count} passes of {skill} for me today?",
+      "Little favour: {count} passes of {skill}. Please?",
+      "Today's spell needs {count} passes of {skill}. Help?"
     ],
     "wishDone": [
       "You actually did it all. For me. I'm blushing, aren't I?",
-      "Every pass! I could cast fireworks."
+      "Every pass! I could cast fireworks.",
+      "You did it! I could kiss you. Maybe I will.",
+      "Every pass! You're amazing, you know that?",
+      "Wish granted. You're officially my favourite."
     ],
     "memory": [
       "{count} passes in my harbor. I keep a logbook, you know.",
-      "{count}. That's more than the tides in a season."
+      "{count}. That's more than the tides in a season.",
+      "{count} passes for me. I kept a log, like a ship's.",
+      "{count}. That's more than any sailor ever gave me."
     ]
   }
 }

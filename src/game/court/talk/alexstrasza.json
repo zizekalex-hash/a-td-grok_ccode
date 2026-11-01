@@ -69,59 +69,109 @@
   "lines": {
     "greet": [
       "The flowers turned toward you. So did I.",
-      "You came all the way out to my meadow? Sweet."
+      "You came all the way out to my meadow? Sweet.",
+      "Welcome back to the Shire, little sprout.",
+      "The bees told me you were coming.",
+      "You've grown since I last saw you. I can tell."
     ],
-    "locked": ["Grow a little more, little sprout. Total level {need}, then we'll talk."],
+    "locked": [
+      "Grow a little more, little sprout. Total level {need}, then we'll talk.",
+      "Grow a little more, seedling. Total level {need}, then we'll talk.",
+      "Not yet. Every flower opens in its season. Yours is level {need}."
+    ],
     "watch": [
       "Let your words grow. I'll watch them bloom.",
-      "Breathe with the meadow, then recite."
+      "Breathe with the meadow, then recite.",
+      "Let your words take root.",
+      "Recite slowly. Growth can't be rushed.",
+      "I'm listening, the way the garden listens to rain."
     ],
     "streak": [
       "Three! Everything you touch grows.",
+      "Three! A sprout breaks the soil.",
       "Five in a row. The bees are jealous.",
-      "Ten! The whole Shire is in bloom for you."
+      "Five! Look at you blossom.",
+      "Ten! The whole Shire is in bloom for you.",
+      "Ten! The whole orchard is in bloom for you."
     ],
     "levelUp": [
       "{skill} {level}. You're blossoming, love.",
-      "Another level in {skill}. I'm so proud I could bloom."
+      "Another level in {skill}. I'm so proud I could bloom.",
+      "{skill} {level}. Another ring in your trunk.",
+      "{skill} grew to {level}. I felt it, like spring.",
+      "Level {level} in {skill}! Let's plant something to celebrate."
     ],
     "gift": [
       "How thoughtful. Thank you.",
-      "You're a gentleman. Don't let anyone tell you otherwise."
+      "You're a gentleman. Don't let anyone tell you otherwise.",
+      "Thank you, dear one. I'll keep it near the roses.",
+      "A gift! How thoughtful you're growing.",
+      "Oh, lovely. It smells like kindness."
     ],
     "giftLoved": [
       "Wildflowers from my own fields! You noticed.",
-      "My favourite. My heart is full."
+      "My favourite. My heart is full.",
+      "Wildflowers! You picked these yourself, didn't you?",
+      "My favourite. My heart is a garden in June.",
+      "Oh, you know me so well. I'm all in bloom."
     ],
-    "tierUp": ["{tier}. Something is growing between us.", "We're {tier}. Water it often."],
-    "dateStart": ["Blanket, sunshine, you. Recite me something sweet."],
+    "tierUp": [
+      "{tier}. Something is growing between us.",
+      "We're {tier}. Water it often.",
+      "We're {tier} now. Something lovely is growing between us.",
+      "{tier}. I'll plant a tree to remember today."
+    ],
+    "dateStart": [
+      "Blanket, sunshine, you. Recite me something sweet.",
+      "Walk with me through the orchard. Recite while the petals fall.",
+      "Tonight the fireflies are ours. Your words, please."
+    ],
     "dateEnd": [
       "Best picnic in a thousand years.",
-      "Come back when the roses open. I'll be waiting."
+      "Come back when the roses open. I'll be waiting.",
+      "Thank you for tonight. I feel twice as alive.",
+      "Go gently. Come back with the morning."
     ],
     "missed": [
       "{hours} hours apart. Even the roses drooped.",
-      "You came back. The whole Shire is blooming again."
+      "You came back. The whole Shire is blooming again.",
+      "{hours} hours. My garden wilted a little. So did I.",
+      "You were gone {hours} hours. Even the bees asked.",
+      "Welcome back. The roses refused to open without you."
     ],
     "jealous": [
       "Off with {rival}, were you? My flowers noticed. So did I.",
-      "{rival}. Of course. Am I not warm enough for you?"
+      "{rival}. Of course. Am I not warm enough for you?",
+      "{rival}'s garden must be very lovely, for you to stay so long.",
+      "You were with {rival}. I'm not wilting. I'm not.",
+      "Thorns grow too, you know. Ask {rival}."
     ],
     "reconciled": [
       "There. Spring forgives winter. Every time.",
-      "I can never stay cross with you for long. It's your fault."
+      "I can never stay cross with you for long. It's your fault.",
+      "There. The frost is over. Spring again.",
+      "I forgive you. Hearts grow back, like gardens.",
+      "Come here, dear one. Let's begin a new season."
     ],
     "wish": [
       "Grow for me today: {count} passes of {skill}.",
-      "A little wish: {count} passes of {skill} before the sun sets."
+      "A little wish: {count} passes of {skill} before the sun sets.",
+      "Help me grow something today: {count} passes of {skill}.",
+      "A gardener's wish: {count} passes of {skill}, before sunset.",
+      "Would you tend this for me? {count} passes of {skill}."
     ],
     "wishDone": [
       "You grew it all, just for me. I'm glowing.",
-      "Wish granted. Come, walk with me through the blossoms."
+      "Wish granted. Come, walk with me through the blossoms.",
+      "You did it! Everything is blooming at once.",
+      "My wish, granted. You make things grow, you know.",
+      "All done. You're my favourite kind of rain."
     ],
     "memory": [
       "{count} passes for me. I've planted a flower for each.",
-      "{count}. A whole garden of you."
+      "{count}. A whole garden of you.",
+      "{count} passes for me. I planted a seed for each.",
+      "{count}. That's a whole meadow of you."
     ]
   }
 }

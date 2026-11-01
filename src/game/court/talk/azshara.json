@@ -67,43 +67,111 @@
     ]
   },
   "lines": {
-    "greet": ["You may approach. Briefly.", "Ah. The one my queens keep talking about."],
-    "locked": ["Total level {need}. Then you may kneel. Then you may speak."],
-    "watch": ["Recite before the throne. Do not bore me.", "I am listening. That is an honour."],
+    "greet": [
+      "You may approach. Briefly.",
+      "Ah. The one my queens keep talking about.",
+      "Ah, my favourite subject. Approach.",
+      "The court parts for you. As it should.",
+      "You may bask in my presence. Briefly."
+    ],
+    "locked": [
+      "Total level {need}. Then you may kneel. Then you may speak.",
+      "Total level {need}, darling. I do not receive the ordinary.",
+      "Return at total level {need}. Then the throne may notice you."
+    ],
+    "watch": [
+      "Recite before the throne. Do not bore me.",
+      "I am listening. That is an honour.",
+      "Recite as if the tides were listening. They are.",
+      "Every word before the throne is remembered. Choose well.",
+      "Proceed. Impress your queen."
+    ],
     "streak": [
       "Three. Adequate.",
+      "Three. A beginning.",
       "Five. You may continue.",
-      "Ten! Magnificent. You may look at me."
+      "Five. Now you have my attention.",
+      "Ten! Magnificent. You may look at me.",
+      "Ten! Magnificent! The whole palace will hear of this."
     ],
-    "levelUp": ["{skill} {level}. I expected no less.", "{skill} {level}. Your queen is pleased."],
-    "gift": ["Accepted.", "A tribute. Good."],
+    "levelUp": [
+      "{skill} {level}. I expected no less.",
+      "{skill} {level}. Your queen is pleased.",
+      "{skill} {level}. The palace bells shall ring.",
+      "{skill} at {level}. You rise. I approve.",
+      "Level {level} in {skill}. Greatness suits you."
+    ],
+    "gift": [
+      "Accepted.",
+      "A tribute. Good.",
+      "A tribute. Placed beside the throne.",
+      "How thoughtful. Continue.",
+      "Your queen accepts this offering."
+    ],
     "giftLoved": [
       "The Jewel of the Tides. You understand royalty.",
-      "Exquisite. As am I. As are you, perhaps."
+      "Exquisite. As am I. As are you, perhaps.",
+      "The Jewel of the Tides. My heart... is a very royal thing, and it is yours.",
+      "Exquisite. Only the worthy bring me this.",
+      "Darling. You know exactly what a queen deserves."
     ],
-    "tierUp": ["You are {tier}. Few ever are.", "{tier}. Do not make me regret it."],
-    "dateStart": ["The hall is ours tonight. Recite as if the realm depends on it."],
-    "dateEnd": ["You have pleased your queen.", "Return tomorrow. That is not a request."],
+    "tierUp": [
+      "You are {tier}. Few ever are.",
+      "{tier}. Do not make me regret it.",
+      "{tier}. The court will whisper of it.",
+      "You are {tier} to me. Wear it like a crown."
+    ],
+    "dateStart": [
+      "The hall is ours tonight. Recite as if the realm depends on it.",
+      "The throne room is closed to all but you tonight.",
+      "Tonight the tides dance for us. Recite, darling."
+    ],
+    "dateEnd": [
+      "You have pleased your queen.",
+      "Return tomorrow. That is not a request.",
+      "You were magnificent. As was I.",
+      "The night is over. My favour is not."
+    ],
     "missed": [
       "{hours} hours without an audience. Unacceptable. ...I noticed.",
-      "You return. The throne room was very quiet."
+      "You return. The throne room was very quiet.",
+      "{hours} hours. The court noticed your absence. So did I.",
+      "You kept your queen waiting {hours} hours. Explain yourself. Later.",
+      "Ah, you return. The palace felt... smaller."
     ],
     "jealous": [
       "You knelt before {rival}? Before me, you kneel. Only me.",
-      "{rival}. How quaint. Remember whose favour you truly want."
+      "{rival}. How quaint. Remember whose favour you truly want.",
+      "{rival} receives your devotion while I wait? Unthinkable.",
+      "Kneel to {rival} again and you'll kneel to no one.",
+      "I hear {rival} enjoyed your company. How brave of her."
     ],
-    "reconciled": ["Your queen forgives you. Once.", "Rise. You are in my favour again."],
+    "reconciled": [
+      "Your queen forgives you. Once.",
+      "Rise. You are in my favour again.",
+      "You are pardoned. Royally.",
+      "Rise, darling. My favour returns to you.",
+      "Very well. Your queen is merciful today."
+    ],
     "wish": [
       "Your queen commands: {count} passes of {skill}, today.",
-      "Royal decree: {count} passes of {skill}. Do not disappoint."
+      "Royal decree: {count} passes of {skill}. Do not disappoint.",
+      "By royal wish: {count} passes of {skill}, before nightfall.",
+      "Your queen desires {count} passes of {skill}. Now.",
+      "Delight me: {count} passes of {skill}."
     ],
     "wishDone": [
       "My decree, fulfilled. You may stand closer.",
-      "Perfect obedience. And something more. How... rare."
+      "Perfect obedience. And something more. How... rare.",
+      "Decree fulfilled. You may kiss the ring.",
+      "Every pass, as commanded. I am... touched.",
+      "Flawless. You please your queen."
     ],
     "memory": [
       "{count} passes before the throne. I have kept count. Queens always do.",
-      "{count}. Even my sister cannot claim such devotion."
+      "{count}. Even my sister cannot claim such devotion.",
+      "{count} passes for your queen. Each one a jewel.",
+      "{count}. The palace archives record them all."
     ]
   }
 }

@@ -69,56 +69,109 @@
   "lines": {
     "greet": [
       "Ah, a visitor. My sister will be jealous.",
-      "Come closer. The dark does not bite. Usually."
+      "Come closer. The dark does not bite. Usually.",
+      "Ah, my little candle. Still burning.",
+      "Mortal. You came back. They always do.",
+      "The whispers said you'd come. They're never wrong."
     ],
-    "locked": ["Total level {need}, little star. Until then, I only whisper."],
-    "watch": ["Recite for me. I collect beautiful words.", "Speak, and let the Void listen."],
+    "locked": [
+      "Total level {need}, little star. Until then, I only whisper.",
+      "Total level {need}, sweet thing. The void is picky.",
+      "Come back at total level {need}. Until then, you're just a flicker."
+    ],
+    "watch": [
+      "Recite for me. I collect beautiful words.",
+      "Speak, and let the Void listen.",
+      "Recite. The dark is listening, and so am I.",
+      "Every word you say echoes somewhere forever.",
+      "Mm, go on. I love a voice in the void."
+    ],
     "streak": [
       "Three. The whispers approve.",
+      "Three. The shadows lean closer.",
       "Five. Delicious.",
-      "Ten! Even the Void holds its breath for you."
+      "Five. Now the void is interested.",
+      "Ten! Even the Void holds its breath for you.",
+      "Ten. Delicious. Do it again."
     ],
     "levelUp": [
       "{skill} {level}. I felt that from here.",
-      "{skill} {level}. My sister never told me you were this good."
+      "{skill} {level}. My sister never told me you were this good.",
+      "{skill} {level}. The whispers are applauding.",
+      "{skill} grew to {level}. How deliciously mortal.",
+      "Level {level}. You're becoming interesting."
     ],
-    "gift": ["A gift? How charmingly mortal.", "I will keep it. Somewhere dark and safe."],
+    "gift": [
+      "A gift? How charmingly mortal.",
+      "I will keep it. Somewhere dark and safe.",
+      "A gift? For me? How charming.",
+      "I'll add it to my collection of mortal things.",
+      "Thank you, little candle."
+    ],
     "giftLoved": [
       "A Shard of the Void. You understand me better than my sister does.",
-      "It whispers your name now. So do I."
+      "It whispers your name now. So do I.",
+      "A shard of the Void... you understand me.",
+      "Oh, this hums. Like you do.",
+      "My favourite. Careful, I might grow attached."
     ],
     "tierUp": [
       "{tier}. The Void has chosen you. So have I.",
-      "We are {tier}. Do not tell Azshara."
+      "We are {tier}. Do not tell Azshara.",
+      "{tier}. The void has never been so fond of anyone.",
+      "We're {tier}. How alarming. How lovely."
     ],
-    "dateStart": ["Take my hand. Between the stars, only your voice."],
+    "dateStart": [
+      "Take my hand. Between the stars, only your voice.",
+      "Step into the dark with me. Recite to the stars that died.",
+      "Tonight the void is ours. Whisper something."
+    ],
     "dateEnd": [
       "Even eternity felt short tonight.",
-      "Come back to the dark soon. I will be waiting."
+      "Come back to the dark soon. I will be waiting.",
+      "That was... nice. Don't tell my sister I said so.",
+      "Go back to the light, candle. For now."
     ],
     "missed": [
       "{hours} hours. The void counted each one, whispering your name.",
-      "Back from the light? It never keeps you like I do."
+      "Back from the light? It never keeps you like I do.",
+      "{hours} hours. I watched the door. The door watched me.",
+      "You vanished for {hours} hours. Even the void noticed.",
+      "Back from the light? It never suits you."
     ],
     "jealous": [
       "Running to {rival}? The shadows told me. They tell me everything.",
-      "{rival}... Shall I whisper to her what you whispered to me?"
+      "{rival}... Shall I whisper to her what you whispered to me?",
+      "{rival}? She's so... bright. How tiresome.",
+      "You were with {rival}. The whispers told me everything.",
+      "Careful with {rival}. I'm much more interesting."
     ],
     "reconciled": [
       "Mm. I'll let it go. The void is patient.",
-      "There. Mine again. Did you ever really leave?"
+      "There. Mine again. Did you ever really leave?",
+      "Forgiven. The void forgets nothing, but I can pretend.",
+      "Come back into the dark, sweet thing.",
+      "Mm, all better. For now."
     ],
     "wish": [
       "A little hunger of mine: {count} passes of {skill}.",
-      "Feed me {count} passes of {skill} today. The dark grows restless."
+      "Feed me {count} passes of {skill} today. The dark grows restless.",
+      "A little wish from the void: {count} passes of {skill}.",
+      "Recite {count} passes of {skill} for me. I'll be listening.",
+      "{count} passes of {skill}, mortal. Amuse me."
     ],
     "wishDone": [
       "Delicious. Every single word.",
-      "You gave the void what it wanted. Now it wants you."
+      "You gave the void what it wanted. Now it wants you.",
+      "You did it. The void purrs.",
+      "Every pass. How devoted. How lovely.",
+      "My wish, granted. I may have to like you now."
     ],
     "memory": [
       "{count} passes in the dark with me. You can't go back now.",
-      "{count}. I wear them like jewels."
+      "{count}. I wear them like jewels.",
+      "{count} passes in the dark. I've kept every echo.",
+      "{count}. More than my sister ever got."
     ]
   }
 }

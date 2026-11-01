@@ -17,7 +17,8 @@ variety.
 3. Grok answers with the whole file, bigger. Do the next file the same way.
 4. Paste the files back into Claude ("talk files for the Court"). Claude
    checks them (`npm run talk:check`: every key in place, only the right
-   placeholders, no repeats), drops them in, tests and ships a new APK.
+   placeholders, no repeats), merges them with what is there (so lines added
+   since you downloaded the files are kept), tests and ships a new APK.
 
 One file per answer keeps Grok within its length limit. `shared.json` is the
 longest; it can be done in two halves (topics and pickupLines, then presence,
@@ -63,7 +64,8 @@ I will give you one JSON file of the game's words. Make it much richer:
   braces. A line may use none.
 - Each line one or two short sentences, at most 200 characters, no line
   repeated, no empty lines. Flirty and warm is welcome, PG-13 at most. Keep it
-  in the fantasy world: no real people, brands or places, no emoji.
+  in the fantasy world: no real people, brands or places. No emoji, except the
+  few marks the Court's notices already use (♥ 💔 💢).
 - "open" lines are short openers said before another line ("Mm.", "Darling.").
   "close" lines are short endings said after one. "warm" lines are endings for
   when she is fond of you. "pet" lines are names she calls you (a word or two,

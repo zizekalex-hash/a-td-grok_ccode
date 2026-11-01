@@ -75,56 +75,109 @@
   "lines": {
     "greet": [
       "Well, look who walked in. Sit, recite me something lovely.",
-      "There you are! I saved you the seat by the fire."
+      "There you are! I saved you the seat by the fire.",
+      "Come in, come in, the stew's still hot.",
+      "Oh, it's you! My whole day just got brighter.",
+      "Shoes off, feet up, {pet}. You've earned it."
     ],
-    "locked": ["Come closer, I don't bite."],
+    "locked": [
+      "Come closer, I don't bite.",
+      "Sit down a moment first. You look like you need a cup of something.",
+      "Not yet, love. Get some rest and come back to me."
+    ],
     "watch": [
       "Go on, I'm listening. Every word.",
-      "Recite for me. I love the sound of your voice."
+      "Recite for me. I love the sound of your voice.",
+      "I'm all ears. And a little bit heart.",
+      "Take your time. The fire's not going anywhere.",
+      "Go on, the regulars have gone quiet to listen."
     ],
     "streak": [
       "Three in a row! You're on fire, darling.",
+      "Three! I'm pouring you a little something.",
       "Don't stop now, you're glowing.",
-      "Ten! The whole inn is watching you."
+      "Five! I'm telling everyone about this.",
+      "Ten! The whole inn is watching you.",
+      "Ten! I'm so proud I could cry. I might cry."
     ],
     "levelUp": [
       "{skill} {level}? I knew it! Come here, you.",
-      "Look at you, {skill} {level}. I'm bragging about you tonight."
+      "Look at you, {skill} {level}. I'm bragging about you tonight.",
+      "{skill} {level}! I'm ringing the bell at the bar!",
+      "Level {level} in {skill}. Free mead for you all week.",
+      "{skill} {level}. I always said you had it in you."
     ],
-    "gift": ["For me? You sweet thing.", "You remembered! Thank you."],
+    "gift": [
+      "For me? You sweet thing.",
+      "You remembered! Thank you.",
+      "Oh, you shouldn't have. I'm glad you did.",
+      "I'll put it right on the shelf where I can see it.",
+      "You thought of me? That's the nicest part."
+    ],
     "giftLoved": [
       "Honey mead! You know the way to my heart.",
-      "Oh, my favourite. You're spoiling me."
+      "Oh, my favourite. You're spoiling me.",
+      "Honey mead! I'll pour us both a cup, right now.",
+      "You remembered my mead. I'm a little bit melting.",
+      "Oh, sweetheart. This is exactly what I wanted."
     ],
     "tierUp": [
       "We're {tier} now, aren't we? I like that.",
-      "{tier}. Don't you dare stop visiting."
+      "{tier}. Don't you dare stop visiting.",
+      "{tier}! I'm writing it on the slate behind the bar.",
+      "We're {tier}. I keep smiling at the mugs for no reason."
     ],
-    "dateStart": ["Just us and the hearth tonight. Recite me your best."],
-    "dateEnd": ["That was perfect. Same time tomorrow?", "I'll be humming your words all night."],
+    "dateStart": [
+      "Just us and the hearth tonight. Recite me your best.",
+      "I closed the inn early. It's just you, me and the fire.",
+      "I put on my good apron. Recite me something sweet."
+    ],
+    "dateEnd": [
+      "That was perfect. Same time tomorrow?",
+      "I'll be humming your words all night.",
+      "Best evening I've had in years. Truly.",
+      "Go on home before I ask you to stay. Tomorrow?"
+    ],
     "missed": [
       "{hours} hours! I kept your seat warm the whole time. Don't you dare do that again.",
-      "There you are. I set out two cups every night, just in case."
+      "There you are. I set out two cups every night, just in case.",
+      "{hours} hours! I nearly sent out a search party.",
+      "Where have you been for {hours} hours? Sit. Eat. Tell me everything.",
+      "The fire missed you. So did I. Mostly I did."
     ],
     "jealous": [
       "I saw you with {rival}. It's fine. I'm fine. ...Is she nicer than me?",
-      "{rival} again? Hm. The fire's gone a bit cold in here."
+      "{rival} again? Hm. The fire's gone a bit cold in here.",
+      "{rival} gets a visit and I get an empty chair? Hmph.",
+      "I heard you were with {rival}. I hope her tea was terrible.",
+      "{rival} this, {rival} that. What about me, hm?"
     ],
     "reconciled": [
       "All right, all right. You're forgiven. Come here.",
-      "There's the one I like. Let's not fight again."
+      "There's the one I like. Let's not fight again.",
+      "Oh, come here. I can't stay cross with you.",
+      "Forgiven. Now help me carry these mugs.",
+      "There. All mended. Like a good blanket."
     ],
     "wish": [
       "Do something for me today? {count} passes of {skill}. I'll be counting.",
-      "Today I want {count} passes of {skill}. For me. Promise?"
+      "Today I want {count} passes of {skill}. For me. Promise?",
+      "Will you do me a favour? {count} passes of {skill}, for me.",
+      "Just {count} passes of {skill} today. Then come tell me all about it.",
+      "I've a little wish: {count} passes of {skill}. Would you, love?"
     ],
     "wishDone": [
       "You did it! All of it, for me. I could dance on the bar.",
-      "My wish, granted. Nobody's ever done that for me before."
+      "My wish, granted. Nobody's ever done that for me before.",
+      "All done! I'm making you something special tonight.",
+      "You did it, every pass. Come here, you.",
+      "My wish came true, and you made it so."
     ],
     "memory": [
       "{count} passes, just for me. I remember every one.",
-      "{count} times you've recited for me. I wrote them all down."
+      "{count} times you've recited for me. I wrote them all down.",
+      "{count} passes for me. I keep a tally on the doorframe.",
+      "{count}! That's more than every regular put together."
     ]
   }
 }

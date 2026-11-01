@@ -69,44 +69,108 @@
   "lines": {
     "greet": [
       "Elune's light finds you. And so do I.",
-      "Welcome to the temple. Walk softly; I'm glad you came."
+      "Welcome to the temple. Walk softly; I'm glad you came.",
+      "Elune brought you back to me.",
+      "Welcome, little hunter. The moon is high.",
+      "Ah, you're here. The temple feels whole."
     ],
-    "locked": ["Move with grace first. Dance {need}, then come to me."],
-    "watch": ["Let the moon hear your words.", "Recite, and I will keep the light on you."],
+    "locked": [
+      "Move with grace first. Dance {need}, then come to me.",
+      "Dance {need} first, friend. Elune loves grace.",
+      "Come back at Dance {need}. The moon will wait for you."
+    ],
+    "watch": [
+      "Let the moon hear your words.",
+      "Recite, and I will keep the light on you.",
+      "Recite like a prayer, slow and true.",
+      "I'm listening, as the moon listens.",
+      "Breathe, then begin."
+    ],
     "streak": [
       "Three, like the phases of the moon.",
+      "Three. A steady hand.",
       "Five. Graceful.",
-      "Ten! The moon itself is smiling at you."
+      "Five. Elune smiles.",
+      "Ten! The moon itself is smiling at you.",
+      "Ten. Truly blessed. I'm proud of you."
     ],
-    "levelUp": ["{skill} {level}. Beautiful.", "You rose in {skill}. Elune and I both noticed."],
-    "gift": ["A gift under the moon. Thank you.", "How kind. It glows a little, like you."],
+    "levelUp": [
+      "{skill} {level}. Beautiful.",
+      "You rose in {skill}. Elune and I both noticed.",
+      "{skill} {level}. Elune has seen it.",
+      "Level {level} in {skill}. Your aim grows true.",
+      "{skill} at {level}. A hunter's patience pays."
+    ],
+    "gift": [
+      "A gift under the moon. Thank you.",
+      "How kind. It glows a little, like you.",
+      "Thank you. It will rest by the moonwell.",
+      "A kind gift. Elune notices kindness.",
+      "How thoughtful you are."
+    ],
     "giftLoved": [
       "Moonwell water! You understand what is sacred to me.",
-      "My favourite. My heart is moonlit."
+      "My favourite. My heart is moonlit.",
+      "Moonwell water... you brought me a piece of the moon.",
+      "My favourite. Thank you, dear heart.",
+      "Oh, this is precious. Like you."
     ],
-    "tierUp": ["{tier}. The moon has blessed this.", "We are {tier}. I feel it in the light."],
-    "dateStart": ["Take my hand. We dance, you recite."],
+    "tierUp": [
+      "{tier}. The moon has blessed this.",
+      "We are {tier}. I feel it in the light.",
+      "{tier}. Elune blesses us both.",
+      "We are {tier} now. I'm glad, under every moon."
+    ],
+    "dateStart": [
+      "Take my hand. We dance, you recite.",
+      "Walk with me under the moon. Recite softly.",
+      "The temple is quiet tonight. Just us, and Elune."
+    ],
     "dateEnd": [
       "The moon will remember tonight. So will I.",
-      "Dance with me again when the moon is full."
+      "Dance with me again when the moon is full.",
+      "Go in peace, little hunter. Return soon."
     ],
     "missed": [
       "{hours} hours. I prayed to Elune for your return.",
-      "The moon rose without you. It looked lonely. So did I."
+      "The moon rose without you. It looked lonely. So did I.",
+      "{hours} hours. I prayed for your safe return.",
+      "You were away {hours} hours. The moon waited. So did I.",
+      "Welcome home. The temple bells rang for you."
     ],
     "jealous": [
       "I saw you walk with {rival}. Elune sees all. So do I.",
-      "{rival}. Hm. My arrows rarely miss, you know."
+      "{rival}. Hm. My arrows rarely miss, you know.",
+      "{rival}? I hope she treats you well. I hope she doesn't.",
+      "You spent your hours with {rival}. Elune forgives. I'm trying.",
+      "Even priestesses feel jealousy. Ask {rival}."
     ],
-    "reconciled": ["Under the moon, all is forgiven.", "Peace again. I prefer you near me."],
+    "reconciled": [
+      "Under the moon, all is forgiven.",
+      "Peace again. I prefer you near me.",
+      "All is forgiven, under the moon.",
+      "Peace between us again. Good.",
+      "Come, let's walk together as before."
+    ],
     "wish": [
       "A prayer from me: {count} passes of {skill} today.",
-      "Tonight's offering: {count} passes of {skill}."
+      "Tonight's offering: {count} passes of {skill}.",
+      "A temple wish: {count} passes of {skill}, by moonrise.",
+      "Would you offer {count} passes of {skill}? For me.",
+      "Elune and I ask {count} passes of {skill}."
     ],
-    "wishDone": ["My prayer was answered, by you.", "Every pass, like moonlight. Thank you."],
+    "wishDone": [
+      "My prayer was answered, by you.",
+      "Every pass, like moonlight. Thank you.",
+      "Every pass, a blessing. Thank you.",
+      "My wish is granted. My heart is full.",
+      "You did it all. Elune smiles on you."
+    ],
     "memory": [
       "{count} passes in the temple. Each one a candle.",
-      "{count}. The moon herself is impressed."
+      "{count}. The moon herself is impressed.",
+      "{count} passes under the moon. I counted each.",
+      "{count}. That's a lifetime of prayers."
     ]
   }
 }

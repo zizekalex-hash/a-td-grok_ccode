@@ -64,36 +64,111 @@
     ]
   },
   "lines": {
-    "greet": ["Hey, hotshot. Here to watch me win?", "There's my favourite fan."],
-    "locked": ["Total level {need}. Then you can keep up with me."],
-    "watch": ["Recite fast. I like fast.", "Go on, the crowd's watching. So am I."],
-    "streak": ["Three! Nice moves.", "Five! Okay, show-off.", "Ten! Marry me. Kidding. Mostly."],
-    "levelUp": ["{skill} {level}! That's my champ.", "{skill} {level}. Look at you go."],
-    "gift": ["Ooh, shiny. Thanks!", "For me? You're cute when you're generous."],
-    "giftLoved": ["A gilded dagger! You get me.", "Sharp and pretty. Just my type."],
-    "tierUp": ["{tier}! Took you long enough.", "We're {tier}. Try to keep up."],
-    "dateStart": ["Fights are done. Your turn to impress me."],
-    "dateEnd": ["Best night out all season.", "Same time after the next fight?"],
+    "greet": [
+      "Hey, hotshot. Here to watch me win?",
+      "There's my favourite fan.",
+      "Heya, speedy! Miss me?",
+      "Look who's back for round two!",
+      "Yo! Ready to go?"
+    ],
+    "locked": [
+      "Total level {need}. Then you can keep up with me.",
+      "Total level {need}, rookie. Then you can play in my arena.",
+      "Come back at total level {need}. I'll save you a seat."
+    ],
+    "watch": [
+      "Recite fast. I like fast.",
+      "Go on, the crowd's watching. So am I.",
+      "Go go go! Don't slow down!",
+      "Recite fast! The crowd's watching.",
+      "Show me your best moves."
+    ],
+    "streak": [
+      "Three! Nice moves.",
+      "Three! Nice combo!",
+      "Five! Okay, show-off.",
+      "Five! The crowd's going wild!",
+      "Ten! Marry me. Kidding. Mostly.",
+      "Ten! Champion! You're a legend!"
+    ],
+    "levelUp": [
+      "{skill} {level}! That's my champ.",
+      "{skill} {level}. Look at you go.",
+      "{skill} {level}! Ding ding ding!",
+      "{skill} at {level}! The scoreboard loves you.",
+      "Level {level}! You're getting fast, champ."
+    ],
+    "gift": [
+      "Ooh, shiny. Thanks!",
+      "For me? You're cute when you're generous.",
+      "Ooh, a present! Thanks, partner!",
+      "For me? Nice!",
+      "Ha, you're sweet. Thanks!"
+    ],
+    "giftLoved": [
+      "A gilded dagger! You get me.",
+      "Sharp and pretty. Just my type.",
+      "A gilded dagger! Oh, you're the best!",
+      "My favourite! You get me.",
+      "Ooh, shiny and sharp. Perfect!"
+    ],
+    "tierUp": [
+      "{tier}! Took you long enough.",
+      "We're {tier}. Try to keep up.",
+      "{tier}! We're a team now!",
+      "We're {tier}! Let's celebrate with a race."
+    ],
+    "dateStart": [
+      "Fights are done. Your turn to impress me.",
+      "Arena's closed tonight. Just us. Recite fast!",
+      "Race you around the arena. Recite as we go."
+    ],
+    "dateEnd": [
+      "Best night out all season.",
+      "Same time after the next fight?",
+      "Ha! Best night ever! Same time tomorrow?",
+      "You kept up the whole time. I'm impressed."
+    ],
     "missed": [
       "{hours} hours, hotshot! I got bored enough to sharpen everything twice.",
-      "Look who's back. I totally didn't check the door every five minutes."
+      "Look who's back. I totally didn't check the door every five minutes.",
+      "{hours} hours! I almost found a new partner!",
+      "Gone {hours} hours? I was so bored!",
+      "There you are! The arena missed you."
     ],
     "jealous": [
       "{rival}? Really? I'm faster, funnier and I have daggers.",
-      "Saw you with {rival}. Want a rematch for my attention?"
+      "Saw you with {rival}. Want a rematch for my attention?",
+      "{rival}? Seriously? She can't even dodge.",
+      "You were with {rival}? Boo.",
+      "Hey, I saw you with {rival}. Not cool, champ."
     ],
-    "reconciled": ["Okay, okay. We're good. High five.", "Forgiven! But you owe me a race."],
+    "reconciled": [
+      "Okay, okay. We're good. High five.",
+      "Forgiven! But you owe me a race.",
+      "Okay, okay, we're good! High five!",
+      "Forgiven! Now let's race.",
+      "All better. Don't do it again!"
+    ],
     "wish": [
       "Bet you can't do {count} passes of {skill} today.",
-      "Today's challenge: {count} passes of {skill}. Go!"
+      "Today's challenge: {count} passes of {skill}. Go!",
+      "Challenge time: {count} passes of {skill}!",
+      "Bet you can't do {count} passes of {skill} today!",
+      "Quick! {count} passes of {skill}. Go!"
     ],
     "wishDone": [
       "You did it! Okay, I'm impressed. Don't tell anyone.",
-      "Every single pass! You're my champion now."
+      "Every single pass! You're my champion now.",
+      "You did it! Victory lap!",
+      "Every pass! You're a champion!",
+      "Wish complete! You're the best, partner."
     ],
     "memory": [
       "{count} passes in my arena. You're a legend here.",
-      "{count}. That's a record, and I keep the records."
+      "{count}. That's a record, and I keep the records.",
+      "{count} passes for me! That's a lot of laps!",
+      "{count}! You're my number one fan."
     ]
   }
 }

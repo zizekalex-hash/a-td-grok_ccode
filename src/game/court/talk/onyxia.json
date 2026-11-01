@@ -67,43 +67,111 @@
     ]
   },
   "lines": {
-    "greet": ["Bold, walking into my lair. I like bold.", "Back again? Show me you've grown."],
-    "locked": ["Strength {need}, little one. Then you may look at me."],
-    "watch": ["Recite. Loud. Make the walls shake.", "Go on. Impress me, if you can."],
+    "greet": [
+      "Bold, walking into my lair. I like bold.",
+      "Back again? Show me you've grown.",
+      "The hero returns. Try not to die this time.",
+      "You. Good. I was bored.",
+      "Smells like ambition. Come in, whelp."
+    ],
+    "locked": [
+      "Strength {need}, little one. Then you may look at me.",
+      "Strength {need}, whelp. I don't talk to snacks.",
+      "Come back with Strength {need}. Then maybe I won't eat you."
+    ],
+    "watch": [
+      "Recite. Loud. Make the walls shake.",
+      "Go on. Impress me, if you can.",
+      "Louder! The mine has an echo, use it.",
+      "Recite like you mean to survive.",
+      "Don't stop. I'm counting your mistakes."
+    ],
     "streak": [
       "Three. Not bad, mortal.",
+      "Three. You're warming up.",
       "Five! Now that's fire.",
-      "Ten! Fine. You're impressive. Happy?"
+      "Five! Ha! Keep that fire.",
+      "Ten! Fine. You're impressive. Happy?",
+      "Ten! Fine! You're a legend! Don't let it go to your head!"
     ],
-    "levelUp": ["{skill} {level}. Hmph. Keep going.", "{skill} {level}? Now we're talking."],
-    "gift": ["A gift? I'll allow it.", "Hm. It's... nice. Thank you."],
+    "levelUp": [
+      "{skill} {level}. Hmph. Keep going.",
+      "{skill} {level}? Now we're talking.",
+      "{skill} {level}. The hoard approves.",
+      "{skill} to {level}? You're getting dangerous. Good.",
+      "Level {level}. Now you're worth a fight."
+    ],
+    "gift": [
+      "A gift? I'll allow it.",
+      "Hm. It's... nice. Thank you.",
+      "Shiny. Acceptable.",
+      "For my hoard? Fine. Thank you.",
+      "Hm. You do know how to bribe a dragon."
+    ],
     "giftLoved": [
       "Dragon-glass! You brave, foolish, wonderful creature.",
-      "Now THAT is a gift for a dragon."
+      "Now THAT is a gift for a dragon.",
+      "Dragon-glass! Mine, mine, mine.",
+      "Now THAT goes on top of the hoard.",
+      "You brought dragon-glass. I might keep you too."
     ],
-    "tierUp": ["{tier}. Don't let it go to your head.", "We're {tier}. I suppose I like you."],
-    "dateStart": ["Climb on. Recite while we fly, if your voice holds."],
-    "dateEnd": ["You didn't scream once. I'm impressed.", "Same time tomorrow. Don't be late."],
+    "tierUp": [
+      "{tier}. Don't let it go to your head.",
+      "We're {tier}. I suppose I like you.",
+      "{tier}. You've survived me this long. Impressive.",
+      "Fine. {tier}. Don't make me regret not eating you."
+    ],
+    "dateStart": [
+      "Climb on. Recite while we fly, if your voice holds.",
+      "Hold on tight. We're flying over the lava tonight.",
+      "Tonight you recite where only dragons go."
+    ],
+    "dateEnd": [
+      "You didn't scream once. I'm impressed.",
+      "Same time tomorrow. Don't be late.",
+      "You held on the whole way. I'm almost proud.",
+      "Not bad, hero. Again tomorrow. That's an order."
+    ],
     "missed": [
       "{hours} hours. I almost came looking. Almost.",
-      "Back at last. My hoard felt empty without you. Don't flatter yourself."
+      "Back at last. My hoard felt empty without you. Don't flatter yourself.",
+      "{hours} hours. I nearly torched the mine out of boredom.",
+      "Where were you {hours} hours? Hiding from me?",
+      "Back at last. Don't do that again, whelp."
     ],
     "jealous": [
       "{rival}? You smell of her. I'll burn it off you.",
-      "You went to {rival}. Interesting. Dangerous, but interesting."
+      "You went to {rival}. Interesting. Dangerous, but interesting.",
+      "{rival}? She can't even breathe fire.",
+      "I smelled {rival} on you from the tunnel mouth.",
+      "Choose, hero. {rival} or the dragon."
     ],
-    "reconciled": ["Fine. You're mine again. Don't test me.", "Hmph. You've earned back my fire."],
+    "reconciled": [
+      "Fine. You're mine again. Don't test me.",
+      "Hmph. You've earned back my fire.",
+      "Fine. Truce. For now.",
+      "You're back in my good graces. Barely.",
+      "Hmph. All right. Come here. Don't tell anyone."
+    ],
     "wish": [
       "Prove yourself: {count} passes of {skill}. Today.",
-      "A dragon's wish: {count} passes of {skill}. Fail me and see."
+      "A dragon's wish: {count} passes of {skill}. Fail me and see.",
+      "Dragon's orders: {count} passes of {skill}. Go.",
+      "{count} passes of {skill} today, or I sulk. Loudly.",
+      "Show me strength: {count} passes of {skill}."
     ],
     "wishDone": [
       "Every pass, as I demanded. You might be worth keeping.",
-      "My wish, done. My heart is... warmer. Say nothing."
+      "My wish, done. My heart is... warmer. Say nothing.",
+      "Done? All of it? ...I'm impressed. There. I said it.",
+      "My wish, done to the last pass. You're mine now.",
+      "Good. Very good. The hoard grows."
     ],
     "memory": [
       "{count} passes in my lair. I've added you to the hoard.",
-      "{count}. No one has lasted this long near me."
+      "{count}. No one has lasted this long near me.",
+      "{count} passes in my lair. Still alive. Remarkable.",
+      "{count}. I've carved every one into the cave wall."
     ]
   }
 }
