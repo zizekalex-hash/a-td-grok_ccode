@@ -1436,6 +1436,14 @@ function ReciteScreen({ v }: { v: CourtView }) {
           <span className="mr-2 font-display tracking-wider">
             PHRASE {Math.min(s.roundPhrases + 1, s.round)}/{s.round}
           </span>
+          {v.deck.total > 1 && (
+            <span
+              className="mr-2 tabular-nums"
+              title="Phrases of your texts so far: none comes again until all have"
+            >
+              {v.deck.done.toLocaleString()}/{v.deck.total.toLocaleString()} of your texts
+            </span>
+          )}
           {Array.from({ length: s.reps }, (_, i) => (
             <span
               key={i}

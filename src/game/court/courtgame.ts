@@ -97,6 +97,7 @@ import {
 import { addNews, bondTalk, buzzMult, buzzOf, loadNews, makeRumor, unreadNews } from "./news.ts";
 import { comeOutChance, encounterOf, foundKind, pairKey, presenceLine } from "./presence.ts";
 import { chat, dress, feedLine, giftSay, midSentence, speak, type Fill } from "./speech.ts";
+import { drawPhrase, hashOf, phraseUnits } from "./bag.ts";
 import { pickBonus, readReps } from "@/game/reps";
 import type { CourtArcKey } from "@/game/config";
 import { cancelSleep, resting, sleepFrames } from "@/game/rest";
@@ -182,6 +183,41 @@ function allTexts(): string[][] {
   return texts.length ? texts.map((t) => t.lines) : [lines];
 }
 
+/** Which phrases of the texts have come in this round of the deck (see bag.ts). */
+const BAG_KEY = "azshara-court-bag-v1";
+let deck: { from: unknown; units: string[]; hashes: Set<string> } | null = null;
+
+/** Every phrase of the loaded texts, worked out again only when the texts change. */
+function deckUnits(): { units: string[]; hashes: Set<string> } {
+  const { texts, lines } = useGame.getState();
+  const from = texts.length ? texts : lines;
+  if (deck?.from !== from) {
+    const units = phraseUnits(allTexts(), C.minPhraseWords);
+    deck = { from, units, hashes: new Set(units.map(hashOf)) };
+  }
+  return deck;
+}
+
+function loadBag(): Set<string> {
+  try {
+    const raw = localStorage.getItem(BAG_KEY);
+    const data: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(
+      Array.isArray(data) ? data.filter((h): h is string => typeof h === "string") : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function saveBag(used: Set<string>) {
+  try {
+    localStorage.setItem(BAG_KEY, JSON.stringify([...used]));
+  } catch {
+    /* private mode / quota */
+  }
+}
+
 function skillName(k: SkillKey) {
   return C.skills[k].name;
 }
@@ -250,6 +286,10 @@ export class CourtGame implements GameBase {
   private encounters = new Map<string, number>();
   /** What each queen said lately, so she does not repeat herself, and your conversations. */
   private said = new Map<QueenKey, string[]>();
+  /** Phrases of the texts already come in this round of the deck, and the last one. */
+  private bag = loadBag();
+  private lastPhrase = "";
+  private deckDone = { done: 0, total: 0 };
   private chatted = new Map<QueenKey, { at: number; topics: string[] }>();
   private line: CourtView["line"] = null;
   private message = "Tap anywhere to walk there. Tap a place to train, a queen to talk.";
@@ -1188,6 +1228,27 @@ export class CourtGame implements GameBase {
     this.persist();
   }
 
+  /**
+   * The next phrase to recite: one at random of those of your texts that have not
+   * come yet, so none comes twice until all have (then the deck starts again).
+   */
+  private nextPhrase(): string {
+    const { units, hashes } = deckUnits();
+    // Phrases of texts no longer loaded are forgotten.
+    for (const h of this.bag) if (!hashes.has(h)) this.bag.delete(h);
+    const d = drawPhrase(units, this.bag, Math.random, this.lastPhrase);
+    if (!d) return pickPhrase(allTexts(), Math.random);
+    if (d.cycled && units.length > 1)
+      this.notice(
+        `All ${units.length.toLocaleString("en")} phrases of your texts have come: a new round of them begins`,
+        null,
+      );
+    this.lastPhrase = d.phrase;
+    this.deckDone = { done: this.bag.size, total: units.length };
+    saveBag(this.bag);
+    return d.phrase;
+  }
+
   /** Recite at a place. A queen who stands there watches, if you meet her need. */
   courtRecite(place: PlaceKey, opts: { queen?: QueenKey | null; date?: boolean } = {}) {
     sfx.unlock();
@@ -1210,7 +1271,7 @@ export class CourtGame implements GameBase {
         // A date is its own round of phrases.
         round: date && watching ? C.datePhrases : this.save.phrasesPerRound,
       },
-      pickPhrase(allTexts(), Math.random),
+      this.nextPhrase(),
       performance.now(),
     );
     if (watching) {
@@ -1254,7 +1315,7 @@ export class CourtGame implements GameBase {
       return this.pushView(true);
     }
     const elixir = this.save.elixirReps > 0;
-    for (const r of tapComplete(s, now, () => pickPhrase(allTexts(), Math.random), elixir)) {
+    for (const r of tapComplete(s, now, () => this.nextPhrase(), elixir)) {
       if (r.type === "pass") this.onPass(s, r, elixir);
       else if (r.type === "phrase") {
         this.save.skills[s.skill] += r.xp;
@@ -1281,7 +1342,7 @@ export class CourtGame implements GameBase {
     const s = this.session;
     if (!s?.roundDone) return;
     sfx.unlock();
-    nextRound(s, this.now(), pickPhrase(allTexts(), Math.random), this.save.phrasesPerRound);
+    nextRound(s, this.now(), this.nextPhrase(), this.save.phrasesPerRound);
     this.pushView(true);
   }
 
@@ -1440,7 +1501,7 @@ export class CourtGame implements GameBase {
   courtSkip() {
     const s = this.session;
     if (!s) return;
-    skipPhrase(s, this.now(), pickPhrase(allTexts(), Math.random));
+    skipPhrase(s, this.now(), this.nextPhrase());
     this.pushView(true);
   }
 
@@ -1791,6 +1852,7 @@ export class CourtGame implements GameBase {
         ),
         out: looking,
         hungry,
+        deck: { ...this.deckDone },
         line: this.line,
         at: this.at,
         region: this.save.region,

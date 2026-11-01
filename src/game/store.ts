@@ -258,6 +258,8 @@ export type CourtView = {
   feelings: Partial<Record<QueenKey, { id: CourtArcKey; ends: number }>>;
   /** Queens out on the map looking for you. */
   out: QueenKey[];
+  /** How far through your texts' phrases the Court has come in this round of them. */
+  deck: { done: number; total: number };
   /** A queen with you who asks to be fed a set of reps, and when she gives up (ms). */
   hungry: { queen: QueenKey; id: string; text: string; size: number; until: number } | null;
   /** The latest line: a queen's, or yours. */

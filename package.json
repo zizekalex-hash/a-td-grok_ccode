@@ -16,7 +16,7 @@
     "preview:stop": "node scripts/preview.mjs stop",
     "typecheck": "tsc --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
-    "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/app-data/readiness-schedule.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/preview-path-prefix.test.ts src/game/council.test.ts src/game/layout.test.ts src/game/upgrades.test.ts src/game/recite.test.ts src/game/td/sim.test.ts src/game/chess/sim.test.ts src/game/court/court.test.ts src/game/reps.test.ts src/game/backup.test.ts src/game/binwall.test.ts src/game/texts.test.ts src/game/court/speech.test.ts src/game/config.test.ts src/game/cfg.test.ts src/game/rawimage.test.ts src/game/frameLimiter.test.ts src/lib/agents/agents.test.ts src/lib/narrator/narrator.test.ts",
+    "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/app-data/readiness-schedule.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/preview-path-prefix.test.ts src/game/council.test.ts src/game/layout.test.ts src/game/upgrades.test.ts src/game/recite.test.ts src/game/td/sim.test.ts src/game/chess/sim.test.ts src/game/court/court.test.ts src/game/reps.test.ts src/game/backup.test.ts src/game/binwall.test.ts src/game/texts.test.ts src/game/court/speech.test.ts src/game/court/bag.test.ts src/game/config.test.ts src/game/cfg.test.ts src/game/rawimage.test.ts src/game/frameLimiter.test.ts src/lib/agents/agents.test.ts src/lib/narrator/narrator.test.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
