@@ -64,7 +64,10 @@ Load .txt (title screen, tome, Options → Text) takes one file or several at on
 
 Recitation drill (on the title screen), tab Reps: count reps of your own words and phrases.
 
-- **Add:** write a word or phrase and tap Add. They stay in the list. Each line shows its reps and time, like "100 xyz · 5:33" (or "0 xyz · 0:00" after a reset).
+- **Add or paste:**
+  - Write a word or phrase and tap Add (or Enter).
+  - **Paste** pastes what you copied (from a file, a note, anywhere): one line goes into the box to add, several lines open the picker below with each line as one phrase. A long-press in the box pastes too.
+  - The phrases stay in the list. Each line shows its reps and time, like "100 xyz · 5:33" (or "0 xyz · 0:00" after a reset).
 - **From a text:** Load .txt (or Loaded texts, for texts already in the game) splits a text into its phrases (sentences and lines, list marks taken off, each phrase once).
   - Tick the ones you want, or Pick all new, then Add.
   - Only the added phrases are kept, not the text.

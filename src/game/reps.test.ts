@@ -228,6 +228,11 @@ describe("reps", () => {
       "Because.",
     ]);
     assert.equal(phrasesFromText(text, 2).length, 2);
+    assert.deepEqual(
+      phrasesFromText("Name the signal. It loses its shadow.\n- xyz\n\nxyz", 50, false),
+      ["Name the signal. It loses its shadow.", "xyz"],
+      "a pasted list keeps each line whole",
+    );
     // "name the signal!" is on the list, "Why?" was done before and deleted.
     let s = addItem({ ...newReps(), set: 10 }, "name the signal!", 1, "a").state;
     s = addItem(s, "Why?", 2, "b").state;

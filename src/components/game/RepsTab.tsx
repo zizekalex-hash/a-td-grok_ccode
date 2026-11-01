@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
-import { Check, FileText, Library, Play, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import {
+  Check,
+  ClipboardPaste,
+  FileText,
+  Library,
+  Play,
+  Plus,
+  RotateCcw,
+  Trash2,
+  X,
+} from "lucide-react";
 import { RepsPicker } from "@/components/game/RepsPicker";
 import { CONFIG } from "@/game/config";
 import { flashToast, grantSkillXp } from "@/game/engine";
@@ -125,11 +135,51 @@ export function RepsTab() {
     return () => window.clearInterval(timer);
   }, [active]);
 
-  const add = () => {
-    const { state: next, id } = addItem(state, draft, Date.now());
+  /**
+   * Adds what was written or pasted: one line is one phrase, as it is; several
+   * lines (a pasted block) open the picker, to choose which phrases to add.
+   */
+  const add = (text = draft) => {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length > 1) {
+      // Pasted lines stay whole: each line is one phrase.
+      const phrases = phrasesFromText(text, 5000, false);
+      if (phrases.length) {
+        setDraft("");
+        setChooseLoaded(false);
+        setSource({ name: "Pasted text", phrases });
+        return;
+      }
+    }
+    const { state: next, id } = addItem(state, text, Date.now());
     if (!id) return;
     save(next);
     setDraft("");
+  };
+
+  /**
+   * Pastes what was copied (from a file, a note, anywhere): through the phone's
+   * clipboard in the app, the browser's elsewhere. Several lines go to the picker;
+   * one goes into the box to add.
+   */
+  const paste = async () => {
+    let text = "";
+    try {
+      const { Clipboard } = await import("@capacitor/clipboard");
+      text = (await Clipboard.read()).value ?? "";
+    } catch {
+      try {
+        text = await navigator.clipboard.readText();
+      } catch {
+        text = "";
+      }
+    }
+    if (!text.trim()) {
+      flashToast("Nothing to paste. Copy a word or phrase first, or long-press the box to paste.");
+      return;
+    }
+    if (text.split(/\r?\n/).filter((l) => l.trim()).length > 1) add(text);
+    else setDraft(text.trim());
   };
 
   const start = (id: string) => {
@@ -309,18 +359,38 @@ export function RepsTab() {
           add();
         }}
       >
-        <input
-          className="text-input min-w-0 flex-1"
+        {/* A box that keeps line breaks, so a pasted block arrives whole. */}
+        <textarea
+          className="text-input min-h-11 min-w-0 flex-1 resize-y py-2"
+          rows={draft.includes("\n") ? 4 : 1}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="A word or phrase"
+          onKeyDown={(e) => {
+            // Enter adds; Shift+Enter starts a new line.
+            if (e.key === "Enter" && !e.shiftKey && !draft.includes("\n")) {
+              e.preventDefault();
+              add();
+            }
+          }}
+          placeholder="Write or paste a word or phrase"
           aria-label="A word or phrase to add"
-          maxLength={300}
+          maxLength={20000}
         />
-        <button type="submit" className="btn shrink-0" disabled={!draft.trim()}>
-          <Plus className="size-4" aria-hidden />
-          Add
-        </button>
+        <div className="flex shrink-0 flex-col gap-1.5">
+          <button type="submit" className="btn" disabled={!draft.trim()}>
+            <Plus className="size-4" aria-hidden />
+            Add
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void paste()}
+            aria-label="Paste what you copied"
+          >
+            <ClipboardPaste className="size-4" aria-hidden />
+            Paste
+          </button>
+        </div>
       </form>
       {/* Phrases from a text: pick the ones you want onto the list. */}
       <div className="mt-2 grid grid-cols-2 gap-2">

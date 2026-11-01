@@ -254,17 +254,18 @@ export function phraseKey(text: string): string {
 }
 
 /**
- * The phrases in a text, to pick from: each line split into sentences, list
- * marks ("- ", "• ", "1. ") taken off, nothing without a letter or a digit,
- * each phrase once (the first time it comes), up to max.
+ * The phrases in a text, to pick from: each line split into sentences (or kept
+ * whole, for a pasted list), list marks ("- ", "• ", "1. ") taken off, nothing
+ * without a letter or a digit, each phrase once (the first time it comes), up to max.
  */
-export function phrasesFromText(text: string, max = 5000): string[] {
+export function phrasesFromText(text: string, max = 5000, bySentence = true): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const raw of text.split(/\r?\n/)) {
     // A list mark comes off the line first, so "2. Keep it sharp" is not cut after "2.".
     const line = raw.replace(/^\s*(?:[-•*·]|\d+[.)])\s+/, "");
-    for (const part of line.split(/(?<=[.!?…])\s+/)) {
+    // A pasted list keeps each line whole; a text's lines are split into sentences.
+    for (const part of bySentence ? line.split(/(?<=[.!?…])\s+/) : [line]) {
       const p = part.replace(/\s+/g, " ").trim().slice(0, 300);
       if (!/[\p{L}\p{N}]/u.test(p)) continue;
       const key = phraseKey(p);
