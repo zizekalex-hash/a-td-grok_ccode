@@ -159,7 +159,7 @@ All of it is tuned in the `td` block of `config.json`.
 
 Every push that changes the game builds an APK on GitHub (the Android APK workflow). The newest one is the `apk-latest` release: open the [releases page](https://github.com/zizekalex-hash/a-td/releases/tag/apk-latest) on the phone, download `azshara-signal-defense.apk` and open it. Android installs it as an update of the app already there, keeping saved settings and progress. The title screen and the settings drawer show the build, such as `v1.0.15`, and Android shows the same number under App info.
 
-Updates install in place because every build is numbered one higher and signed with the same key, `mobile/android/app/sideload.keystore` (password `android`). Keep that file: an APK signed with any other key has to replace the app by uninstalling it first. The key is for installing the app yourself; publishing to a store would need a private release key.
+Updates install in place because every build is numbered one higher and signed with the same key, `mobile/android/app/sideload.keystore` (its password is in the APK workflow). Keep that file: an APK signed with any other key has to replace the app by uninstalling it first. The key is for installing the app yourself; publishing to a store would need a private release key.
 
 ## Auto chess
 
