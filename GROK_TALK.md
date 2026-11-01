@@ -55,7 +55,9 @@ I will give you one JSON file of the game's words. Make it much richer:
     order, a third each.
   - shared.json: each topic ask 6 and answer 10; pickupLines 30; each
     presence.lines kind 8; each presence.notices kind 6; each rumors kind 8;
-    each bondTalk kind 10.
+    each bondTalk kind 10; duo and duoReply 20 for each of sister, friend
+    and rival (two queens walking with you: "duo" is what one says to the
+    other, "duoReply" the other's answer, both shared by all queens).
 - Every queen sounds like herself: read "_who" (her persona, home, element and
   favourite gift) and the lines already there, and keep her voice distinct from
   the others. Shared lines must work for any queen.
@@ -79,28 +81,33 @@ I will give you one JSON file of the game's words. Make it much richer:
 Placeholders allowed:
 
 - queen files, everything in "voice" and in "lines", and shared.json "topics":
-  {pet} what she calls you, {thing} something on her mind, {place} her home,
+  {pet} what she calls you, {thing} something on her mind, {place} her home
+  as said in a sentence ("the Ember Mine", "Azshara's Palace"),
   {region} where you are, {skill} and {level} your best skill and its level,
   {total} your total level, {gift} her favourite gift as said in a sentence
   ("a sea pearl"), {time} the time of day ("this morning"), {sister}
   {friend} {foe} a queen she is close to or not (lines using them are only
   said when she has one), {phrase} one of your practice phrases, {passes}
-  passes you recited for her.
+  passes you recited for her, {dates} dates you have had with her (lines
+  using it are only said after a first date).
 - also in "feed", "fed" and "hungry": {count}, the number of reps.
 - also in "lines": locked {need}; levelUp {skill} {level} (the skill that just
   levelled); tierUp {tier}; missed {hours}; jealous {rival}; wish {count}
   {skill}; memory {count}.
 - shared.json "pickupLines": none (what you say to her).
 - shared.json "presence.lines" (what she says when she finds you): seeking,
-  lonely, confront, present: {hours} {rival} {passes} {streak}; leaveHappy,
-  leaveHurt: none.
+  lonely, confront, present: {hours} {rival} {passes} {streak} {dates};
+  leaveHappy, leaveHurt: none.
 - shared.json "presence.notices" (what the Court notices): out, outConfront:
-  {queen} {place}; found, leftHappy, leftHurt: {queen}; rivals, close: {queen}
-  {other} {bond}.
+  {queen} {place}; found, leftHappy, leftHurt: {queen}; rivals, close,
+  together, alliance: {queen} {other} {bond}; doubleRival (two rivals with you
+  at once): {queen} {other}.
 - shared.json "rumors" (town gossip): every kind may use {queen} and {other},
   plus buzz {mult}; favored {skill}; gift {gift}; need {need}; wish {count}
   {skill}; longing {hours}; bond {bond}. "you" (gossip about the player) uses
   only {skill} {level} {reps}.
 - shared.json "bondTalk" (a queen about a sister, friend or rival): {other}.
+- shared.json "duo" and "duoReply" (two queens with you, talking to each
+  other): {other} the other queen, {pet} what the speaker calls you.
 
 Here is the file:

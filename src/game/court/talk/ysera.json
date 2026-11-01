@@ -18,7 +18,15 @@
       "Softly now.",
       "Ah, a visitor.",
       "Listen.",
-      "There you are, between dreams."
+      "There you are, between dreams.",
+      "Hush...",
+      "Oh... hello.",
+      "Mm, softly.",
+      "You're here...",
+      "Shh, listen.",
+      "Mmh.",
+      "Oh, a dream.",
+      "Little star..."
     ],
     "close": [
       "The stars agree with me.",
@@ -28,13 +36,25 @@
       "The void is gentle tonight.",
       "Hush, it's all right.",
       "I'll hold this moment for you.",
-      "Drift with me a while."
+      "Drift with me a while.",
+      "The night will keep it safe.",
+      "Rest your eyes a moment.",
+      "Dreams are patient.",
+      "The stars heard you.",
+      "Sleep is just a softer way of listening.",
+      "I'll remember this in my sleep.",
+      "Drift gently.",
+      "The void says goodnight."
     ],
     "warm": [
       "You're in every dream now.",
       "I wake up and look for you first.",
       "My sleep is softer since you came.",
-      "Stay until the stars fade."
+      "Stay until the stars fade.",
+      "You're the dream I keep coming back to.",
+      "I wake up smiling now. It's your fault.",
+      "I'd sleep a thousand years if you were there when I woke.",
+      "Stay till the stars go out."
     ],
     "pet": ["dreamer", "little star", "sleepy one", "my comet", "wanderer"],
     "things": [
@@ -52,24 +72,38 @@
       "{region} feels different in the half-light. Have you noticed?",
       "I brought you {gift}. Or I dreamed I did. Check your pocket.",
       "Time is soft here, {pet}. {time} is just a word.",
-      "I count your passes like sheep: {passes}, and still awake."
+      "I count your passes like sheep: {passes}, and still awake.",
+      "Last night I dreamed you recited to the moon, and it answered.",
+      "{sister} is so bright, I have to close my eyes. She loves you, you know.",
+      "I hear “{phrase}” in my dreams now. Over and over.",
+      "Some dreams are maps. Mine all lead to you.",
+      "{foe} wouldn't understand the quiet. You do.",
+      "The void isn't empty. It's full of things waiting to be dreamed."
     ],
     "feed": [
       "I'm hungry for a dream... {count} × “{phrase}”, softly?",
       "Say “{phrase}” {count} times, {pet}. I'll sleep on every one.",
       "Feed me words, little star. {count} of “{phrase}”.",
-      "The void is empty without your voice. {count} × “{phrase}”?"
+      "The void is empty without your voice. {count} × “{phrase}”?",
+      "Feed me a dream: {count} × “{phrase}”.",
+      "{count} of “{phrase}”, whispered, before I sleep?",
+      "My dreams are hungry. {count} × “{phrase}”, please."
     ],
     "fed": [
       "Mm... full of starlight now.",
       "That was a lullaby. Thank you.",
       "I'll dream of those words for a week.",
-      "Fed and drowsy. Perfect."
+      "Fed and drowsy. Perfect.",
+      "Mm... I'll sleep so sweetly now.",
+      "Full of stars. Thank you, dreamer.",
+      "That was a lullaby I'll keep."
     ],
     "hungry": [
       "I'll drift home hungry, then...",
       "An empty dream tonight, {pet}.",
-      "Maybe I only dreamed you'd feed me."
+      "Maybe I only dreamed you'd feed me.",
+      "A hungry dream, tonight...",
+      "I'll drift home empty, little star."
     ]
   },
   "lines": {

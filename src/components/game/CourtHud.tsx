@@ -529,6 +529,12 @@ function HeartStatus({ q, v }: { q: QueenKey; v: CourtView }) {
           <span>
             <span className="font-display tracking-wider text-gold">TODAY'S WISH</span>{" "}
             {wish.passes} passes of {skill.name}
+            {wish.with && (
+              <span className="text-muted">
+                {" "}
+                · shared with {C.queens[wish.with].name}: one wish, both delighted
+              </span>
+            )}
           </span>
           <span className={wish.done ? "text-gold" : ""}>
             {wish.done ? "Granted ✓" : `${wish.progress}/${wish.passes}`}
@@ -1117,7 +1123,7 @@ function MiddleFlash({ phrase, color }: { phrase: string; color: string }) {
           {
             fontSize: size,
             color,
-            textShadow: `0 0 14px ${color}88`,
+            textShadow: C.word.glow > 0 ? `0 0 ${C.word.glow}px ${color}88` : undefined,
             opacity: still ? F.opacity : undefined,
             animationDuration: `${F.lifeMs}ms`,
             "--flash-opacity": F.opacity,
@@ -1130,9 +1136,9 @@ function MiddleFlash({ phrase, color }: { phrase: string; color: string }) {
   );
 }
 
-/** Font size for the lit word: as large as reads well, never wider than the screen. */
+/** Font size for the lit word: as large as court.word.size, never wider than the screen. */
 function wordSize(word: string): string {
-  return `min(3.75rem, 8dvh, ${(92 / Math.max(1, word.length * 0.62)).toFixed(2)}vw)`;
+  return `min(${C.word.size}rem, 6dvh, ${(92 / Math.max(1, word.length * 0.62)).toFixed(2)}vw)`;
 }
 
 /** Text size for the whole phrase, smaller as it grows, so it never runs off. */
@@ -1155,6 +1161,11 @@ function FeedCard({ v }: { v: CourtView }) {
   const h = v.hungry;
   if (!h) return null;
   const spec = C.queens[h.queen];
+  const names = h.queens.map((q) => C.queens[q].name);
+  const who =
+    names.length > 1
+      ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
+      : spec.name;
   const minutes = Math.max(1, Math.ceil((h.until - Date.now()) / 60_000));
 
   const feed = () => {
@@ -1178,23 +1189,25 @@ function FeedCard({ v }: { v: CourtView }) {
       <QueenAvatar q={h.queen} size={44} mood="longing" />
       <div className="min-w-0 flex-1">
         <p className="font-display text-[0.7rem] tracking-[0.14em]" style={{ color: spec.color }}>
-          {spec.name.toUpperCase()} IS HUNGRY
+          {who.toUpperCase()} {names.length > 1 ? "ARE" : "IS"} HUNGRY
         </p>
         <p className="text-sm leading-snug break-words">
-          Feed her <span className="text-gold">{h.size.toLocaleString()}</span> × “{h.text}”
+          Feed {names.length > 1 ? "them" : "her"}{" "}
+          <span className="text-gold">{h.size.toLocaleString()}</span> × “{h.text}”
         </p>
         <p className="text-[0.65rem] text-muted">
-          She waits about {minutes} min, then goes home hurt.
+          {names.length > 1 ? "They wait" : "She waits"} about {minutes} min, then{" "}
+          {names.length > 1 ? "go" : "goes"} home hurt.
         </p>
       </div>
       <div className="flex shrink-0 flex-col gap-1.5">
         <button type="button" className="btn btn-gold min-h-10 px-3" onClick={feed}>
-          Feed her ▶
+          {names.length > 1 ? "Feed them ▶" : "Feed her ▶"}
         </button>
         <button
           type="button"
           className="btn min-h-9 px-3 text-[0.6rem]"
-          onClick={() => game()?.courtFeedLater(h.queen)}
+          onClick={() => game()?.courtFeedLater()}
         >
           Later
         </button>
@@ -1202,16 +1215,18 @@ function FeedCard({ v }: { v: CourtView }) {
       {reps?.active && (
         <RestSet
           state={reps}
-          title={`Feeding ${spec.name}`}
+          title={`Feeding ${who}`}
           color={spec.color}
-          reward={`On Done: ${spec.name} is fed (+${C.presence.feed.affection} ♥)`}
+          reward={`On Done: ${who} ${names.length > 1 ? "are" : "is"} fed (+${C.presence.feed.affection} ♥ each)`}
           onChange={(next) => {
             writeReps(next);
             // Stopped without Done (no new set in the history): she waits again.
-            if (!next.active && next.log[0] === reps.log[0]) game()?.courtFeedStop(h.queen);
+            if (!next.active && next.log[0] === reps.log[0]) game()?.courtFeedStop();
             setReps(next.active ? next : null);
           }}
-          onDone={(d) => game()?.courtFed(h.queen, d.text, d.added)}
+          onDone={(d) => {
+            for (const q of h.queens) game()?.courtFed(q, d.text, d.added);
+          }}
         />
       )}
     </div>
@@ -1389,6 +1404,11 @@ function ReciteScreen({ v }: { v: CourtView }) {
           }}
         >
           <QueenAvatar q={s.queen!} size={48} />
+          {s.also && (
+            <span className="-ml-5 shrink-0" title={`${C.queens[s.also].name} watches too`}>
+              <QueenAvatar q={s.also} size={36} />
+            </span>
+          )}
           <p className="text-sm leading-snug" aria-live="polite">
             <span
               className="font-display text-[0.7rem] tracking-[0.14em]"
@@ -1397,7 +1417,10 @@ function ReciteScreen({ v }: { v: CourtView }) {
               {(v.line?.speaker ?? q.name).toUpperCase()}
             </span>
             <br />
-            {v.line?.text ?? `${q.name} is watching you.`}
+            {v.line?.text ??
+              (s.also
+                ? `${q.name} and ${C.queens[s.also].name} are watching you.`
+                : `${q.name} is watching you.`)}
           </p>
         </div>
       )}
@@ -1414,9 +1437,12 @@ function ReciteScreen({ v }: { v: CourtView }) {
         {/* The lit word, on one line in a box of its own height, so nothing below it jumps. */}
         <div className="flex h-[min(4.6rem,9.6dvh)] w-full shrink-0 items-center justify-center overflow-hidden">
           <p
-            key={`${s.phrase}-${s.pass}-${s.word}`}
-            className="court-word max-w-full font-display leading-none whitespace-nowrap text-fg"
-            style={{ fontSize: wordSize(word), textShadow: `0 0 18px ${color}` }}
+            key={C.word.animate ? `${s.phrase}-${s.pass}-${s.word}` : "word"}
+            className={`${C.word.animate ? "court-word" : ""} max-w-full font-display leading-none whitespace-nowrap text-fg`}
+            style={{
+              fontSize: wordSize(word),
+              textShadow: C.word.glow > 0 ? `0 0 ${C.word.glow}px ${color}` : undefined,
+            }}
             aria-live="off"
           >
             {word}

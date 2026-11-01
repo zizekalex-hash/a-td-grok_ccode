@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Check, X } from "lucide-react";
+import { Check, EyeOff, X } from "lucide-react";
 import { BinaryWall } from "@/components/game/BinaryWall";
 import { Confirm } from "@/components/game/Confirm";
 import { buzz } from "@/components/game/feel";
@@ -63,15 +63,24 @@ export function RestSet({
   const item = active ? state.items.find((i) => i.id === active.id) : undefined;
   const [now, setNow] = useState(() => Date.now());
   const [asking, setAsking] = useState(false);
+  /** Blank: the screen is all black, nothing drawn or updated, until tapped. */
+  const [blank, setBlank] = useState(false);
 
   // The rest lasts while the set runs.
   const on = !!active;
   useEffect(() => (on ? holdRest() : undefined), [on]);
 
-  // Once a second, by the clock; a buzz when Done opens.
+  // Once a second, by the clock; a buzz when Done opens. While blank, nothing
+  // updates at all: only the buzz is kept, for the moment Done opens.
   useEffect(() => {
     if (!active) return;
-    let wasReady = timeLeft(active, Date.now()) <= 0;
+    const left = timeLeft(active, Date.now());
+    if (blank) {
+      if (left <= 0) return;
+      const id = window.setTimeout(() => buzz(80), left);
+      return () => window.clearTimeout(id);
+    }
+    let wasReady = left <= 0;
     const timer = window.setInterval(() => {
       const t = Date.now();
       setNow(t);
@@ -80,7 +89,7 @@ export function RestSet({
       wasReady = ready;
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [active]);
+  }, [active, blank]);
 
   if (!active || !item || typeof document === "undefined") return null;
   const text = item.text;
@@ -109,6 +118,21 @@ export function RestSet({
     });
   };
 
+  // Blank: pure black (pixels off on most phone screens) until a tap anywhere.
+  if (blank)
+    return createPortal(
+      <button
+        type="button"
+        className="rest-screen fixed inset-0 z-[80] block h-full w-full cursor-default bg-black"
+        aria-label={`Screen blank while you recite ${active.target} ${text}. Tap to show the set.`}
+        onClick={() => {
+          setNow(Date.now());
+          setBlank(false);
+        }}
+      />,
+      document.body,
+    );
+
   return createPortal(
     <div
       className="rest-screen fixed inset-0 z-[80] flex flex-col items-center justify-center bg-black p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] text-fg"
@@ -134,9 +158,13 @@ export function RestSet({
           {ready ? "Ready: tap Done when you finish" : `Done opens in ${clock(left, true)}`}
         </p>
         {reward && <p className="mt-2 text-xs text-gold">{reward}</p>}
+        <button type="button" className="btn mt-4 min-h-14 w-full" onClick={() => setBlank(true)}>
+          <EyeOff className="size-5" aria-hidden />
+          Blank the screen (tap again to show)
+        </button>
         <button
           type="button"
-          className={`btn mt-4 min-h-20 w-full flex-col gap-0 text-lg ${ready ? "btn-gold" : "opacity-70"}`}
+          className={`btn mt-2 min-h-20 w-full flex-col gap-0 text-lg ${ready ? "btn-gold" : "opacity-70"}`}
           disabled={!ready}
           onClick={done}
         >

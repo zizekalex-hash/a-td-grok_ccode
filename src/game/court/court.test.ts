@@ -96,6 +96,8 @@ import {
   arcMult,
   arcOf,
   setArc,
+  allianceOf,
+  closePairs,
 } from "./hearts.ts";
 import { comeOutChance, encounterOf, foundKind, pairKey, presenceLine } from "./presence.ts";
 import {
@@ -1246,5 +1248,36 @@ describe("court bonus set", () => {
     assert.ok(bonusReward("one two three", 100, "forest", false).xp > hundred.xp, "longer phrases pay more");
     assert.deepEqual(bonusReward("xyz", 0, "forest", true), { xp: 0, gold: 0, affection: 0 });
     assert.ok(B.maxWords >= 1 && B.xpMult >= 0 && B.goldMult >= 0);
+  });
+});
+
+describe("court alliances", () => {
+  it("now and then pairs sisters or friends for a day, sharing one wish", () => {
+    const pairs = closePairs();
+    assert.ok(pairs.length >= 3);
+    for (const [a, b] of pairs) assert.notEqual(bondOf(a, b), "rival");
+    let days = 0;
+    for (let day = 20000; day < 21000; day++) {
+      const a = allianceOf(day);
+      assert.deepEqual(allianceOf(day), a, "the same all day");
+      if (!a) continue;
+      days += 1;
+      assert.ok(pairs.some(([x, y]) => x === a[0] && y === a[1]));
+      assert.deepEqual(wishOf(a[1], day), wishOf(a[0], day), "one wish for both");
+    }
+    const share = days / 1000;
+    assert.ok(Math.abs(share - C.hearts.allianceChance) < 0.06, `alliance on ${share} of days`);
+  });
+
+  it("grants the shared wish to both with the same passes", () => {
+    let day = 20000;
+    while (!allianceOf(day)) day++;
+    const [a, b] = allianceOf(day)!;
+    const save = newSave();
+    for (const k of SKILL_KEYS) save.skills[k] = 14_000_000;
+    const w = wishOf(a, day);
+    let granted: string[] = [];
+    for (let i = 0; i < w.passes; i++) granted = countWish(save, w.skill, day);
+    assert.ok(granted.includes(a) && granted.includes(b), granted.join());
   });
 });

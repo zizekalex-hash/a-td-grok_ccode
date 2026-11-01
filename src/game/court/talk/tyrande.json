@@ -18,7 +18,15 @@
       "Welcome.",
       "Quietly now.",
       "There you are.",
-      "Ah."
+      "Ah.",
+      "Peace.",
+      "Mm, friend.",
+      "Ah, moonlight.",
+      "Be still.",
+      "Welcome, heart.",
+      "Listen to the night.",
+      "Gently.",
+      "Hello again."
     ],
     "close": [
       "Elune watches over you.",
@@ -28,13 +36,24 @@
       "May the night guide you.",
       "Breathe, and begin again.",
       "That pleased me.",
-      "I'll pray for your next round."
+      "I'll pray for your next round.",
+      "Walk in Elune's light.",
+      "The moon keeps watch.",
+      "Breathe deeply.",
+      "May your path be quiet.",
+      "I'm proud of you.",
+      "Rest when the moon rests.",
+      "Grace is earned in small steps."
     ],
     "warm": [
       "The moon looks brighter when you're near.",
       "My heart hunts for you.",
       "You're my favourite prayer.",
-      "Stay with me under the stars."
+      "Stay with me under the stars.",
+      "My prayers have your name in them now.",
+      "The moon is jealous of you, I think.",
+      "I'd follow you through any forest at night.",
+      "Stay with me until the stars fade."
     ],
     "pet": ["friend", "little hunter", "moonchild", "dear heart", "night-walker"],
     "things": ["the moonwell", "silver arrows", "the temple bells", "night owls", "Elune's light"],
@@ -46,24 +65,38 @@
       "Leave {gift} at the temple sometime. Elune notices kindness.",
       "Every repetition is a prayer, {pet}. You pray well.",
       "I sat by the water and counted your passes: {passes}. Then I smiled.",
-      "Strength and grace. You're learning both."
+      "Strength and grace. You're learning both.",
+      "I saw an owl carry a silver feather today. A good omen for you.",
+      "{friend} visited the temple. We lit a lamp for you.",
+      "I chanted “{phrase}” by the moonwell. The water rippled.",
+      "{foe} hunts loudly. I hunt in silence. Guess who catches more.",
+      "The temple bells ring on their own sometimes. Usually when you're near.",
+      "Patience is a bow drawn slowly. You understand that now."
     ],
     "feed": [
       "I am hungry, {pet}. Feed me {count} × “{phrase}”, under the moon.",
       "A prayer for me? “{phrase}”, {count} times.",
       "Elune asks a tithe: {count} of “{phrase}”. And so do I.",
-      "Nourish me, little hunter. {count} × “{phrase}”."
+      "Nourish me, little hunter. {count} × “{phrase}”.",
+      "A small offering, dear heart? {count} × “{phrase}”.",
+      "Feed my spirit: {count} of “{phrase}”, under the moon.",
+      "I hunger for prayer. {count} × “{phrase}”."
     ],
     "fed": [
       "Thank you. My spirit is full.",
       "That was a blessing. Elune smiles.",
       "Fed and at peace. You're kind.",
-      "Mm. The moon feels closer now."
+      "Mm. The moon feels closer now.",
+      "My spirit is full. Bless you.",
+      "That was a beautiful offering.",
+      "Fed, and at peace. Thank you."
     ],
     "hungry": [
       "I'll return to the temple hungry.",
       "Unfed... I'll pray you remember next time.",
-      "The moon is a cold supper, {pet}."
+      "The moon is a cold supper, {pet}.",
+      "I'll fast tonight. Elune understands.",
+      "The moonwell will have to do."
     ]
   },
   "lines": {

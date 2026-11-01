@@ -18,7 +18,14 @@
       "Well.",
       "Oh. It's you.",
       "Look who wandered in.",
-      "Mm."
+      "Mm.",
+      "Huh.",
+      "So.",
+      "Look.",
+      "Right.",
+      "Eh.",
+      "Fine.",
+      "Hey."
     ],
     "close": [
       "Don't get used to the praise.",
@@ -28,13 +35,25 @@
       "We'll see.",
       "That was almost good.",
       "Don't make it weird.",
-      "Now go."
+      "Now go.",
+      "Don't make a thing of it.",
+      "Whatever.",
+      "That's all.",
+      "Keep your guard up.",
+      "Not bad.",
+      "You'll do.",
+      "Moving on.",
+      "...Thanks."
     ],
     "warm": [
       "Fine. I like you. Happy?",
       "You're the only one I'd wait for.",
       "My spire is quieter without you. I hate it.",
-      "Stay. If you want. Whatever."
+      "Stay. If you want. Whatever.",
+      "You're the only one I'd lower my bow for.",
+      "I don't say this. You matter.",
+      "I watch the road for you now. Annoying.",
+      "Stay. If you want. I want."
     ],
     "pet": ["ranger", "rookie", "stray", "shadow", "you"],
     "things": ["the wind", "black arrows", "the spire's top", "dead leaves", "a cold dawn"],
@@ -46,24 +65,38 @@
       "{sister} used to recite with me. You're better. Barely.",
       "Repetition is the only honest thing left, {pet}.",
       "{passes} passes for me. I noticed. Don't make a thing of it.",
-      "You keep coming back. Most don't. I respect that."
+      "You keep coming back. Most don't. I respect that.",
+      "I hit a target at three hundred paces today. Nobody saw. Except now you know.",
+      "{foe} keeps trying to out-shoot me. Keeps failing.",
+      "“{phrase}”. You say it like an arrow. Straight.",
+      "The wind up here is cold. I've stopped noticing. Mostly.",
+      "My sisters would've liked you. That's rare.",
+      "People leave. You keep coming back. I don't get it. I like it."
     ],
     "feed": [
       "I'm hungry. {count} × “{phrase}”. Don't make me ask twice.",
       "Feed me, {pet}. {count} of “{phrase}”. Quickly.",
       "{count} × “{phrase}”. Consider it a test.",
-      "I won't beg. {count} of “{phrase}”. Now."
+      "I won't beg. {count} of “{phrase}”. Now.",
+      "Hungry. {count} × “{phrase}”. Go.",
+      "Feed me or don't. {count} of “{phrase}”. Please.",
+      "{count} × “{phrase}”. I'll pretend I didn't ask."
     ],
     "fed": [
       "...Thanks. That was good.",
       "Fed. Fine. You did well.",
       "Hm. I'll remember that kindly.",
-      "That hit the mark."
+      "That hit the mark.",
+      "...Good. Thanks.",
+      "That'll do. More than do.",
+      "Fed. Fine. I'm grateful."
     ],
     "hungry": [
       "Figured. Back to the spire.",
       "No food. Typical, {pet}.",
-      "I'll hunt for myself, then."
+      "I'll hunt for myself, then.",
+      "Of course. Never mind.",
+      "I'll eat later. Alone. Like always."
     ]
   },
   "lines": {

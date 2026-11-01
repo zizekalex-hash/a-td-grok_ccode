@@ -245,10 +245,38 @@ export function dayOf(ms: number): number {
 }
 
 /** What she wishes for on a day: passes of one of her favourite skills. */
-export function wishOf(q: QueenKey, day: number): { skill: SkillKey; passes: number } {
+function ownWish(q: QueenKey, day: number): { skill: SkillKey; passes: number } {
   const favored = C.queens[q].favored.filter(isSkill);
   const mix = Math.imul((day + 7) ^ ((QUEEN_KEYS.indexOf(q) + 1) * 40503), 2654435761) >>> 0;
   return { skill: favored[mix % Math.max(1, favored.length)] ?? "charisma", passes: H.wishPasses };
+}
+
+/** Every pair of sisters or friends, each once. */
+export function closePairs(): [QueenKey, QueenKey][] {
+  const out: [QueenKey, QueenKey][] = [];
+  for (const q of QUEEN_KEYS)
+    for (const b of bondsOf(q))
+      if (b.kind !== "rival" && QUEEN_KEYS.indexOf(b.queen) > QUEEN_KEYS.indexOf(q))
+        out.push([q, b.queen]);
+  return out;
+}
+
+/**
+ * Today's alliance, if the day has one (court.hearts.allianceChance): a pair of
+ * sisters or friends who share one wish, the first one's. The same all day.
+ */
+export function allianceOf(day: number): [QueenKey, QueenKey] | null {
+  const pairs = closePairs();
+  if (!pairs.length || !(H.allianceChance > 0)) return null;
+  const mix = Math.imul((day + 101) ^ 0x5bd1e995, 2654435761) >>> 0;
+  if ((mix % 1000) / 1000 >= H.allianceChance) return null;
+  return pairs[(mix >>> 10) % pairs.length] ?? null;
+}
+
+/** Her wish for the day: passes of one of her skills (on an alliance day, the pair share the first one's). */
+export function wishOf(q: QueenKey, day: number): { skill: SkillKey; passes: number } {
+  const a = allianceOf(day);
+  return ownWish(a && a[1] === q ? a[0] : q, day);
 }
 
 /** Starts a new day's wishes when the day has changed. */

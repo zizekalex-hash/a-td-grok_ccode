@@ -18,7 +18,15 @@
       "Oh, hello.",
       "Ah.",
       "There's that glow.",
-      "Breathe in."
+      "Breathe in.",
+      "Mm, sunshine.",
+      "Ah, my bloom.",
+      "Hello, little root.",
+      "There you grow.",
+      "Oh, how lovely.",
+      "Breathe with me.",
+      "Welcome, welcome.",
+      "Gently now."
     ],
     "close": [
       "Everything grows, given time.",
@@ -28,13 +36,25 @@
       "Water your roots tonight.",
       "I can feel you getting stronger.",
       "Now, let's see you flourish.",
-      "Be gentle with yourself."
+      "Be gentle with yourself.",
+      "Grow at your own pace.",
+      "Every leaf counts.",
+      "Let the light in.",
+      "You're flourishing.",
+      "Rain and sun, both are gifts.",
+      "The garden is proud of you.",
+      "Bloom where you stand.",
+      "Patience is a kind of strength."
     ],
     "warm": [
       "You bloom brighter than my whole garden.",
       "My heart turns toward you like a flower to the sun.",
       "Every season is better with you in it.",
-      "Stay. The roses like you."
+      "Stay. The roses like you.",
+      "You are the warmest season I have known.",
+      "My heart flowers when you're near.",
+      "I'd give you every rose I've ever grown.",
+      "Stay, and let me tend to you."
     ],
     "pet": ["little sprout", "dear one", "seedling", "my bloom", "sunbeam"],
     "things": ["the roses", "the orchard", "new shoots", "morning dew", "the beehives"],
@@ -46,24 +66,38 @@
       "I planted a row of {gift} with your name on the marker.",
       "Some mornings I just listen to the bees. They're very busy, like you.",
       "Growth hurts a little, {pet}. That's how you know it's real.",
-      "{total} levels. I'd plant a tree for every one."
+      "{total} levels. I'd plant a tree for every one.",
+      "A seed you plant today is shade for someone tomorrow.",
+      "{sister} dreams of you, I think. She smiles in her sleep.",
+      "I named a new rose after one of your phrases: “{phrase}”.",
+      "The bees made extra honey this week. They must like you.",
+      "Strength isn't loud. It's roots holding through a storm.",
+      "In {region}, even the stones remember spring."
     ],
     "feed": [
       "I'm wilting, {pet}. Water me with {count} × “{phrase}”?",
       "Life needs feeding. {count} of “{phrase}”, please, and I'll blossom.",
       "Would you nourish me? “{phrase}”, {count} times, like rain.",
-      "My roots are thirsty for your words. {count} of “{phrase}”?"
+      "My roots are thirsty for your words. {count} of “{phrase}”?",
+      "A little nourishment, dear one? {count} × “{phrase}”.",
+      "Feed my garden heart: {count} of “{phrase}”.",
+      "I'm parched for your voice. {count} × “{phrase}”, softly."
     ],
     "fed": [
       "Oh, I'm blooming. Thank you, dear one.",
       "That was sunlight and rain at once.",
       "I'm all in flower now. Look what you did.",
-      "Fed and flourishing. You're good to me."
+      "Fed and flourishing. You're good to me.",
+      "I'm in full bloom now.",
+      "That was like spring rain. Thank you.",
+      "All my petals are open. You did that."
     ],
     "hungry": [
       "I'll wilt a little on the way home.",
       "Nothing grows without water, {pet}. Remember that.",
-      "Back to the garden, hungry. Perhaps tomorrow."
+      "Back to the garden, hungry. Perhaps tomorrow.",
+      "I'll fade a little till you come back.",
+      "My garden will be thirsty tonight."
     ]
   },
   "lines": {

@@ -18,7 +18,15 @@
       "Listen well.",
       "Hm.",
       "You may speak.",
-      "Well."
+      "Well.",
+      "Darling...",
+      "Hm, yes.",
+      "Attend me.",
+      "Ah.",
+      "Behold.",
+      "My subject.",
+      "Listen closely.",
+      "Indeed."
     ],
     "close": [
       "Do not disappoint me.",
@@ -28,13 +36,25 @@
       "Be magnificent.",
       "The court is watching. So am I.",
       "Now, more.",
-      "Queens do not repeat themselves. I made an exception."
+      "Queens do not repeat themselves. I made an exception.",
+      "Your queen has spoken.",
+      "Be worthy of it.",
+      "Few hear such words from me.",
+      "Remember this moment.",
+      "The tides agree.",
+      "Kneel, if it pleases you. It pleases me.",
+      "Rise higher still.",
+      "Glory awaits the persistent."
     ],
     "warm": [
       "You are my favourite subject. Obviously.",
       "Even a queen can be smitten. Apparently.",
       "My throne feels empty when you leave.",
-      "Stay. That is a royal wish."
+      "Stay. That is a royal wish.",
+      "You alone may call me by my name.",
+      "My crown feels lighter when you're near.",
+      "I would share my throne with you. Almost.",
+      "Even queens wish. I wish for you."
     ],
     "pet": ["darling", "my subject", "little scholar", "my treasure", "pet"],
     "things": ["the tides", "my crown", "glory", "the throne room", "sapphires"],
@@ -46,24 +66,38 @@
       "Bring me {gift}. Then bring me another. That is how devotion works.",
       "{foe} wants my attention. She may wait in line, behind you.",
       "{passes} passes for me. I keep count. Queens always do.",
-      "Greatness is repetition with a crown on it, {pet}."
+      "Greatness is repetition with a crown on it, {pet}.",
+      "The court flatters me all day. You recite. I prefer you.",
+      "My sister {sister} thinks she knows me best. She is mistaken. You do.",
+      "I had the fountains sing “{phrase}” at dawn. It sounded better from you.",
+      "{foe} sent me a letter. I used it to light a candle.",
+      "Magnificence is a habit. So, apparently, are you.",
+      "A queen needs no one. And yet, here you are, and here I am."
     ],
     "feed": [
       "Your queen hungers. {count} × “{phrase}”. Now, darling.",
       "Feed me {count} of “{phrase}”. A queen does not ask twice.",
       "I require tribute: “{phrase}”, {count} times. Kneel if it helps.",
-      "Darling, I am famished for devotion. {count} × “{phrase}”."
+      "Darling, I am famished for devotion. {count} × “{phrase}”.",
+      "Your queen requires sustenance: {count} × “{phrase}”.",
+      "Tribute, darling: {count} of “{phrase}”, beautifully.",
+      "I hunger for devotion. {count} × “{phrase}”."
     ],
     "fed": [
       "Mm. Exquisite. You may stay.",
       "That was worthy of a queen.",
       "Fed and flattered. Well done, darling.",
-      "Perfection. I knew you had it in you."
+      "Perfection. I knew you had it in you.",
+      "Mm. A feast fit for a queen.",
+      "You have nourished your queen. She is pleased.",
+      "Exquisite tribute. You may stay near."
     ],
     "hungry": [
       "A queen left hungry. How... memorable.",
       "I shall remember this neglect, {pet}.",
-      "No tribute. My throne is very cold tonight."
+      "No tribute. My throne is very cold tonight.",
+      "A queen, unfed. History will judge you.",
+      "I shall dine on disappointment tonight."
     ]
   },
   "lines": {

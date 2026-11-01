@@ -10,7 +10,22 @@
   },
   "queen": "valeera",
   "voice": {
-    "open": ["Heh.", "Yo!", "Hey, speedy.", "Oh, hey.", "Ha!", "Look who's here.", "Psst.", "Ayy."],
+    "open": [
+      "Heh.",
+      "Yo!",
+      "Hey, speedy.",
+      "Oh, hey.",
+      "Ha!",
+      "Look who's here.",
+      "Psst.",
+      "Ayy.",
+      "Heh, hey.",
+      "Ooh, champ.",
+      "Psst!",
+      "Whoa.",
+      "Okay okay.",
+      "Aaand here we go."
+    ],
     "close": [
       "Keep up!",
       "Not bad, not bad.",
@@ -19,13 +34,25 @@
       "Catch me if you can.",
       "Style points: high.",
       "Don't trip.",
-      "Now let's go again!"
+      "Now let's go again!",
+      "Keep up, champ!",
+      "Ha, nice!",
+      "Again!",
+      "You're quick!",
+      "Don't trip!",
+      "Show-off. I like it.",
+      "Race you later.",
+      "That's the spirit!"
     ],
     "warm": [
       "You're my favourite sparring partner. And not just sparring.",
       "I'd let you win. Once. Maybe.",
       "You're quick enough to catch me. Lucky you.",
-      "Stick around, champ."
+      "Stick around, champ.",
+      "You're my favourite opponent. And partner.",
+      "I'd throw a match for you. Maybe.",
+      "My heart's racing and I'm not even running.",
+      "Stick with me, champ. Always."
     ],
     "pet": ["speedy", "champ", "rookie", "partner", "hotshot"],
     "things": [
@@ -43,24 +70,38 @@
       "Speed is just repetition you stopped thinking about, {pet}.",
       "The {thing} misses you. I don't. Okay, a little.",
       "{passes} passes for me. That's a lot of laps.",
-      "{total} levels. You'd last at least a round in my arena."
+      "{total} levels. You'd last at least a round in my arena.",
+      "I dodged three knives at once today. The crowd went nuts.",
+      "{friend} keeps betting on you. She's winning a fortune.",
+      "“{phrase}”! Say it fast! Faster! Ha!",
+      "{foe} called me reckless. I call it stylish.",
+      "The secret to speed is not thinking. The secret to you is... still working on it.",
+      "Arena's quiet tonight. Wanna make it loud?"
     ],
     "feed": [
       "I'm starving, {pet}! Quick: {count} × “{phrase}”!",
       "Fuel me up: {count} of “{phrase}”. Go go go!",
       "Snack time! “{phrase}”, {count} times. Race you.",
-      "Feed me, champ. {count} × “{phrase}”. No slacking."
+      "Feed me, champ. {count} × “{phrase}”. No slacking.",
+      "Fuel stop! {count} × “{phrase}”!",
+      "Hungry! {count} of “{phrase}”, fast!",
+      "Quick snack, champ: “{phrase}”, {count} times!"
     ],
     "fed": [
       "Ha! Full speed again.",
       "Perfect. You're a lifesaver.",
       "Fed and fast. Let's go!",
-      "That hit the spot, champ."
+      "That hit the spot, champ.",
+      "Refuelled! Let's go!",
+      "Ha! Perfect pit stop.",
+      "Full tank, thanks partner!"
     ],
     "hungry": [
       "No snack? Boo. I'm off.",
       "Hungry and leaving. Your loss, {pet}.",
-      "I'll grab something on the way. Not from you, apparently."
+      "I'll grab something on the way. Not from you, apparently.",
+      "No snack? Lame. Bye!",
+      "Running on empty. Thanks a lot."
     ]
   },
   "lines": {

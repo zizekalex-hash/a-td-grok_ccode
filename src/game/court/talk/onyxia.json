@@ -18,7 +18,15 @@
       "Listen, whelp.",
       "Oh, it's you.",
       "Interesting.",
-      "Hrm."
+      "Hrm.",
+      "Tch.",
+      "Well?",
+      "Hah, whelp.",
+      "Ugh, fine.",
+      "Listen.",
+      "Oh?",
+      "Heh.",
+      "Look at you."
     ],
     "close": [
       "Don't make me repeat myself.",
@@ -28,13 +36,25 @@
       "That's almost respectable.",
       "Strength is earned, not given.",
       "Now go dig deeper.",
-      "I've eaten bigger heroes than you."
+      "I've eaten bigger heroes than you.",
+      "Don't get comfortable.",
+      "I've seen better. Not many.",
+      "Keep moving.",
+      "Dragons don't wait.",
+      "Prove it again tomorrow.",
+      "Try not to bore me.",
+      "I'm keeping an eye on you.",
+      "Now, louder."
     ],
     "warm": [
       "Fine. You're my favourite. Tell no one.",
       "My hoard has room for you.",
       "I'd burn the mine down for you. Don't test it.",
-      "Stay near. That's an order, and a wish."
+      "Stay near. That's an order, and a wish.",
+      "You're the only treasure I'd never trade.",
+      "Fine. I'm fond of you. Tell anyone and I'll deny it.",
+      "My hoard is boring without you in it.",
+      "Stay. That's not a request, it's a dragon's wish."
     ],
     "pet": ["whelp", "little hero", "mortal", "pup", "treasure"],
     "things": ["my hoard", "dragonglass", "the deep tunnels", "molten ore", "old bones"],
@@ -46,24 +66,38 @@
       "Bring me {gift}. Shiny. Sharp. You know the kind.",
       "Persistence is the only thing I respect. You have it, {pet}.",
       "The mine sings at night. Ore and fire. Like you reciting.",
-      "Most mortals give up by now. You didn't. Noted."
+      "Most mortals give up by now. You didn't. Noted.",
+      "{friend} and I raced through the tunnels this morning. I won. Obviously.",
+      "Mortals fear fire. You walk right into it. I like that.",
+      "I melted a sword today. It was ugly. Unlike you.",
+      "“{phrase}”. Again. Louder. I'm testing your lungs.",
+      "{foe} called me a lizard. I'm still deciding how to answer.",
+      "Gold is nice. Persistence is rarer. You've got both."
     ],
     "feed": [
       "I'm starving, {pet}. Feed the dragon: {count} × “{phrase}”. Now.",
       "Tribute. {count} of “{phrase}”. Don't skimp.",
       "My hoard wants words today. {count} × “{phrase}”, whelp.",
-      "Feed me {count} of “{phrase}”, or I eat something else. Your gold, perhaps."
+      "Feed me {count} of “{phrase}”, or I eat something else. Your gold, perhaps.",
+      "Tribute time, whelp: {count} × “{phrase}”.",
+      "The dragon is hungry. {count} of “{phrase}”. Move.",
+      "I could eat a knight. Or {count} × “{phrase}”. Your choice."
     ],
     "fed": [
       "Hah! That's a proper tribute.",
       "Mm. Satisfying. You may live.",
       "Full. Pleased. Don't tell anyone.",
-      "Good. My hoard grows fat on your words."
+      "Good. My hoard grows fat on your words.",
+      "Hah. Now that's a meal.",
+      "Satisfied. You're worth more than gold.",
+      "Full. Pleased. Don't push it."
     ],
     "hungry": [
       "No tribute? I'll remember that.",
       "Hungry dragons hold grudges, {pet}.",
-      "Back to my hoard, empty-clawed. Insulting."
+      "Back to my hoard, empty-clawed. Insulting.",
+      "Hungry dragons remember faces.",
+      "No food. I'll sulk in the lava."
     ]
   },
   "lines": {

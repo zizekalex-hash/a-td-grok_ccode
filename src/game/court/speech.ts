@@ -59,6 +59,13 @@ export function midSentence(name: string): string {
   return name.replace(/^The /, "the ");
 }
 
+/** A place in a sentence: "the Ember Mine", "the Gilded Inn", "Azshara's Palace". */
+export function placeSay(name: string): string {
+  if (/^The /.test(name)) return midSentence(name);
+  if (/'s /.test(name)) return name;
+  return `the ${name}`;
+}
+
 /** Every sentence starts with a capital, whatever was filled in. */
 function capitalize(text: string): string {
   return text.replace(/(^|[.!?…]\s+)([a-z])/g, (_, a: string, b: string) => a + b.toUpperCase());

@@ -218,6 +218,8 @@ export type CourtSessionView = {
   place: PlaceKey;
   skill: CourtSkillKey;
   queen: QueenKey | null;
+  /** A second queen watching, when two walk with you. */
+  also: QueenKey | null;
   date: boolean;
   phrase: string;
   words: string[];
@@ -261,7 +263,15 @@ export type CourtView = {
   /** How far through your texts' phrases the Court has come in this round of them. */
   deck: { done: number; total: number };
   /** A queen with you who asks to be fed a set of reps, and when she gives up (ms). */
-  hungry: { queen: QueenKey; id: string; text: string; size: number; until: number } | null;
+  hungry: {
+    queen: QueenKey;
+    /** Every hungry queen with you: one set feeds them all. */
+    queens: QueenKey[];
+    id: string;
+    text: string;
+    size: number;
+    until: number;
+  } | null;
   /** The latest line: a queen's, or yours. */
   line: { speaker: string; text: string; color: string; queen?: QueenKey } | null;
   /** Where you stand, if at a place, and the region you are in. */
@@ -274,7 +284,14 @@ export type CourtView = {
   /** Today's wish from each queen: passes of a skill, how many so far, and whether granted. */
   wishes: Record<
     QueenKey,
-    { skill: CourtSkillKey; passes: number; progress: number; done: boolean }
+    {
+      skill: CourtSkillKey;
+      passes: number;
+      progress: number;
+      done: boolean;
+      /** On an alliance day, the sister or friend who shares this wish. */
+      with?: QueenKey;
+    }
   >;
 };
 

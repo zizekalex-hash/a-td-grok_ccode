@@ -609,6 +609,8 @@ export interface GameConfig {
     night: { enabled: boolean; darkness: number };
     /** The current phrase flashing in the middle of the recite screen (see court.flash._about). */
     flash: { enabled: boolean; everyMs: number; lifeMs: number; size: number; opacity: number };
+    /** The lit word on the recite screen (see court.word._about). */
+    word: { size: number; glow: number; animate: boolean; sessionFps: number };
     /** The current phrase in raw binary behind the recite screen (see court.wall._about). */
     wall: BinaryWallConfig;
     /** A bonus set from Reps after each round (see court.bonus._about). */
@@ -645,6 +647,9 @@ export interface GameConfig {
       wishPasses: number;
       wishAffection: number;
       wishGold: number;
+      /** A day's chance of an alliance (a sister or friend pair sharing one wish), and its extra affection. */
+      allianceChance: number;
+      allianceBonus: number;
       fierceStreak: number;
       flashSeconds: number;
       memories: number[];
@@ -669,6 +674,10 @@ export interface GameConfig {
       lingerMinutes: number;
       encounterDist: number;
       encounterMinutes: number;
+      doubleRivalExtra: number;
+      doubleRivalMinutes: number;
+      /** Queens in groups (see court.presence.group._about). */
+      group: { togetherChance: number; banterSeconds: number; secondWatcherXp: number };
       /** A queen with you asks to be fed a set of reps (see court.presence.feed._about). */
       feed: {
         enabled: boolean;

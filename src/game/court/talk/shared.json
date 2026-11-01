@@ -181,7 +181,9 @@
         "Your best streak was {streak}. I was watching. I'm always watching.",
         "I just wanted to be near you.",
         "Mind if I tag along? I won't be any trouble.",
-        "Your best streak is {streak}. Show me another?"
+        "Your best streak is {streak}. Show me another?",
+        "We've had {dates} dates now. I count them too.",
+        "Remember our {dates} dates? I do. Every one."
       ],
       "leaveHappy": [
         "I'll go now. Smiling.",
@@ -202,9 +204,9 @@
     "notices": {
       "out": [
         "{queen} has come out looking for you.",
-        "{queen} left the {place} to find you.",
+        "{queen} left {place} to find you.",
         "{queen} is wandering the paths, looking for you.",
-        "{queen} slipped out of the {place}. She's looking for you."
+        "{queen} slipped out of {place}. She's looking for you."
       ],
       "outConfront": [
         "{queen} is coming for you, and she looks upset 💢",
@@ -237,6 +239,20 @@
         "{queen} stops to hug her {bond} {other}. They both look your way.",
         "{queen} links arms with her {bond} {other}. They're talking about you.",
         "{queen} and her {bond} {other} share a secret smile your way."
+      ],
+      "doubleRival": [
+        "{queen} and {other} both stand with you. The air between them turns sharp 💢",
+        "Two rivals at your side. {queen} and {other} are watching each other as much as you.",
+        "{queen} and {other} share the same ground. Neither looks pleased."
+      ],
+      "together": [
+        "{queen} and her {bond} {other} came out together to find you ♥",
+        "{queen} brought her {bond} {other} along. They are looking for you.",
+        "{queen} and {other} walk arm in arm, looking for you."
+      ],
+      "alliance": [
+        "{queen} and her {bond} {other} shared one wish today, and you granted it to both ♥",
+        "One wish, two queens: {queen} and her {bond} {other} are delighted with you ♥"
       ]
     }
   },
@@ -356,6 +372,70 @@
       "If {other} invites you anywhere, say you're busy. With me.",
       "{other} copied my hair again. Can you believe it?",
       "I don't hate {other}. I just like you better than she does."
+    ]
+  },
+  "duo": {
+    "sister": [
+      "{other}, tell them how I used to recite in my sleep as a girl.",
+      "{other} and I agree on one thing: you.",
+      "Don't let my sister {other} tease you. That's my job.",
+      "{other}, isn't our {pet} doing well?",
+      "Sisters share everything, {other}. Almost everything.",
+      "{other} cried at your last recital. Don't deny it, {other}.",
+      "We were just talking about you. Weren't we, {other}?",
+      "{other} has been hoping you'd come this way."
+    ],
+    "friend": [
+      "{other}, look who it is! Our favourite.",
+      "{other} says you've got a lovely voice. I say she's right.",
+      "We made a bet about you, {other} and I. You'll find out which one.",
+      "{other}, be nice. This one's special.",
+      "{other} and I are taking you to the Feast Hall one day.",
+      "Isn't {pet} wonderful, {other}?",
+      "{other} keeps asking about you. I keep telling her.",
+      "Two of us, one of you. Lucky {pet}."
+    ],
+    "rival": [
+      "{other}, must you follow us everywhere?",
+      "I was here first, {other}.",
+      "{other} thinks she can charm you. Watch her try.",
+      "Step aside, {other}. This one's mine.",
+      "Don't listen to {other}. She says that to everyone.",
+      "{other}, your shadow is in my light.",
+      "Pick, {pet}. Me or {other}. Choose wisely.",
+      "Oh, {other}. Still here?"
+    ]
+  },
+  "duoReply": {
+    "sister": [
+      "Oh, hush, {other}. I did not.",
+      "I suppose {other} is right, for once.",
+      "She's not wrong. Don't tell her I said so.",
+      "{other} exaggerates. A little.",
+      "Fine. Yes. We were talking about you.",
+      "Family is a terrible secret-keeper, isn't it, {pet}?",
+      "Don't encourage her, {pet}.",
+      "Hmph. Sisters."
+    ],
+    "friend": [
+      "{other} never shuts up about you either.",
+      "Ha! Guilty.",
+      "She's right, you know.",
+      "I'm always nice! Mostly.",
+      "We'll take good care of you, {pet}.",
+      "Don't tell {pet} about the bet, {other}!",
+      "Two of us is more fun anyway.",
+      "{other} is my favourite. After you, {pet}."
+    ],
+    "rival": [
+      "Please, {other}. Nobody asked you.",
+      "Oh, I'll follow wherever I like, {other}.",
+      "Watch and learn, {other}.",
+      "We'll see who {pet} chooses.",
+      "Says the one hogging all the attention.",
+      "Charming as ever, {other}. Truly.",
+      "I don't see your name on them, {other}.",
+      "Still here, and still prettier, {other}."
     ]
   }
 }

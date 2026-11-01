@@ -18,7 +18,15 @@
       "Come closer.",
       "Hah.",
       "Such heat.",
-      "Darling..."
+      "Darling...",
+      "Mm, heat.",
+      "Ah, spark.",
+      "Closer.",
+      "Ooh.",
+      "Hah, darling.",
+      "Feel that?",
+      "Mmm.",
+      "There you are."
     ],
     "close": [
       "Burn brighter.",
@@ -28,13 +36,25 @@
       "I can smell your progress.",
       "Mm, keep stoking.",
       "Don't cool off now.",
-      "Now strike."
+      "Now strike.",
+      "Stay warm.",
+      "Don't let it cool.",
+      "The forge sings for you.",
+      "Hotter next time.",
+      "I love a slow burn.",
+      "Strike while it glows.",
+      "Mm, delicious heat.",
+      "You're tempered steel now."
     ],
     "warm": [
       "You've set me smouldering.",
       "My fire burns for you alone.",
       "I'd melt the whole forge for you.",
-      "Stay close. I'm warm."
+      "Stay close. I'm warm.",
+      "You make my scales shimmer.",
+      "I'd melt every crown in the world for you.",
+      "My fire leans toward you, always.",
+      "Stay. Let me keep you warm."
     ],
     "pet": ["spark", "my ember", "darling", "little smith", "hot-head"],
     "things": ["the forge", "molten steel", "embers", "the anvil's song", "twilight fire"],
@@ -46,24 +66,38 @@
       "Bring me {gift}. I'll keep it burning under my pillow.",
       "Power is just heat that refused to cool, {pet}.",
       "{passes} passes for me. Each one a hammer stroke. I felt them all.",
-      "Craft is repetition with passion. You have both."
+      "Craft is repetition with passion. You have both.",
+      "I forged a ring today. It doesn't fit anyone. Yet.",
+      "{friend} came by the forge and burned her tail. We laughed for an hour.",
+      "“{phrase}” rings like a hammer on the anvil. Again.",
+      "{foe} wouldn't know a real flame if it kissed her.",
+      "Twilight fire is patient. It waits for the right moment.",
+      "Craft is love, repeated until it's perfect."
     ],
     "feed": [
       "I'm burning hungry, {pet}. Stoke me: {count} × “{phrase}”.",
       "Feed my fire. “{phrase}”, {count} times. Slowly.",
       "Fuel, darling. {count} of “{phrase}”.",
-      "The forge is starving. {count} × “{phrase}”. Hot."
+      "The forge is starving. {count} × “{phrase}”. Hot.",
+      "Stoke me, darling: {count} × “{phrase}”.",
+      "The forge is starving. {count} of “{phrase}”.",
+      "Feed my flames: “{phrase}”, {count} times, hot."
     ],
     "fed": [
       "Ahh... roaring now.",
       "Fed and blazing. Mmm.",
       "That was a perfect stoke.",
-      "You keep me burning. Thank you, spark."
+      "You keep me burning. Thank you, spark.",
+      "Roaring now. Mmm.",
+      "Perfectly stoked.",
+      "Fed and blazing for you."
     ],
     "hungry": [
       "Unfed. I'll smoulder alone.",
       "Cold forge tonight, {pet}. Shame.",
-      "The fire dims... I'll remember who let it."
+      "The fire dims... I'll remember who let it.",
+      "Embers only, tonight.",
+      "The forge cools. So do I."
     ]
   },
   "lines": {

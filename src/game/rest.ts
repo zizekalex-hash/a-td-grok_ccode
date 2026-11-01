@@ -9,6 +9,14 @@
 
 let holds = 0;
 const sleepers = new Set<() => void>();
+/** Time spent resting before the rest now (ms), and when the rest now began. */
+let restedMs = 0;
+let restSince = 0;
+
+/** All the time spent resting so far (ms), the rest now included. */
+export function restedTotal(): number {
+  return restedMs + (holds > 0 ? Date.now() - restSince : 0);
+}
 
 /** A rep set's screen is up. */
 export function resting(): boolean {
@@ -33,13 +41,17 @@ function mark(on: boolean) {
 /** Starts a rest; the function it gives back ends it (once). Rests can overlap. */
 export function holdRest(): () => void {
   holds += 1;
-  if (holds === 1) mark(true);
+  if (holds === 1) {
+    restSince = Date.now();
+    mark(true);
+  }
   let done = false;
   return () => {
     if (done) return;
     done = true;
     holds = Math.max(0, holds - 1);
     if (holds) return;
+    restedMs += Date.now() - restSince;
     mark(false);
     const wake = [...sleepers];
     sleepers.clear();

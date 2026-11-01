@@ -18,7 +18,15 @@
       "Hm, hello.",
       "Right.",
       "Oh, good.",
-      "Hi, you."
+      "Hi, you.",
+      "Okay.",
+      "Hm!",
+      "Right, so.",
+      "Oh, nice.",
+      "Hey, listen.",
+      "Wait, wait.",
+      "Ooh.",
+      "Sure."
     ],
     "close": [
       "Keep studying.",
@@ -28,13 +36,25 @@
       "Smart move.",
       "Fair winds.",
       "Let's see what you do next.",
-      "Now, don't make me show off."
+      "Now, don't make me show off.",
+      "The sea likes you.",
+      "Don't let it go to your head. Too much.",
+      "Let's keep going!",
+      "That's clever.",
+      "You're full of surprises.",
+      "I'll write that one down.",
+      "Okay, I'm impressed.",
+      "Steady as she goes."
     ],
     "warm": [
       "You make me forget my spells. That never happens.",
       "I'd sail anywhere with you.",
       "You're my favourite part of the harbor.",
-      "Stay till the tide comes in?"
+      "Stay till the tide comes in?",
+      "I'd give up magic for you. Not really. Maybe a little.",
+      "You're the best thing that ever sailed into my harbor.",
+      "I keep finding reasons to walk past the docks you use.",
+      "Stay a while? The sunset's better with you."
     ],
     "pet": ["sailor", "clever one", "scholar", "deckhand", "you"],
     "things": ["the tide", "a new spell", "the harbor lights", "sea charts", "frost runes"],
@@ -46,24 +66,38 @@
       "If you ever find {gift} by the docks, it's mine. Just so you know.",
       "Repetition is how every spell starts. You've got the instinct, {pet}.",
       "I read the {thing} last night. Calm seas, good omens.",
-      "{total} levels. You'd make a decent mage. Decent!"
+      "{total} levels. You'd make a decent mage. Decent!",
+      "I froze the harbor for a bit this morning. By accident. Don't tell anyone.",
+      "{friend} and I studied the old charts all night. We found a cove named after nobody. I named it for you.",
+      "“{phrase}” would make a great incantation. I'm only half joking.",
+      "{foe} says I'm too serious. I'm just focused. And cute. Okay, I'm serious.",
+      "The tide brings something new every day. Today it brought you.",
+      "Magic's all repetition until it isn't. Then it's wonderful."
     ],
     "feed": [
       "I'm running on empty, {pet}. {count} × “{phrase}”?",
       "Mana's low. Feed me {count} of “{phrase}”, please?",
       "Help a sorceress out: “{phrase}”, {count} times.",
-      "Quick, before I faint dramatically: {count} × “{phrase}”."
+      "Quick, before I faint dramatically: {count} × “{phrase}”.",
+      "Snack break! {count} × “{phrase}”?",
+      "My mana's tanking. {count} of “{phrase}”, please!",
+      "Help a girl out: “{phrase}”, {count} times."
     ],
     "fed": [
       "Ooh. Fully charged. Thanks!",
       "That was perfect. I'm blushing. Don't look.",
       "Mana restored. You're good at this.",
-      "Fed and focused. Let's go."
+      "Fed and focused. Let's go.",
+      "Mana full! You're the best.",
+      "That was perfect, thank you!",
+      "Fed and focused. Let's sail."
     ],
     "hungry": [
       "Okay. I'll just head back. Hungry.",
       "No snack? Rude, {pet}. A little.",
-      "Back to the harbor on an empty stomach."
+      "Back to the harbor on an empty stomach.",
+      "Rations, then. Without you.",
+      "No snack? I'll just stare at the sea."
     ]
   },
   "lines": {

@@ -12,6 +12,7 @@ import { RUMOR_KINDS } from "./news.ts";
 import {
   BASE_FILLS,
   BOND_TALK_FILLS,
+  DUO_FILLS,
   FEED_FILLS,
   LINE_FILLS,
   PRESENCE_FILLS,
@@ -106,7 +107,18 @@ describe("talk pack", () => {
   it("has the shared words in shape", () => {
     const problems: string[] = [];
     const s = SHARED;
-    extra("shared.json", s, ["topics", "pickupLines", "presence", "rumors", "bondTalk"], problems);
+    extra(
+      "shared.json",
+      s,
+      ["topics", "pickupLines", "presence", "rumors", "bondTalk", "duo", "duoReply"],
+      problems,
+    );
+    for (const part of ["duo", "duoReply"] as const) {
+      extra(`shared.json ${part}`, s[part] ?? {}, Object.keys(DUO_FILLS), problems);
+      for (const [kind, list] of Object.entries(s[part] ?? {}))
+        if (!kind.startsWith("_"))
+          check(`shared.json ${part}.${kind}`, list, DUO_FILLS[kind] ?? [], problems);
+    }
     for (const [name, t] of Object.entries(s.topics ?? {})) {
       extra(`shared.json topics.${name}`, t, ["ask", "answer"], problems);
       check(`shared.json topics.${name}.ask`, t.ask, BASE_FILLS, problems);

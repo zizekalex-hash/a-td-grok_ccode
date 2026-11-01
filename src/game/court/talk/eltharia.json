@@ -18,7 +18,15 @@
       "Sit, sit.",
       "Look at you.",
       "Ah, sweetheart.",
-      "Hey, you."
+      "Hey, you.",
+      "Aw.",
+      "Well now.",
+      "Bless you.",
+      "Oh, honey.",
+      "Ha! There you are.",
+      "Mm-hm.",
+      "Look who it is.",
+      "Come here, you."
     ],
     "close": [
       "I saved you a seat by the fire.",
@@ -28,13 +36,25 @@
       "You're doing wonderfully.",
       "Come back soon, all right?",
       "I mean it, truly.",
-      "Now, where were we?"
+      "Now, where were we?",
+      "I'll keep the kettle warm.",
+      "You make my day, you know.",
+      "Now, eat something.",
+      "That's my favourite person talking.",
+      "I'll tell the regulars.",
+      "Off you go, then. Come back soon.",
+      "I mean every word.",
+      "Don't you forget it."
     ],
     "warm": [
       "You make this whole inn feel warmer.",
       "I keep the window lit for you.",
       "My favourite part of the day is you.",
-      "Stay a little longer? For me?"
+      "Stay a little longer? For me?",
+      "I'd close the inn for a week just for you.",
+      "You're the best thing that walks through my door.",
+      "My heart does a little skip when you come in.",
+      "I keep your mug separate. Nobody else uses it."
     ],
     "pet": ["sweetheart", "my dear", "sunshine", "honey", "love"],
     "things": [
@@ -52,24 +72,38 @@
       "Some nights it's just me, {thing} and the quiet. Then you walk in.",
       "I hum while I polish the mugs. Lately it's been your phrases.",
       "Rest your feet. {total} levels deserve a soft chair.",
-      "If anyone gives you trouble in {region}, you send them to me."
+      "If anyone gives you trouble in {region}, you send them to me.",
+      "Old Bren said you recite better than any bard he's heard. I agree.",
+      "I tried one of your phrases while baking. The bread came out perfect.",
+      "When it rains, I sit by the window and wait for you.",
+      "{friend} might as well be family to me.",
+      "I keep a little jar of honey just for your visits.",
+      "{passes} passes for me. I made a mark on the beam for each one."
     ],
     "feed": [
       "I'm famished, {pet}. Feed me {count} of “{phrase}”? Like a good warm meal.",
       "Would you say “{phrase}” for me, {count} times? It fills me up better than stew.",
       "My tummy's rumbling for words. {count} × “{phrase}”, please?",
-      "Sit down and feed me, sweetheart: {count} of “{phrase}”, nice and slow."
+      "Sit down and feed me, sweetheart: {count} of “{phrase}”, nice and slow.",
+      "Feed me {count} of “{phrase}”, sweetheart, and I'll bake you something.",
+      "Supper time! {count} × “{phrase}”, nice and steady.",
+      "I'm peckish, love. {count} of “{phrase}”?"
     ],
     "fed": [
       "Oh, that was lovely. I'm full of you now.",
       "Mm. Best meal I've had all week.",
       "You fed me so well. I feel all glowy.",
-      "Thank you, love. I'll keep those words warm."
+      "Thank you, love. I'll keep those words warm.",
+      "There. Warm and full, like after a good stew.",
+      "Oh, that hit the spot. Thank you, love.",
+      "Fed and happy. You're a treasure."
     ],
     "hungry": [
       "I'll just... go back and eat alone, then.",
       "You didn't feed me. That's all right. It's fine. It's fine.",
-      "Hungry and home I go. Next time, {pet}?"
+      "Hungry and home I go. Next time, {pet}?",
+      "My tummy will just have to wait. Again.",
+      "Back to the kitchen, then. Alone."
     ]
   },
   "lines": {

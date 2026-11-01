@@ -64,6 +64,10 @@ export interface SharedTalk {
   presence: { lines: Record<string, string[]>; notices: Record<string, string[]> };
   rumors: Record<string, string[]>;
   bondTalk: Record<string, string[]>;
+  /** Two queens with you: one says something to the other ({other}), by their bond. */
+  duo: Record<string, string[]>;
+  /** And the other answers ({other} is the first). */
+  duoReply: Record<string, string[]>;
 }
 
 export const QUEEN_TALK = {
@@ -100,6 +104,7 @@ export const BASE_FILLS = [
   "foe",
   "phrase",
   "passes",
+  "dates",
 ] as const;
 
 /** More, for a moment's lines. */
@@ -117,7 +122,7 @@ export const LINE_FILLS: Partial<Record<LineKey, string[]>> = {
 export const FEED_FILLS = [...BASE_FILLS, "count"];
 
 /** What queens say when they find you, and when they leave. */
-const FOUND = ["hours", "rival", "passes", "streak"];
+const FOUND = ["hours", "rival", "passes", "streak", "dates"];
 export const PRESENCE_FILLS: Record<"lines" | "notices", Record<string, string[]>> = {
   lines: {
     seeking: FOUND,
@@ -135,6 +140,9 @@ export const PRESENCE_FILLS: Record<"lines" | "notices", Record<string, string[]
     leftHurt: ["queen"],
     rivals: ["queen", "other", "bond"],
     close: ["queen", "other", "bond"],
+    doubleRival: ["queen", "other"],
+    together: ["queen", "other", "bond"],
+    alliance: ["queen", "other", "bond"],
   },
 };
 
@@ -154,6 +162,13 @@ export const RUMOR_FILLS: Record<string, string[]> = {
   bond: [...WHO, "bond"],
   rival: WHO,
   you: ["skill", "level", "reps"],
+};
+
+/** Two queens with you talking to each other ({other}, and what she calls you). */
+export const DUO_FILLS: Record<string, string[]> = {
+  sister: ["other", "pet"],
+  friend: ["other", "pet"],
+  rival: ["other", "pet"],
 };
 
 /** A queen talking about a sister, friend or rival ({other}). */
@@ -191,4 +206,12 @@ export function rumorLines(kind: string): string[] {
 
 export function bondTalkLines(kind: string): string[] {
   return or(SHARED.bondTalk?.[kind], C.news.talk[kind]);
+}
+
+export function duoLines(kind: string): string[] {
+  return [...(SHARED.duo?.[kind] ?? [])];
+}
+
+export function duoReplyLines(kind: string): string[] {
+  return [...(SHARED.duoReply?.[kind] ?? [])];
 }

@@ -361,25 +361,24 @@ textarea {
 }
 
 /* The phrase flashing in the middle: in, hold, out. */
+/* Opacity only, on its own layer: no redrawing of the text while it fades. */
 @keyframes court-flash {
   0% {
     opacity: 0;
-    transform: scale(0.97);
   }
   18%,
   72% {
     opacity: var(--flash-opacity, 0.9);
-    transform: scale(1);
   }
   100% {
     opacity: 0;
-    transform: scale(1);
   }
 }
 
 .court-flash {
   opacity: 0;
   animation: court-flash ease-in-out forwards;
+  will-change: opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {

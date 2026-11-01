@@ -18,7 +18,15 @@
       "Curious.",
       "Ah, my little candle.",
       "The void says hello.",
-      "Shhh."
+      "Shhh.",
+      "Mm, candle.",
+      "Oh, you.",
+      "Whisper...",
+      "Delicious.",
+      "Ah, mortal.",
+      "Hush now.",
+      "Curious little thing.",
+      "Shall we?"
     ],
     "close": [
       "The void finds that adorable.",
@@ -28,13 +36,25 @@
       "My sister would never say it so nicely.",
       "Keep your secrets. I already know them.",
       "Mm. Delicious.",
-      "Sleep well. Or don't."
+      "Sleep well. Or don't.",
+      "The dark finds you charming.",
+      "Don't tell the light.",
+      "I'll whisper it to you later.",
+      "Every shadow has your name now.",
+      "How deliciously brave.",
+      "The void approves. Rarely does.",
+      "Keep burning, little candle.",
+      "Sleep with one eye open. For me."
     ],
     "warm": [
       "I've grown fond of you. How alarming.",
       "The void is warmer when you're near.",
       "You're the only mortal I'd keep.",
-      "Stay. The shadows like you."
+      "Stay. The shadows like you.",
+      "I've hidden you in a pocket of the void. You're safe there.",
+      "You make the dark feel like home.",
+      "I'd trade eternity for another evening of this.",
+      "Stay. The void and I insist."
     ],
     "pet": ["little candle", "mortal", "sweet thing", "my moth", "darling"],
     "things": ["the void", "old whispers", "shadows", "forbidden pages", "a black star"],
@@ -46,24 +66,38 @@
       "{gift} hums when you're close. So do I.",
       "Every word you repeat echoes forever somewhere. I collect them.",
       "{time} the shadows were long. I thought of you. Don't flatter yourself.",
-      "{passes} passes. The void counts too, {pet}."
+      "{passes} passes. The void counts too, {pet}.",
+      "My sister {sister} wears her crown so heavily. I wear mine sideways.",
+      "I read a forbidden page today. It was about you. I'm kidding. Mostly.",
+      "“{phrase}”. Say it in the dark sometime. It echoes beautifully.",
+      "{foe} thinks dreams are gentle. She hasn't seen mine.",
+      "Mortals are so short-lived. That's what makes you sparkle.",
+      "The stars that died still hum. Like you, after a long recital."
     ],
     "feed": [
       "I hunger, little candle. {count} × “{phrase}”, whispered.",
       "Feed the void: “{phrase}”, {count} times. It's very hungry.",
       "Mm, I'd devour {count} of “{phrase}”. Be a dear.",
-      "The dark wants your voice. {count} × “{phrase}”, now."
+      "The dark wants your voice. {count} × “{phrase}”, now.",
+      "Feed the dark, sweet thing: {count} × “{phrase}”.",
+      "I'm ravenous. {count} of “{phrase}”, whispered.",
+      "A snack for the void: “{phrase}”, {count} times."
     ],
     "fed": [
       "Delicious. The void purrs.",
       "Mm. You taste of persistence.",
       "Fed. How intimate.",
-      "Every one of those is mine now."
+      "Every one of those is mine now.",
+      "Mm. The void is full, and fond.",
+      "Delectable. Every word.",
+      "Fed by a candle. How poetic."
     ],
     "hungry": [
       "I'll go back to the dark. Hungry. Plotting.",
       "Unfed... the whispers will have opinions, {pet}.",
-      "Starving the void. Bold."
+      "Starving the void. Bold.",
+      "Starving in the dark. How dramatic of you.",
+      "The void will gnaw on this all night."
     ]
   },
   "lines": {
