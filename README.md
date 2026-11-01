@@ -64,9 +64,9 @@ Load .txt (title screen, tome, Options → Text) takes one file or several at on
 
 Recitation drill (on the title screen), tab Reps: count reps of your own words and phrases.
 
-- **Add:** write a word or phrase and tap Add. Each one keeps a running total.
+- **Add:** write a word or phrase and tap Add. They stay in the list. Each line shows its reps and time, like "100 xyz · 5:33" (or "0 xyz · 0:00" after a reset).
 - **Set size:** pick 10, 50 or 100, or type any number.
-- **A set:** tap the play button on a phrase and recite it that many times.
+- **A set:** tap a phrase (or its play button) and recite it that many times.
   - A stopwatch runs from the start of the set. Done opens after at least a second a rep (100 reps: 1:40), and nothing counts on screen meanwhile.
   - The time runs by the clock, so the screen can be off. A set in progress is still there if the app is closed and opened again.
   - Then one tap of Done adds the whole set to the total, with its time: "Completed 100 xyz in 5:33 (333 s)".

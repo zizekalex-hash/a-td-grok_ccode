@@ -226,8 +226,13 @@ export function DrillPanel() {
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
           <SkillBar skill="recitation" />
-          <SkillBar skill="recall" />
-          <CoreLine />
+          {/* Reps only gives Recitation XP: the rest stays out of the way of your phrases. */}
+          {tab !== "reps" && (
+            <>
+              <SkillBar skill="recall" />
+              <CoreLine />
+            </>
+          )}
 
           <div className="mt-4 grid grid-cols-3 gap-2">
             <button type="button" className="btn" data-on={tab === "rehearse"} aria-pressed={tab === "rehearse"} onClick={() => setTab("rehearse")}>

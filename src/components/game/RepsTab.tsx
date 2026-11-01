@@ -256,9 +256,8 @@ export function RepsTab() {
   return (
     <div>
       <p className="text-sm leading-relaxed text-muted">
-        Write a word or phrase, then do sets of reps of it. A set of {R.setSizes.at(-1)} takes at
-        least {clock(setMs(R.setSizes.at(-1) ?? 100))}; then Done adds it to the total, with
-        Recitation XP.
+        Your words and phrases stay here. Tap one to start a set; Done adds it with its time (a set
+        of {R.setSizes.at(-1)} takes at least {clock(setMs(R.setSizes.at(-1) ?? 100))}).
       </p>
       <form
         className="mt-2 flex gap-2"
@@ -340,24 +339,26 @@ export function RepsTab() {
         {state.items.map((it: RepItem) => (
           <li key={it.id} className="rounded-md border border-cyan/25 p-2">
             <div className="flex items-center gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="break-words">
+              {/* The whole phrase is a button: tap it to start a set. */}
+              <button
+                type="button"
+                className="min-w-0 flex-1 rounded-md p-1 text-left hover:bg-cyan/5 active:bg-cyan/10"
+                onClick={() => start(it.id)}
+                aria-label={`${it.total} ${it.text}, ${clock(it.ms)}. Start a set of ${state.set} reps`}
+              >
+                <span className="block break-words">
                   <span className="font-display text-xl text-gold">
                     {it.total.toLocaleString()}
                   </span>{" "}
-                  <span className="text-fg">{it.text}</span>
-                </p>
-                <p className="text-xs text-muted">
-                  {it.total > 0 ? (
-                    <>
-                      <span className="text-cyan">{clock(it.ms)}</span> · {it.sets} set
-                      {it.sets === 1 ? "" : "s"} · {perRep(it)} s a rep · last set {clock(it.last)}
-                    </>
-                  ) : (
-                    "No sets yet"
-                  )}
-                </p>
-              </div>
+                  <span className="text-fg">{it.text}</span>{" "}
+                  <span className="text-cyan whitespace-nowrap">· {clock(it.ms)}</span>
+                </span>
+                <span className="block text-xs text-muted">
+                  {it.sets > 0
+                    ? `${it.sets} set${it.sets === 1 ? "" : "s"} · ${perRep(it)} s a rep · last set ${clock(it.last)}`
+                    : `Tap to start a set of ${state.set.toLocaleString()}`}
+                </span>
+              </button>
               <button
                 type="button"
                 className="btn btn-gold shrink-0"
