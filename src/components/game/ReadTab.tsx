@@ -319,12 +319,16 @@ function Reader({
   const at = passAt(words.length, ms, (heldAt ?? now) - start);
 
   // Redraw only when the next word is due (never more than fps times a second).
+  // A phone's timer can fire a moment early, before the word has changed: the
+  // redraw then just sets the next timer (now is a dependency), so it never stops.
   useEffect(() => {
     if (heldAt !== null || finished || at.over) return;
-    const due = start + (at.word + 1) * ms - performance.now();
-    const id = window.setTimeout(() => setNow(performance.now()), Math.max(due, 1000 / reader.fps));
+    const t = performance.now();
+    const due = start + (at.word + 1) * ms - t + 4;
+    const gap = now + 1000 / reader.fps - t;
+    const id = window.setTimeout(() => setNow(performance.now()), Math.max(0, due, gap));
     return () => window.clearTimeout(id);
-  }, [heldAt, finished, at.over, at.word, start, ms, reader.fps, index, pass]);
+  }, [heldAt, finished, at.over, at.word, start, ms, reader.fps, now]);
 
   /** The time read so far goes into the history (once). */
   const logSession = (done: boolean) => {
