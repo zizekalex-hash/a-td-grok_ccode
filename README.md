@@ -99,10 +99,12 @@ Load .txt (title screen, tome, Options → Text) takes one file or several at on
 
 ## Read (a whole text, phrase by phrase)
 
-Recitation drill → Read: your texts are kept in the app (the same ones the game reads; Load .txt adds more, ✕ takes one out after asking), each with your place in it. Tap one to read it from where you left off, phrase by phrase in order ("Phrase 12 / 340 · pass 2 / 3", with the text's name at the top), like the Court's recite screen: the big word in the middle, the whole phrase below lighting up word by word, a bar for the pass.
+Recitation drill → Read: your texts are kept in the app (the same ones the game reads; Load .txt adds more, ✕ takes one out after asking), each with your place in it. Tap one to read it from where you left off, phrase by phrase in order ("Phrase 12 / 340 · pass 2 / 3 · 3.2%", with the text's name at the top), like the Court's recite screen: only the big word in the middle (no bar), the whole phrase below lighting up word by word. Texts are kept whole, up to 2,000 lines.
 
 - After a pass, tap the middle or Complete ✓ to go on; with **Auto** on it goes on by itself. Each pass gives Recitation XP.
-- Everything changes right on the screen and is kept: seconds a word, passes per phrase, word size, phrase size, font (Display, Plain, Mono), Auto; Back, Hold and Skip move through the phrases.
+- Everything changes right on the screen and is kept: seconds a word (0.9 by default), playback speed (× on top of it, 0.25× to 4×), passes per phrase, big word size, phrase size, fps (the most redraws a second, 1 to 60: lower saves battery; the screen only redraws when the next word is due anyway), font (Display, Plain, Mono), Auto. Back, Hold and Skip move through the phrases; "Fold the controls away" leaves only those.
+- **Edit** holds the reading and opens the phrase: rewrite it and Save, and the text itself is fixed (kept in the app, in the game, and in the backup); your place stays.
+- **⬇ Export** (in the list) and **.txt** (while reading) save the text as a .txt: a download in a browser, the share sheet on Android (Save to Files, Drive, send to a computer).
 - Reaching the end puts "Finished “text” · 340 phrases · time" in the History, and the text starts from the top next time; leaving midway puts "Read “text” · N phrases" there. The game behind rests while you read.
 - Defaults: `reader` in config.json.
 

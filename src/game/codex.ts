@@ -3,8 +3,12 @@ import { CONFIG } from "@/game/config";
 /** The text the game starts with until the player loads their own. Edit it in config.json. */
 export const DEFAULT_CODEX: string[] = CONFIG.textPool;
 
+/** How much of a text is kept: whole texts fit (the Read tab reads them through). */
+const MAX_CHARS = 1_000_000;
+const MAX_LINES = 2000;
+
 export function parseCodex(raw: string): string[] {
-  const clipped = raw.length > 500_000 ? raw.slice(0, 500_000) : raw;
+  const clipped = raw.length > MAX_CHARS ? raw.slice(0, MAX_CHARS) : raw;
   const chunks = clipped.split(/\n+/).flatMap((line) => {
     const t = line.replace(/\s+/g, " ").trim();
     if (!t) return [];
@@ -12,5 +16,5 @@ export function parseCodex(raw: string): string[] {
     return t.split(/(?<=[.!?])\s+/);
   });
   const lines = chunks.map((s) => s.trim()).filter((s) => s.length > 4);
-  return lines.slice(0, 400);
+  return lines.slice(0, MAX_LINES);
 }

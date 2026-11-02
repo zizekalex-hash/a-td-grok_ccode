@@ -372,6 +372,27 @@ export function removeText(index: number) {
   schedulePersist();
 }
 
+/**
+ * A text rewritten (the Read tab's Edit): its lines replaced, keeping its name
+ * and place. The built-in text, edited, becomes a text of your own.
+ */
+export function updateText(name: string, lines: string[]) {
+  const { texts, custom, textIndex } = useGame.getState();
+  if (!lines.length) return;
+  if (!custom || !texts.length) {
+    useGame.setState({ texts: [{ name, lines }], textIndex: 0, lines, custom: true });
+    getGame()?.onCodex(lines.length);
+    schedulePersist();
+    return;
+  }
+  const i = texts.findIndex((t) => t.name === name);
+  if (i < 0) return;
+  const next = texts.map((t, k) => (k === i ? { name, lines } : t));
+  useGame.setState({ texts: next, ...(i === textIndex ? { lines } : {}) });
+  if (i === textIndex) getGame()?.onCodex(lines.length);
+  schedulePersist();
+}
+
 /** Shared by every mode: when the last phrase came, and when a pause between texts ends. */
 const gate: PhraseGate = { until: 0, last: -Infinity };
 

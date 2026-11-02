@@ -9,7 +9,12 @@ import {
   newReader,
   passAt,
   phrasesOfText,
+  clampFps,
+  clampSpeed,
+  editPhrase,
+  percentDone,
   placeOf,
+  readUnits,
   setPlace,
   textKey,
 } from "./readtext.ts";
@@ -35,7 +40,7 @@ describe("read tab", () => {
     });
     assert.deepEqual(
       [back.wordMs, back.passes, back.wordSize, back.font, back.auto, back.at],
-      [700, 5, 6, "mono", true, { a: 4 }],
+      [700, 5, 12, "mono", true, { a: 4 }],
     );
     assert.equal(loadReader("junk").font, newReader().font);
   });
@@ -48,8 +53,12 @@ describe("read tab", () => {
       "Name the signal. Go.",
       "Attention is a blade.",
     ]);
-    const key = textKey("notes", lines);
-    assert.notEqual(textKey("notes", [...lines, "More."]), key, "an edited text starts over");
+    const key = textKey("notes");
+    assert.equal(
+      placeOf({ ...newReader(), at: { "notes|abc": 1 } }, key, 3),
+      1,
+      "old places still count",
+    );
     let s = newReader();
     assert.equal(placeOf(s, key, phrases.length), 0);
     s = setPlace(s, key, 2);
@@ -79,5 +88,27 @@ describe("read tab", () => {
     const h = historyOf(s.log, 10);
     assert.equal(h.all.reps, 0, "readings are not reps");
     assert.equal(h.days[0]!.entries.length, 1, "but they are in the day's lines");
+  });
+
+  it("rewrites a phrase in its line, and only there", () => {
+    const lines = ["The light is a decision. Name the signal. Go.", "Attention is a blade."];
+    const units = readUnits(lines);
+    assert.deepEqual(
+      units.map((u) => u.line),
+      [0, 0, 1],
+    );
+    const fixed = editPhrase(lines, units[1]!, "Name  the  signal  now.");
+    assert.deepEqual(fixed, [
+      "The light is a decision. Name the signal now.",
+      "Attention is a blade.",
+    ]);
+    assert.deepEqual(editPhrase(lines, units[2]!, ""), [lines[0]], "an emptied line goes");
+    assert.deepEqual(
+      readUnits(["Same. Same here, said twice. Same here, said twice."], 3).length,
+      2,
+    );
+    assert.equal(percentDone(139, 172), "80.8");
+    assert.equal(clampSpeed(9), 4);
+    assert.equal(clampFps(0), 1);
   });
 });

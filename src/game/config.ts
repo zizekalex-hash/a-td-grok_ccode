@@ -726,6 +726,8 @@ export interface GameConfig {
     maxPasses: number;
     wordSize: number;
     phraseSize: number;
+    speed: number;
+    fps: number;
     auto: boolean;
     autoPauseMs: number;
     font: string;
