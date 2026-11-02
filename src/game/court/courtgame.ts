@@ -117,7 +117,7 @@ import {
   type Fill,
 } from "./speech.ts";
 import { drawPhrase, hashOf, phraseUnits } from "./bag.ts";
-import { duoLines, duoReplyLines } from "./talk.ts";
+import { duoLines, duoReplyLines, pairTalk } from "./talk.ts";
 import { VOICES } from "./voices.ts";
 import { pickupLines, queenLines } from "./talk.ts";
 import { pickBonus, readReps } from "@/game/reps";
@@ -334,6 +334,8 @@ export class CourtGame implements GameBase {
   private alsoWatching: QueenKey | null = null;
   private banterIn = G.banterSeconds;
   private doubleRivalAt = new Map<string, number>();
+  /** When each sister, friend or named pair with you was last noticed together. */
+  private groupAt = new Map<string, number>();
   /** Feedings and prayers offered unasked today, by day and queen. */
   private offered = new Map<string, number>();
   /** Notices waiting for room on screen: at most NOTICES_SHOWN at once, each for its full time. */
@@ -688,6 +690,7 @@ export class CourtGame implements GameBase {
       this.encounterIn = 1;
       this.checkEncounters();
       this.checkDoubleRival();
+      this.checkGroupClose();
     }
     this.banterIn -= dt;
     if (this.banterIn <= 0) {
@@ -868,6 +871,65 @@ export class CourtGame implements GameBase {
         );
         if (text) this.notice(text, a);
         this.persist();
+        return;
+      }
+  }
+
+  /**
+   * Two sisters or friends both walking with you (or two queens with lines of
+   * their own for each other): the Court notices, and each says her pair line to
+   * the other, at most once every groupMinutes for the pair (Grok's pack).
+   */
+  private checkGroupClose() {
+    const me = this.withMe();
+    if (me.length < 2) return;
+    const now = Date.now();
+    const cool = Math.max(1, P.groupMinutes) * 60_000;
+    for (let i = 0; i < me.length; i++)
+      for (let j = i + 1; j < me.length; j++) {
+        const a = me[i]!;
+        const b = me[j]!;
+        const bond = bondOf(a, b);
+        const pair = pairTalk(a, b);
+        const named = pair.notice.length > 0 || Object.values(pair.says).some((l) => l.length);
+        if (bond !== "sister" && bond !== "friend" && !named) continue;
+        const key = pairKey(a, b);
+        if (now - (this.groupAt.get(key) ?? 0) < cool) continue;
+        this.groupAt.set(key, now);
+        const pick = (list: string[]) => list[Math.floor(Math.random() * list.length)];
+        const own = pick(pair.notice);
+        const text =
+          own && (Math.random() < 0.5 || (bond !== "sister" && bond !== "friend"))
+            ? own
+            : bond === "sister" || bond === "friend"
+              ? presenceLine(
+                  bond === "sister" ? "groupSister" : "groupFriend",
+                  { queen: C.queens[a].name, other: C.queens[b].name },
+                  Math.random,
+                  "notices",
+                )
+              : "";
+        if (text) this.notice(text, a);
+        for (const [q, other] of [
+          [a, b],
+          [b, a],
+        ] as const) {
+          const line = pick(pair.says[q] ?? []);
+          if (!line) continue;
+          const spec = C.queens[q];
+          this.speakLine({
+            speaker: spec.name,
+            text: this.voiced(
+              q,
+              fillLine(line, { other: C.queens[other].name, pet: this.petOf(q) }),
+            ),
+            color: spec.color,
+            queen: q,
+          });
+        }
+        this.see(a);
+        this.see(b);
+        this.pushView(true);
         return;
       }
   }

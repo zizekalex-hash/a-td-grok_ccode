@@ -4,6 +4,7 @@ import { Check, EyeOff, RotateCcw, X } from "lucide-react";
 import { BinaryWall } from "@/components/game/BinaryWall";
 import { Confirm } from "@/components/game/Confirm";
 import { buzz } from "@/components/game/feel";
+import { scheduleAlarm } from "@/game/alarm";
 import { CONFIG } from "@/game/config";
 import { flashToast, grantSkillXp } from "@/game/engine";
 import { levelForXp } from "@/game/recite";
@@ -81,6 +82,18 @@ export function RestSet({
   // The rest lasts while the set runs.
   const on = !!active;
   useEffect(() => (on ? holdRest() : undefined), [on]);
+
+  // The alarm: when a timer part is up, the phrase itself sounds (game/alarm.ts),
+  // set on the audio clock now for that moment, so it rings on time.
+  const timerEnd =
+    active && partOf(active) === "timer"
+      ? (active.partSince ?? active.since) + Math.max(0, active.duration ?? 0)
+      : 0;
+  const alarmText = item?.text ?? "";
+  useEffect(() => {
+    if (!state.alarm || !timerEnd || timerEnd <= Date.now()) return;
+    return scheduleAlarm(alarmText, timerEnd);
+  }, [state.alarm, timerEnd, alarmText]);
 
   // Once a second, by the clock; a buzz when Done opens. While blank, nothing
   // updates at all: only the buzz is kept, for the moment Done opens.

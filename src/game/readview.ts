@@ -142,3 +142,41 @@ export function reversedPhrases(phrases: string[], mode: FlashReverse): string[]
 export function flashRounds(forward: string[], reversed: string[]): string[] {
   return [...forward, ...reversed];
 }
+
+/** A phrase's hits: its words in groups of perHit (the last may be shorter). */
+export function hitCount(words: number, perHit: number): number {
+  return Math.max(1, Math.ceil(Math.max(0, words) / Math.max(1, perHit)));
+}
+
+/** The words of hit k (0-based) of a phrase. */
+export function hitWords(words: string[], k: number, perHit: number): string[] {
+  const n = Math.max(1, perHit);
+  return words.slice(k * n, k * n + n);
+}
+
+/** Every word of the text, in order, for the stream. */
+export function streamWords(phrases: string[]): string[] {
+  return phrases.flatMap((p) => p.split(/\s+/).filter(Boolean));
+}
+
+/** Where phrase `index` starts among streamWords (the stream starts there). */
+export function streamStart(phrases: string[], index: number): number {
+  let at = 0;
+  for (let i = 0; i < Math.min(index, phrases.length); i++)
+    at += phrases[i]!.split(/\s+/).filter(Boolean).length;
+  return at;
+}
+
+/** The stream's hit at word k: perHit words from there, round to the start past the end. */
+export function streamHit(words: string[], k: number, perHit: number): string {
+  if (!words.length) return "";
+  const out: string[] = [];
+  for (let i = 0; i < Math.max(1, perHit); i++) out.push(words[(k + i) % words.length]!);
+  return out.join(" ");
+}
+
+/** The stream's copies at the sides: how many on the left and on the right. */
+export function sideCounts(copies: number): { left: number; right: number } {
+  const n = Math.max(1, Math.floor(copies));
+  return { left: Math.ceil(n / 2), right: Math.floor(n / 2) };
+}

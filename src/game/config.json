@@ -1009,8 +1009,9 @@
       "encounterMinutes": 10,
     "doubleRivalExtra": 1,
     "doubleRivalMinutes": 30,
+    "groupMinutes": 20,
     "group": {
-      "_about": "Queens in groups. When a queen comes out, her sister or friend (one who knows you, from any region) comes along with chance togetherChance, and they follow you together. While two queens with a bond walk with you, one says something to the other about every banterSeconds and the other answers (rivals bicker; two rivals with you at once also grow jealous: doubleRivalExtra, at most once every doubleRivalMinutes per pair). Reciting with two queens with you, the second watches too: she grows fond of you, and each pass pays secondWatcherXp more XP. One set of reps feeds every hungry queen with you.",
+      "_about": "Queens in groups. When a queen comes out, her sister or friend (one who knows you, from any region) comes along with chance togetherChance, and they follow you together. While two queens with a bond walk with you, one says something to the other about every banterSeconds and the other answers (rivals bicker; two rivals with you at once also grow jealous: doubleRivalExtra, at most once every doubleRivalMinutes per pair). Two sisters or friends with you at once (or a pair with lines of their own: pairs in talk/shared.json) make the Court notice (groupSister, groupFriend) and say their pair lines, at most once every groupMinutes per pair. Reciting with two queens with you, the second watches too: she grows fond of you, and each pass pays secondWatcherXp more XP. One set of reps feeds every hungry queen with you.",
       "togetherChance": 0.5,
       "banterSeconds": 30,
       "secondWatcherXp": 0.15
@@ -1084,6 +1085,12 @@
         "Two rivals at your side. {queen} and {other} are watching each other as much as you.",
         "{queen} and {other} share the same ground. Neither looks pleased."
       ],
+        "groupSister": [
+          "{queen} and her sister {other} have both come for you. The Court holds its breath."
+        ],
+        "groupFriend": [
+          "{queen} brought her friend {other}. They are smiling at each other... and at you."
+        ],
       "together": [
         "{queen} and her {bond} {other} came out together to find you ♥",
         "{queen} brought her {bond} {other} along. They are looking for you."
@@ -2722,7 +2729,7 @@
     }
   },
   "reader": {
-    "_about": "The Read tab of the Recitation drill: a whole text, phrase by phrase in order (whole sentences, a short one joined to the next until it has minWords), each read passes times: the words light up one at a time, wordMs each, the big one in the middle and the whole phrase below. After a pass, a tap goes on (or, with auto, it goes on by itself after a silence: silence seconds after a pass, phraseSilence after a phrase's last pass; the words stay on the screen while it waits). wordSize (rem) and phraseSize (rem) are the text sizes; font: display, plain or mono. speed is an overall playback speed on top of wordMs (2 = twice as fast). fps caps how often the screen is redrawn (it only redraws when the word changes anyway; a lower cap spares the battery and may make a word come a little late). All of these start here and change on the screen itself, and are kept; so is your place in each text. A pass gives Recitation XP like the Rehearse tab. The look: accent is the colour of the controls and the lit word (purple, cyan, gold, pink, white, green, red) on a black panel, panelOpacity its see-through (1 = solid). wordX/wordY and phraseX/phraseY place the big word and the whole phrase, as fractions of the room between the header and the panel (all the screen when they are hidden): across, their middles; down, the word's foot and the phrase's top, so a longer phrase grows downwards and never runs into the word (unlock to drag them). phraseChars: the most characters on a line of the whole phrase (it wraps between words). centered keeps the word and the phrase in the middle across (dragging moves them only up and down). miniAuto: on Android, the reading goes into a mini window (picture in picture, over other apps) when you leave the app while reading. bytes: the whole text as a picture in the background, its raw bytes as pixels, in three layers blended together (screen, so none hides another): bytesRgb (three bytes a pixel), bytesGray (one) and bytesBits (one bit a pixel, black or white), each at its own opacity (0 leaves it out), and bytesOpacity over all of them; sharp or smooth. flash: every flashEvery seconds, the whole text flashes for flashMs milliseconds at flashSize pixels and flashOpacity (0.09 = 9%), a screen at a time, whole phrases only, through the whole text and round again; flashColor is its colour (white or an accent name), flashChars the most characters on a line (0: the whole width; otherwise a column in the middle), flashAvoid keeps it clear of the header and the panel while they show, and flashReverse (off, phrases, words or letters) adds a reversed round after each forward one: the phrases in reverse order, the whole text word by word backwards, or letter by letter backwards.",
+    "_about": "The Read tab of the Recitation drill: a whole text, phrase by phrase in order (whole sentences, a short one joined to the next until it has minWords), each read passes times: the words light up one at a time, wordMs each, the big one in the middle and the whole phrase below. After a pass, a tap goes on (or, with auto, it goes on by itself after a silence: silence seconds after a pass, phraseSilence after a phrase's last pass; the words stay on the screen while it waits). wordSize (rem) and phraseSize (rem) are the text sizes; font: display, plain or mono. speed is an overall playback speed on top of wordMs (2 = twice as fast). fps caps how often the screen is redrawn (it only redraws when the word changes anyway; a lower cap spares the battery and may make a word come a little late). All of these start here and change on the screen itself, and are kept; so is your place in each text. A pass gives Recitation XP like the Rehearse tab. The look: accent is the colour of the controls and the lit word (purple, cyan, gold, pink, white, green, red) on a black panel, panelOpacity its see-through (1 = solid). wordX/wordY and phraseX/phraseY place the big word and the whole phrase, as fractions of the room between the header and the panel (all the screen when they are hidden): across, their middles; down, the word's foot and the phrase's top, so a longer phrase grows downwards and never runs into the word (unlock to drag them). phraseChars: the most characters on a line of the whole phrase (it wraps between words). centered keeps the word and the phrase in the middle across (dragging moves them only up and down). miniAuto: on Android, the reading goes into a mini window (picture in picture, over other apps) when you leave the app while reading. bytes: the whole text as a picture in the background, its raw bytes as pixels, in three layers blended together (screen, so none hides another): bytesRgb (three bytes a pixel), bytesGray (one) and bytesBits (one bit a pixel, black or white), each at its own opacity (0 leaves it out), and bytesOpacity over all of them; sharp or smooth. flash: every flashEvery seconds, the whole text flashes for flashMs milliseconds at flashSize pixels and flashOpacity (0.09 = 9%), a screen at a time, whole phrases only, through the whole text and round again; flashColor is its colour (white or an accent name), flashChars the most characters on a line (0: the whole width; otherwise a column in the middle), flashAvoid keeps it clear of the header and the panel while they show, and flashReverse (off, phrases, words or letters) adds a reversed round after each forward one: the phrases in reverse order, the whole text word by word backwards, or letter by letter backwards. perHit: how many words the big word shows at a time (1 to 5; each hit lasts wordMs). stream: a second, fast word looper over the whole text (subliminal), next to the big word: streamPerHit words every streamMs ms, from the phrase being read on and round again, in streamCopies copies placed above the word, below the phrase or at the sides (streamPlace), stacked or in a row (streamFlow), at streamSize rem, streamOpacity and streamColor. It pauses with Hold and Edit.",
     "wordMs": 900,
     "wordMsMin": 200,
     "wordMsMax": 3000,
@@ -2760,7 +2767,17 @@
     "flashColor": "white",
     "flashChars": 0,
     "flashAvoid": true,
-    "flashReverse": "off"
+    "flashReverse": "off",
+    "perHit": 1,
+    "stream": true,
+    "streamMs": 60,
+    "streamPerHit": 1,
+    "streamCopies": 2,
+    "streamPlace": "above",
+    "streamFlow": "stacked",
+    "streamSize": 1.1,
+    "streamOpacity": 0.3,
+    "streamColor": "white"
   },
   "reps": {
     "_about": "The Reps tab of the Recitation drill: write a word or phrase, then do sets of reps of it, adding each finished set to its total. setSizes: the quick set sizes; set: the size picked at first (up to maxSet). A set of N reps takes at least N times secondsPerRep before Done can be tapped. xpPerWordRep: Recitation XP for each word of each rep in a finished set (0 for none). historyKeep: how many finished sets and resets the History tab keeps (resets do not clear it).",
@@ -2785,6 +2802,17 @@
       "maxFont": 9,
       "fallbackFont": 1.89,
       "fill": 0.85
+    },
+    "alarm": {
+      "_about": "When a timed set's timer is up, the alarm sounds: the phrase itself as sound, its bytes as bits and each bit a tone (hiHz for 1, loHz for 0) of bitMs, at amp (0.09 is quiet), repeats times with gapMs between, using at most maxBits bits of the phrase. It is set on the audio clock for the moment the timer ends. on is where the Reps tab's Alarm switch starts.",
+      "on": true,
+      "amp": 0.09,
+      "bitMs": 24,
+      "hiHz": 1320,
+      "loHz": 880,
+      "repeats": 3,
+      "gapMs": 350,
+      "maxBits": 96
     }
   },
   "core": {

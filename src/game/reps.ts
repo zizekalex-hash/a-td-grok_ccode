@@ -78,6 +78,8 @@ export interface RepsState {
   minutes: number;
   first: Part;
   blank: boolean;
+  /** The alarm sounds when a timed set's timer is up (reps.alarm). */
+  alarm: boolean;
   active: ActiveSet | null;
   /** Every finished set and reset, newest first, up to reps.historyKeep. Resets do not clear it. */
   log: LogEntry[];
@@ -91,6 +93,7 @@ export function newReps(): RepsState {
     minutes: clampMinutes(R.timer.minutes),
     first: "reps",
     blank: false,
+    alarm: R.alarm.on !== false,
     active: null,
     log: [],
   };
@@ -351,9 +354,16 @@ export function logRead(
   });
 }
 
-/** Empties the history; the totals in Reps stay. */
+/**
+ * Empties the history and puts every count and time in Reps back to 0 with it,
+ * so the two always agree; the words and phrases stay (and a set going on goes on).
+ */
 export function clearHistory(s: RepsState): RepsState {
-  return { ...s, log: [] };
+  return {
+    ...s,
+    items: s.items.map((i) => ({ ...i, total: 0, sets: 0, ms: 0, last: 0 })),
+    log: [],
+  };
 }
 
 /** A day number in local time, so days change at midnight. */
@@ -545,6 +555,7 @@ export function loadReps(data: unknown): RepsState {
   if (Number.isFinite(num(d.minutes))) s.minutes = clampMinutes(num(d.minutes));
   if (d.first === "timer") s.first = "timer";
   s.blank = d.blank === true;
+  if (typeof d.alarm === "boolean") s.alarm = d.alarm;
   const seen = new Set<string>();
   for (const raw of Array.isArray(d.items) ? d.items : []) {
     if (!raw || typeof raw !== "object") continue;

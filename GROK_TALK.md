@@ -104,7 +104,8 @@ Placeholders allowed:
 - shared.json "presence.notices" (what the Court notices): out, outConfront:
   {queen} {place}; found, leftHappy, leftHurt: {queen}; rivals, close,
   together, alliance: {queen} {other} {bond}; doubleRival (two rivals with you
-  at once): {queen} {other}.
+  at once): {queen} {other}; groupSister, groupFriend (two sisters, or two
+  friends, both walking with you): {queen} {other}.
 - shared.json "rumors" (town gossip): every kind may use {queen} and {other},
   plus buzz {mult}; favored {skill}; gift {gift}; need {need}; wish {count}
   {skill}; longing {hours}; bond {bond}. "you" (gossip about the player) uses
@@ -112,5 +113,10 @@ Placeholders allowed:
 - shared.json "bondTalk" (a queen about a sister, friend or rival): {other}.
 - shared.json "duo" and "duoReply" (two queens with you, talking to each
   other): {other} the other queen, {pet} what the speaker calls you.
+- shared.json "pairs" (two particular queens both with you; keys are the two
+  queens' file names in alphabetical order joined by +, like
+  "azshara+xalatath"): "notice" (what the Court notices, no placeholders),
+  and under each of the two queens' names, what she says to the other
+  ({other}, {pet}). New pairs may be added.
 
 Here is the file:

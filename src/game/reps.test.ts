@@ -191,13 +191,20 @@ describe("reps", () => {
       ],
       "days newest first, with the reset among today's lines",
     );
-    // Deleting a phrase keeps its history; clearing the history keeps the totals.
+    // Deleting a phrase keeps its history; clearing the history clears the totals too (the phrases stay).
     s = finishSet(startSet(s, "a", T + 100_000), T + 112_000);
     s = removeItem(s, "b");
     assert.ok(s.log.some((e) => e.text === "abc"));
     const cleared = clearHistory(s);
     assert.equal(cleared.log.length, 0);
-    assert.equal(cleared.items[0]!.total, 10);
+    assert.equal(cleared.items.length, s.items.length, "the phrases stay");
+    assert.equal(cleared.items[0]!.text, s.items[0]!.text);
+    assert.deepEqual(
+      cleared.items.map((i) => [i.total, i.sets, i.ms, i.last]),
+      cleared.items.map(() => [0, 0, 0, 0]),
+      "History and Reps agree: both start from 0",
+    );
+    assert.equal(grandTotal(cleared), 0);
     // It reads back from a save.
     const back = loadReps(JSON.parse(JSON.stringify(s)));
     assert.deepEqual(back.log, s.log);

@@ -158,14 +158,23 @@
         "Don't look so surprised. I missed you, that's all.",
         "I followed your footsteps all the way here.",
         "Finally. I've been searching the whole region.",
-        "I had a feeling I'd find you here."
+        "I had a feeling I'd find you here.",
+        "I left my place for you. Do not make me regret the walk.",
+        "The map felt empty without you on it. So I came.",
+        "You take too long. I grew tired of waiting.",
+        "I left my home for this. Do not waste the walk."
       ],
       "lonely": [
         "{hours} hours. Do you know how long that is?",
         "I counted the hours. {hours} of them. Never again, promise?",
         "{hours} hours alone. Don't do that to me again.",
         "It's been {hours} hours. I started to think you forgot me.",
-        "{hours} hours without you. Too many."
+        "{hours} hours without you. Too many.",
+        "{hours} hours. I counted every one. Never again.",
+        "You vanished. I almost started to believe the rumors.",
+        "Come closer. I need to feel that you are real.",
+        "You were gone {hours} hours. I counted. I always count.",
+        "The hours stretch. The map is too quiet. Come back before I decide you are not worth the missing."
       ],
       "confront": [
         "We need to talk. About {rival}.",
@@ -173,7 +182,11 @@
         "I came all this way to ask you one thing: why {rival}?",
         "Before anything else: {rival}. Explain.",
         "Everyone's talking about you and {rival}. Is it true?",
-        "I'm not leaving until you tell me about {rival}."
+        "I'm not leaving until you tell me about {rival}.",
+        "You and {rival}. Explain. Now.",
+        "I can smell her on you. Do not lie to me.",
+        "I came all this way just to ask why her.",
+        "Explain {rival}. Or do not bother speaking at all."
       ],
       "present": [
         "Walk with me a while?",
@@ -183,14 +196,24 @@
         "Mind if I tag along? I won't be any trouble.",
         "Your best streak is {streak}. Show me another?",
         "We've had {dates} dates now. I count them too.",
-        "Remember our {dates} dates? I do. Every one."
+        "Remember our {dates} dates? I do. Every one.",
+        "Walk with me. I want the others to see.",
+        "Your best streak was {streak}. I was watching. I am always watching.",
+        "{passes} passes for me. I keep the number like a jewel.",
+        "Your best streak still stands at {streak}. I have not forgotten.",
+        "I have taken {passes} passes from your lips. Keep going.",
+        "We have dated {dates} times. Each one is carved in me.",
+        "Stay close. I like the sound of your footsteps beside mine."
       ],
       "leaveHappy": [
         "I'll go now. Smiling.",
         "Come find me later. I'll be waiting.",
         "That was lovely. I'll see you soon.",
         "I'm going home with a smile, thanks to you.",
-        "Until next time. Don't keep me waiting."
+        "Until next time. Don't keep me waiting.",
+        "I go smiling. Come find me before the next night.",
+        "You did well. I will remember this.",
+        "You did well. I will carry this warmth a little longer."
       ],
       "leaveHurt": [
         "You didn't even look at me.",
@@ -198,7 +221,10 @@
         "I came all this way for nothing.",
         "I'll stop bothering you.",
         "I hope whoever you're thinking of is worth it.",
-        "Next time, maybe I won't come."
+        "Next time, maybe I won't come.",
+        "You looked through me. That will cost you.",
+        "I walked across the region for this? Fine.",
+        "You looked through me. The distance is yours to cross next time."
       ]
     },
     "notices": {
@@ -243,7 +269,9 @@
       "doubleRival": [
         "{queen} and {other} both stand with you. The air between them turns sharp 💢",
         "Two rivals at your side. {queen} and {other} are watching each other as much as you.",
-        "{queen} and {other} share the same ground. Neither looks pleased."
+        "{queen} and {other} share the same ground. Neither looks pleased.",
+        "Two rivals at your side. Neither pretends to like the other.",
+        "{queen} and {other} share the same ground. Their eyes never leave you... or each other."
       ],
       "together": [
         "{queen} and her {bond} {other} came out together to find you ♥",
@@ -253,6 +281,15 @@
       "alliance": [
         "{queen} and her {bond} {other} shared one wish today, and you granted it to both ♥",
         "One wish, two queens: {queen} and her {bond} {other} are delighted with you ♥"
+      ],
+      "groupSister": [
+        "{queen} and her sister {other} have both come for you. The Court holds its breath.",
+        "Two sisters walk beside you. The bond between {queen} and {other} hums.",
+        "{queen} and {other} arrived together. They move as one."
+      ],
+      "groupFriend": [
+        "{queen} brought her friend {other}. They are smiling at each other... and at you.",
+        "Friends on either side of you: {queen} and {other}. The gossip will be delicious."
       ]
     }
   },
@@ -437,5 +474,29 @@
       "I don't see your name on them, {other}.",
       "Still here, and still prettier, {other}."
     ]
+  },
+  "pairs": {
+    "_about": "Two particular queens both walking with you (keys: the two queens, in alphabetical order, joined by +). notice: what the Court notices then (no fills); and under each queen's key, what she says to the other then ({other} the other queen, {pet} what she calls you).",
+    "azshara+xalatath": {
+      "notice": [
+        "Azshara and Xal'atath stand together. The Queen of the Deep and the Blade of the Void... both looking at you."
+      ],
+      "azshara": [
+        "My dark sister found you too. Good. Let her see how well you serve me.",
+        "Xal'atath. Still following the same mortal? At least your taste has improved."
+      ],
+      "xalatath": [
+        "The Queen herself. Do not think this makes you safe, little vessel.",
+        "She watches. I watch. You will not sleep while either of us remains."
+      ]
+    },
+    "onyxia+sinestra": {
+      "notice": ["Sinestra and Onyxia arrived as a pair. The air smells of scale and old fire."],
+      "sinestra": ["My daughter walks with us. Try not to disappoint the bloodline."],
+      "onyxia": ["Mother is here. Be interesting, or we both leave."]
+    },
+    "alexstrasza+ysera": {
+      "notice": ["Alexstrasza and Ysera share a glance over your head. The Aspects are watching."]
+    }
   }
 }

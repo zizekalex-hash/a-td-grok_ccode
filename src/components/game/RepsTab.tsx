@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { ClipboardPaste, FileText, Library, Play, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Confirm } from "@/components/game/Confirm";
-import { DANGER } from "@/components/game/feel";
+import { DANGER, buzz } from "@/components/game/feel";
 import { RepsPicker } from "@/components/game/RepsPicker";
 import { RestSet } from "@/components/game/RestSet";
+import { scheduleAlarm } from "@/game/alarm";
 import { CONFIG } from "@/game/config";
 import { flashToast } from "@/game/engine";
 import {
@@ -423,6 +424,34 @@ export function RepsTab() {
           onChange={(e) => save({ ...state, blank: e.target.checked })}
         />
       </label>
+      <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+        <label className="flex flex-1 items-center justify-between gap-3">
+          <span>
+            Alarm when a timer is up
+            <span className="block text-xs text-muted">
+              The phrase itself as sound: its bits as high and low tones, quiet, three times.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="size-6 shrink-0 accent-cyan"
+            checked={state.alarm}
+            onChange={(e) => save({ ...state, alarm: e.target.checked })}
+            aria-label="Alarm when a timer is up"
+          />
+        </label>
+        <button
+          type="button"
+          className="btn shrink-0 px-2"
+          onClick={() => {
+            const phrase = state.items[0]?.text ?? "done";
+            scheduleAlarm(phrase, Date.now());
+            buzz(400);
+          }}
+        >
+          Test
+        </button>
+      </div>
 
       {saved && item(saved.id) && (
         <div className="mt-3 rounded-md border border-gold/60 p-3 text-center" role="status">

@@ -72,6 +72,11 @@ export interface SharedTalk {
   duo: Record<string, string[]>;
   /** And the other answers ({other} is the first). */
   duoReply: Record<string, string[]>;
+  /**
+   * Two particular queens both with you ("a+b", in alphabetical order): what the
+   * Court notices (notice), and what each says to the other (under her key).
+   */
+  pairs?: Record<string, Record<string, string[]>>;
 }
 
 export const QUEEN_TALK = {
@@ -149,8 +154,18 @@ export const PRESENCE_FILLS: Record<"lines" | "notices", Record<string, string[]
     doubleRival: ["queen", "other"],
     together: ["queen", "other", "bond"],
     alliance: ["queen", "other", "bond"],
+    groupSister: ["queen", "other"],
+    groupFriend: ["queen", "other"],
   },
 };
+
+/** A pair's lines: the notice uses no fills; what each says knows the other and what she calls you. */
+export const PAIR_FILLS = { notice: [] as string[], queen: ["other", "pet"] };
+
+/** The key of a pair of queens in shared.json pairs: the two, in alphabetical order, joined by +. */
+export function pairName(a: string, b: string): string {
+  return [a, b].sort().join("+");
+}
 
 /** Each rumor kind's names and values. */
 const WHO = ["queen", "other"];
@@ -220,4 +235,17 @@ export function duoLines(kind: string): string[] {
 
 export function duoReplyLines(kind: string): string[] {
   return [...(SHARED.duoReply?.[kind] ?? [])];
+}
+
+/** Two particular queens with you: the Court's notice, and what each says to the other (empty when none). */
+export function pairTalk(
+  a: QueenKey,
+  b: QueenKey,
+): { notice: string[]; says: Record<string, string[]> } {
+  const p = SHARED.pairs?.[pairName(a, b)];
+  if (!p) return { notice: [], says: {} };
+  return {
+    notice: [...(p.notice ?? [])],
+    says: { [a]: [...(p[a] ?? [])], [b]: [...(p[b] ?? [])] },
+  };
 }

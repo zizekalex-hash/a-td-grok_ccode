@@ -16,6 +16,9 @@ import {
   FEED_FILLS,
   PRAY_FILLS,
   LINE_FILLS,
+  PAIR_FILLS,
+  pairName,
+  pairTalk,
   PRESENCE_FILLS,
   QUEEN_TALK,
   RUMOR_FILLS,
@@ -130,7 +133,7 @@ describe("talk pack", () => {
     extra(
       "shared.json",
       s,
-      ["topics", "pickupLines", "presence", "rumors", "bondTalk", "duo", "duoReply"],
+      ["topics", "pickupLines", "presence", "rumors", "bondTalk", "duo", "duoReply", "pairs"],
       problems,
     );
     for (const part of ["duo", "duoReply"] as const) {
@@ -157,11 +160,41 @@ describe("talk pack", () => {
     for (const [kind, list] of Object.entries(s.rumors ?? {}))
       if (!kind.startsWith("_"))
         check(`shared.json rumors.${kind}`, list, RUMOR_FILLS[kind] ?? [], problems);
+    // Pairs: "a+b" of two queens, in alphabetical order; a notice and/or lines for either of the two.
+    for (const [key, entry] of Object.entries(s.pairs ?? {})) {
+      if (key.startsWith("_")) continue;
+      const [a, b, more] = key.split("+");
+      const known = (q?: string) => !!q && (QUEEN_KEYS as readonly string[]).includes(q);
+      if (!known(a) || !known(b) || more !== undefined || a === b || pairName(a!, b!) !== key) {
+        problems.push(
+          `shared.json pairs: "${key}" should be two queens in alphabetical order, as a+b`,
+        );
+        continue;
+      }
+      extra(`shared.json pairs.${key}`, entry, ["notice", a!, b!], problems);
+      for (const [who, list] of Object.entries(entry))
+        if (!who.startsWith("_"))
+          check(
+            `shared.json pairs.${key}.${who}`,
+            list,
+            who === "notice" ? PAIR_FILLS.notice : PAIR_FILLS.queen,
+            problems,
+          );
+    }
     extra("shared.json bondTalk", s.bondTalk ?? {}, Object.keys(BOND_TALK_FILLS), problems);
     for (const [kind, list] of Object.entries(s.bondTalk ?? {}))
       if (!kind.startsWith("_"))
         check(`shared.json bondTalk.${kind}`, list, BOND_TALK_FILLS[kind] ?? [], problems);
     report(problems);
+  });
+
+  it("finds a pair's lines whichever way round the two are asked for", () => {
+    const one = pairTalk("xalatath", "azshara");
+    const two = pairTalk("azshara", "xalatath");
+    assert.ok(one.notice.length > 0);
+    assert.deepEqual(one.notice, two.notice);
+    assert.ok((one.says.azshara ?? []).length > 0 && (one.says.xalatath ?? []).length > 0);
+    assert.deepEqual(pairTalk("jaina", "valeera"), { notice: [], says: {} });
   });
 
   it("knows every fill the game gives", () => {

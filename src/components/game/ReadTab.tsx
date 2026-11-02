@@ -41,6 +41,7 @@ import {
   ACCENTS,
   BYTES_MODES,
   clampFlashEvery,
+  clampCopies,
   clampFlashChars,
   clampFlashMs,
   clampFlashSize,
@@ -48,11 +49,14 @@ import {
   clampOpacity,
   clampPanelOpacity,
   clampPasses,
+  clampPerHit,
   clampPhraseChars,
   clampPhraseSize,
   clampPlace,
   clampSilence,
   clampSpeed,
+  clampStreamMs,
+  clampStreamSize,
   clampWordMs,
   clampWordSize,
   editPhrase,
@@ -62,6 +66,8 @@ import {
   nudge,
   PANEL_TABS,
   passAt,
+  STREAM_FLOWS,
+  STREAM_PLACES,
   percentDone,
   placeOf,
   readReader,
@@ -75,8 +81,22 @@ import {
   type PanelTab,
   type ReaderFont,
   type ReaderState,
+  type StreamFlow,
+  type StreamPlace,
 } from "@/game/readtext";
-import { bytesPicture, flashPages, flashRounds, reversedPhrases, wrapWords } from "@/game/readview";
+import {
+  bytesPicture,
+  flashPages,
+  flashRounds,
+  hitCount,
+  hitWords,
+  reversedPhrases,
+  sideCounts,
+  streamHit,
+  streamStart,
+  streamWords,
+  wrapWords,
+} from "@/game/readview";
 import { holdRest } from "@/game/rest";
 import { useGame } from "@/game/store";
 
@@ -91,6 +111,7 @@ const TAB_NAME: Record<PanelTab, string> = {
   look: "Look",
   bytes: "Bytes",
   flash: "Flash",
+  stream: "Stream",
 };
 const REVERSE_NAME: Record<FlashReverse, string> = {
   off: "off",
@@ -107,6 +128,12 @@ const FLASH_CHARS_STEPS: [number, number][] = [
   [100, 5],
   [Infinity, 10],
 ];
+const STREAM_MS_STEPS: [number, number][] = [
+  [50, 1],
+  [200, 5],
+  [Infinity, 25],
+];
+const COPIES_NAME = (n: number) => `${n} cop${n === 1 ? "y" : "ies"}`;
 const CHARS_STEPS: [number, number][] = [
   [20, 1],
   [Infinity, 5],
@@ -738,6 +765,118 @@ function SubliminalFlash({
   );
 }
 
+/**
+ * The stream: a second, fast word looper over the whole text (subliminal), next
+ * to the big word, in `copies` copies placed above the word, below the phrase
+ * or at the sides, stacked or in a row. It starts at the phrase being read and
+ * goes round the whole text on its own; each hit is written straight into the
+ * page (no React redraw), so a fast stream stays light.
+ */
+function StreamLayer({
+  words,
+  start,
+  ms,
+  perHit,
+  copies,
+  place,
+  flow,
+  size,
+  opacity,
+  color,
+  font,
+  running,
+  anchor,
+}: {
+  words: string[];
+  start: number;
+  ms: number;
+  perHit: number;
+  copies: number;
+  place: StreamPlace;
+  flow: StreamFlow;
+  size: number;
+  opacity: number;
+  color: string;
+  font: string;
+  running: boolean;
+  /** Where the big word stands: its middle across, its top and middle (px), and below the phrase (px). */
+  anchor: { x: number; wordTop: number; wordMid: number; below: number };
+}) {
+  const spans = useRef<(HTMLSpanElement | null)[]>([]);
+  const at = useRef(start);
+  const startRef = useRef(start);
+  startRef.current = start;
+  // A new text starts again at the phrase being read; otherwise it goes on round on its own.
+  useEffect(() => {
+    at.current = startRef.current;
+  }, [words]);
+  useEffect(() => {
+    if (!running || !words.length) return;
+    const tick = () => {
+      const text = streamHit(words, at.current, perHit);
+      at.current = (at.current + perHit) % words.length;
+      for (const el of spans.current) if (el) el.textContent = text;
+    };
+    tick();
+    const id = window.setInterval(tick, Math.max(16, ms));
+    return () => window.clearInterval(id);
+  }, [running, words, ms, perHit, copies]);
+
+  const span = (i: number) => (
+    <span
+      key={i}
+      ref={(el) => {
+        spans.current[i] = el;
+      }}
+      className="whitespace-nowrap"
+    />
+  );
+  const base: CSSProperties = {
+    fontSize: `${size}rem`,
+    lineHeight: 1.15,
+    opacity,
+    color,
+    gap: `${(size * 0.4).toFixed(2)}rem`,
+  };
+  const dir = flow === "row" ? "flex-row" : "flex-col";
+  if (place === "sides") {
+    const { left, right } = sideCounts(copies);
+    const side = (which: "left" | "right", n: number, from: number) => (
+      <div
+        className={`${font} pointer-events-none absolute z-[9] flex w-max ${dir} ${which === "left" ? "items-start" : "items-end"}`}
+        style={{ ...base, [which]: "0.5rem", top: anchor.wordMid, transform: "translateY(-50%)" }}
+        data-stream={which}
+        aria-hidden
+      >
+        {Array.from({ length: n }, (_, k) => span(from + k))}
+      </div>
+    );
+    return (
+      <>
+        {side("left", left, 0)}
+        {right > 0 && side("right", right, left)}
+      </>
+    );
+  }
+  return (
+    <div
+      className={`${font} pointer-events-none absolute z-[9] flex w-max items-center ${flow === "row" ? "flex-row" : place === "above" ? "flex-col-reverse" : "flex-col"}`}
+      style={{
+        ...base,
+        left: anchor.x,
+        transform: "translateX(-50%)",
+        ...(place === "above"
+          ? { bottom: `calc(100% - ${Math.round(anchor.wordTop)}px)` }
+          : { top: Math.round(anchor.below) }),
+      }}
+      data-stream={place}
+      aria-hidden
+    >
+      {Array.from({ length: copies }, (_, k) => span(k))}
+    </div>
+  );
+}
+
 /** The app's toasts, shown on the reader too (the page under it is hidden while you read). */
 function ReaderToast() {
   const toast = useGame((s) => s.toast);
@@ -875,7 +1014,11 @@ function Reader({
   const unit = units[Math.min(index, total - 1)];
   const phrase = unit?.text ?? "";
   const words = phrase.split(/\s+/).filter(Boolean);
-  const at = passAt(words.length, ms, (heldAt ?? now) - start);
+  // The big word shows perHit words at a time (a hit), each hit lasting ms.
+  const perHit = reader.perHit;
+  const at = passAt(hitCount(words.length, perHit), ms, (heldAt ?? now) - start);
+  const shown = hitWords(words, at.word, perHit).join(" ");
+  const hitOf = (i: number) => Math.floor(i / perHit);
 
   // Redraw only when the next word is due (never more than fps times a second).
   // A phone's timer can fire a moment early, before the word has changed: the
@@ -1085,7 +1228,26 @@ function Reader({
     };
   };
 
+  // The phrase's foot on the screen (the stream can stand below it).
+  const phraseRef = useRef<HTMLParagraphElement>(null);
+  const [phraseBottom, setPhraseBottom] = useState(0);
+  const phraseKey = `${phrase}|${reader.phraseSize}|${reader.phraseChars}|${reader.phraseY}|${reader.font}|${scale}|${room.top}|${room.bottom}|${vp.w}x${vp.h}|${drag?.y ?? ""}`;
+  useLayoutEffect(() => {
+    const b = Math.round(phraseRef.current?.getBoundingClientRect().bottom ?? 0);
+    setPhraseBottom((v) => (v === b ? v : b));
+  }, [phraseKey]);
   const wordSpot = spotProps("word");
+  // Where the big word stands, for the stream beside it.
+  const wordAt = spotAt("word");
+  const wordFoot = room.top + (vp.h - room.top - room.bottom) * wordAt.y;
+  const wordPx = reader.wordSize * scale * 16;
+  const anchor = {
+    x: vp.w * wordAt.x,
+    wordTop: wordFoot - wordPx * 1.05,
+    wordMid: wordFoot - wordPx / 2,
+    below: (phraseBottom || wordFoot + wordPx) + 6,
+  };
+  const allWords = streamWords(phrases);
   const phraseSpot = spotProps("phrase");
   const font = FONT_CLASS[reader.font];
   const set = (patch: Partial<ReaderState>) => save({ ...reader, ...patch });
@@ -1099,11 +1261,108 @@ function Reader({
   const cycle = <T,>(list: readonly T[], now: T): T => list[(list.indexOf(now) + 1) % list.length]!;
 
   const tabBody: Record<PanelTab, ReactNode> = {
+    stream: (
+      <>
+        <div className="grid grid-cols-2 gap-1.5">
+          <Toggle on={reader.stream} onClick={() => set({ stream: !reader.stream })}>
+            Stream: {reader.stream ? "on" : "off"}
+          </Toggle>
+          <Stepper
+            label="ms a hit"
+            value={String(reader.streamMs)}
+            raw={reader.streamMs}
+            onLess={() =>
+              set({ streamMs: clampStreamMs(nudge(reader.streamMs, -1, STREAM_MS_STEPS)) })
+            }
+            onMore={() =>
+              set({ streamMs: clampStreamMs(nudge(reader.streamMs, 1, STREAM_MS_STEPS)) })
+            }
+            onType={(v) => set({ streamMs: clampStreamMs(v) })}
+          />
+          <Stepper
+            label="words a hit"
+            value={String(reader.streamPerHit)}
+            raw={reader.streamPerHit}
+            onLess={() => set({ streamPerHit: clampPerHit(reader.streamPerHit - 1) })}
+            onMore={() => set({ streamPerHit: clampPerHit(reader.streamPerHit + 1) })}
+            onType={(v) => set({ streamPerHit: clampPerHit(v) })}
+          />
+          <Stepper
+            label="copies"
+            value={String(reader.streamCopies)}
+            raw={reader.streamCopies}
+            onLess={() => set({ streamCopies: clampCopies(reader.streamCopies - 1) })}
+            onMore={() => set({ streamCopies: clampCopies(reader.streamCopies + 1) })}
+            onType={(v) => set({ streamCopies: clampCopies(v) })}
+          />
+          <Stepper
+            label="stream size"
+            value={reader.streamSize.toFixed(2)}
+            raw={reader.streamSize}
+            onLess={() => set({ streamSize: clampStreamSize(reader.streamSize - 0.1) })}
+            onMore={() => set({ streamSize: clampStreamSize(reader.streamSize + 0.1) })}
+            onType={(v) => set({ streamSize: clampStreamSize(v) })}
+          />
+          <Stepper
+            label="stream opacity"
+            value={pct(reader.streamOpacity)}
+            raw={reader.streamOpacity}
+            onLess={() =>
+              set({ streamOpacity: clampOpacity(nudge(reader.streamOpacity, -1, OPACITY_STEPS)) })
+            }
+            onMore={() =>
+              set({ streamOpacity: clampOpacity(nudge(reader.streamOpacity, 1, OPACITY_STEPS)) })
+            }
+            onType={(v) => set({ streamOpacity: clampOpacity(v) })}
+          />
+        </div>
+        <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => set({ streamPlace: cycle(STREAM_PLACES, reader.streamPlace) })}
+            aria-label={`Stream place: ${reader.streamPlace}. Change it`}
+          >
+            Place: {reader.streamPlace}
+          </button>
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => set({ streamFlow: cycle(STREAM_FLOWS, reader.streamFlow) })}
+            aria-label={`Stream flow: ${reader.streamFlow}. Change it`}
+          >
+            {reader.streamFlow === "row" ? "In a row" : "Stacked"}
+          </button>
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => set({ streamColor: cycle(ACCENT_NAMES, reader.streamColor) })}
+            aria-label={`Stream colour: ${reader.streamColor}. Change it`}
+          >
+            <span
+              className="inline-block size-3 rounded-full"
+              style={{ background: ACCENTS[reader.streamColor] }}
+              aria-hidden
+            />
+            {reader.streamColor}
+          </button>
+        </div>
+        <p className="mt-1.5 text-center text-[0.65rem] leading-tight text-muted">
+          The whole text ({allWords.length.toLocaleString()} words), {reader.streamPerHit} a hit
+          every {reader.streamMs} ms (
+          {Math.round(
+            ((allWords.length / reader.streamPerHit) * reader.streamMs) / 1000,
+          ).toLocaleString()}{" "}
+          s a round), in {COPIES_NAME(reader.streamCopies)}, from the phrase you read on, round and
+          round
+        </p>
+      </>
+    ),
     play: (
       <>
         <div className="grid grid-cols-2 gap-1.5">
           <Stepper
-            label="s a word"
+            label={perHit > 1 ? "s a hit" : "s a word"}
             value={(reader.wordMs / 1000).toFixed(2)}
             raw={reader.wordMs / 1000}
             onLess={() => setPace({ ...reader, wordMs: clampWordMs(reader.wordMs - 100) })}
@@ -1117,6 +1376,14 @@ function Reader({
             onLess={() => setPace({ ...reader, speed: clampSpeed(reader.speed - 0.05) })}
             onMore={() => setPace({ ...reader, speed: clampSpeed(reader.speed + 0.05) })}
             onType={(v) => setPace({ ...reader, speed: clampSpeed(v) })}
+          />
+          <Stepper
+            label="words a hit"
+            value={String(reader.perHit)}
+            raw={reader.perHit}
+            onLess={() => set({ perHit: clampPerHit(reader.perHit - 1) })}
+            onMore={() => set({ perHit: clampPerHit(reader.perHit + 1) })}
+            onType={(v) => set({ perHit: clampPerHit(v) })}
           />
           <Stepper
             label="passes"
@@ -1515,14 +1782,15 @@ function Reader({
             className={`${font} absolute z-10 leading-none whitespace-nowrap select-none ${lit}`}
             style={{
               ...wordSpot.style,
-              fontSize: `min(${(reader.wordSize * scale).toFixed(3)}rem, ${(92 / Math.max(1, (words[at.word] ?? "").length * 0.6)).toFixed(2)}vw)`,
+              fontSize: `min(${(reader.wordSize * scale).toFixed(3)}rem, ${(92 / Math.max(1, shown.length * 0.6)).toFixed(2)}vw)`,
             }}
             aria-live="off"
           >
-            {words[at.word] ?? ""}
+            {shown}
           </p>
           <p
             {...phraseSpot}
+            ref={phraseRef}
             className={`${font} absolute z-10 w-max max-w-[94vw] text-center leading-relaxed select-none`}
             style={{
               ...phraseSpot.style,
@@ -1536,9 +1804,9 @@ function Reader({
                   <span
                     key={i}
                     className={
-                      i === at.word && !at.over
+                      hitOf(i) === at.word && !at.over
                         ? "text-cyan"
-                        : i <= at.word
+                        : hitOf(i) <= at.word
                           ? "text-fg"
                           : "text-fg/45"
                     }
@@ -1704,7 +1972,7 @@ function Reader({
             </div>
             {reader.controls && (
               <>
-                <div className="mt-2 grid grid-cols-4 gap-1.5" role="tablist" aria-label="Settings">
+                <div className="mt-2 grid grid-cols-5 gap-1" role="tablist" aria-label="Settings">
                   {PANEL_TABS.map((t) => (
                     <button
                       key={t}
@@ -1712,7 +1980,7 @@ function Reader({
                       role="tab"
                       aria-selected={reader.tab === t}
                       data-on={reader.tab === t}
-                      className="btn min-h-9 px-1"
+                      className="btn min-h-9 px-0.5"
                       onClick={() => set({ tab: t })}
                     >
                       {TAB_NAME[t]}
@@ -1736,7 +2004,8 @@ function Reader({
                 </>
               ) : (
                 <>
-                  <ChevronUp className="size-3" aria-hidden /> Settings: play, look, bytes, flash
+                  <ChevronUp className="size-3" aria-hidden /> Settings: play, look, bytes, flash,
+                  stream
                 </>
               )}
             </button>
@@ -1760,6 +2029,23 @@ function Reader({
         onScreens={onScreens}
         test={testFlash}
       />
+      {reader.stream && !finished && (
+        <StreamLayer
+          words={allWords}
+          start={streamStart(phrases, index)}
+          ms={reader.streamMs}
+          perHit={reader.streamPerHit}
+          copies={reader.streamCopies}
+          place={reader.streamPlace}
+          flow={reader.streamFlow}
+          size={reader.streamSize * scale}
+          opacity={reader.streamOpacity}
+          color={ACCENTS[reader.streamColor]}
+          font={font}
+          running={heldAt === null && editing === null}
+          anchor={anchor}
+        />
+      )}
       <ReaderToast />
     </div>,
     document.body,

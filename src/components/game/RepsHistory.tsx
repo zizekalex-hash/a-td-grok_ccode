@@ -66,7 +66,8 @@ function TallyCard({
 /**
  * Everything done in Reps: totals for today, since the last reset and all time;
  * each word or phrase over all time; and every set, day by day, with resets
- * marked. Resets in Reps do not clear it; Clear history does, after asking.
+ * marked. Resets in Reps do not clear it; Clear history does, after asking,
+ * and puts the totals in Reps back to 0 with it, so the two always agree.
  */
 export function RepsHistory() {
   const [state, setState] = useState<RepsState>(() => readReps());
@@ -186,7 +187,7 @@ export function RepsHistory() {
           <div className="mt-4 border-t border-cyan/20 pt-3">
             {asking ? (
               <Confirm
-                text="Clear the whole history? The totals in Reps stay."
+                text="Clear the whole history, and every total in Reps with it (back to 0)? Your words and phrases stay."
                 yes="Yes, clear it"
                 no="No, keep it"
                 onYes={() => {

@@ -676,6 +676,8 @@ export interface GameConfig {
       encounterMinutes: number;
       doubleRivalExtra: number;
       doubleRivalMinutes: number;
+      /** Two sisters or friends (or a pair with its own lines) with you: noticed once every so many minutes. */
+      groupMinutes: number;
       /** Queens in groups (see court.presence.group._about). */
       group: { togetherChance: number; banterSeconds: number; secondWatcherXp: number };
       /** A queen with you asks to be fed a set of reps (see court.presence.feed._about). */
@@ -757,6 +759,16 @@ export interface GameConfig {
     flashChars: number;
     flashAvoid: boolean;
     flashReverse: string;
+    perHit: number;
+    stream: boolean;
+    streamMs: number;
+    streamPerHit: number;
+    streamCopies: number;
+    streamPlace: string;
+    streamFlow: string;
+    streamSize: number;
+    streamOpacity: number;
+    streamColor: string;
   };
   /** The Reps tab of the Recitation drill (see reps._about). */
   reps: {
@@ -770,6 +782,17 @@ export interface GameConfig {
     timer: { minutes: number; choices: number[]; maxMinutes: number; estimateSeconds: number };
     /** The rest screen while a set runs (see reps.wall._about). */
     wall: BinaryWallConfig;
+    /** The timed set's alarm (see reps.alarm._about). */
+    alarm: {
+      on: boolean;
+      amp: number;
+      bitMs: number;
+      hiHz: number;
+      loHz: number;
+      repeats: number;
+      gapMs: number;
+      maxBits: number;
+    };
   };
   core: { damagePerLevel: number; maxDamageBonus: number };
   textPool: string[];

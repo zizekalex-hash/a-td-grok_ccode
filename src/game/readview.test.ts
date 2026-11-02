@@ -6,8 +6,11 @@ import {
   clampFlashMs,
   clampFlashSize,
   clampPanelOpacity,
+  clampCopies,
   clampFlashChars,
+  clampPerHit,
   clampPhraseChars,
+  clampStreamMs,
   clampPlace,
   clampSilence,
   loadReader,
@@ -18,8 +21,14 @@ import {
   bytesPicture,
   flashPages,
   flashRounds,
+  hitCount,
+  hitWords,
   pixelCount,
   reversedPhrases,
+  sideCounts,
+  streamHit,
+  streamStart,
+  streamWords,
   wrapWords,
 } from "./readview.ts";
 
@@ -155,6 +164,22 @@ describe("read tab: look, background and flash", () => {
     assert.equal(clampSilence(0.999), 0.999);
     assert.equal(clampFlashChars(45), 45);
     assert.equal(clampFlashChars(9999), 400);
+    assert.equal(clampPerHit(9), 5);
+    assert.equal(clampStreamMs(3), 16, "a frame at the least");
+    assert.equal(clampCopies(0), 1);
+    const st = loadReader({
+      stream: false,
+      streamPlace: "sides",
+      streamFlow: "row",
+      perHit: 3,
+      streamColor: "pink",
+    });
+    assert.equal(st.stream, false);
+    assert.equal(st.streamPlace, "sides");
+    assert.equal(st.streamFlow, "row");
+    assert.equal(st.perHit, 3);
+    assert.equal(st.streamColor, "pink");
+    assert.equal(loadReader({ streamPlace: "nowhere" }).streamPlace, newReader().streamPlace);
   });
 
   it("reverses the text for the flash's second round, then goes round again", () => {
@@ -166,6 +191,29 @@ describe("read tab: look, background and flash", () => {
     assert.deepEqual(reversedPhrases(["héllo"], "letters"), ["olléh"]);
     assert.deepEqual(flashRounds(["A", "B"], ["b", "a"]), ["A", "B", "b", "a"]);
     assert.deepEqual(flashRounds(["A"], []), ["A"]);
+  });
+
+  it("shows 1, 2 or 3 words a hit, and streams the whole text round and round", () => {
+    const words = ["a", "b", "c", "d", "e"];
+    assert.equal(hitCount(5, 1), 5);
+    assert.equal(hitCount(5, 2), 3);
+    assert.equal(hitCount(5, 3), 2);
+    assert.equal(hitCount(0, 2), 1);
+    assert.deepEqual(hitWords(words, 0, 2), ["a", "b"]);
+    assert.deepEqual(hitWords(words, 2, 2), ["e"], "the last hit may be shorter");
+    assert.deepEqual(hitWords(words, 1, 3), ["d", "e"]);
+    const phrases = ["one two three.", "four five.", "six."];
+    const all = streamWords(phrases);
+    assert.deepEqual(all, ["one", "two", "three.", "four", "five.", "six."]);
+    assert.equal(streamStart(phrases, 0), 0);
+    assert.equal(streamStart(phrases, 1), 3, "the stream starts at the phrase being read");
+    assert.equal(streamStart(phrases, 2), 5);
+    assert.equal(streamHit(all, 4, 3), "five. six. one", "round to the start");
+    assert.equal(streamHit(all, 6, 1), "one");
+    assert.equal(streamHit([], 0, 2), "");
+    assert.deepEqual(sideCounts(3), { left: 2, right: 1 });
+    assert.deepEqual(sideCounts(2), { left: 1, right: 1 });
+    assert.deepEqual(sideCounts(1), { left: 1, right: 0 });
   });
 
   it("wraps a phrase between words, at most so many characters a line", () => {

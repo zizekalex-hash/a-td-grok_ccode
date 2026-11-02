@@ -36,9 +36,15 @@ export const BYTES_MODES: BytesMode[] = ["rgb", "gray", "bits"];
 export type FlashReverse = "off" | "phrases" | "words" | "letters";
 export const FLASH_REVERSE: FlashReverse[] = ["off", "phrases", "words", "letters"];
 
+/** Where the stream's copies stand: above the word, below the phrase, or at the sides; stacked or in a row. */
+export type StreamPlace = "above" | "below" | "sides";
+export const STREAM_PLACES: StreamPlace[] = ["above", "below", "sides"];
+export type StreamFlow = "stacked" | "row";
+export const STREAM_FLOWS: StreamFlow[] = ["stacked", "row"];
+
 /** The settings panel's tabs. */
-export type PanelTab = "play" | "look" | "bytes" | "flash";
-export const PANEL_TABS: PanelTab[] = ["play", "look", "bytes", "flash"];
+export type PanelTab = "play" | "look" | "bytes" | "flash" | "stream";
+export const PANEL_TABS: PanelTab[] = ["play", "look", "bytes", "flash", "stream"];
 
 export interface ReaderState {
   wordMs: number;
@@ -94,6 +100,18 @@ export interface ReaderState {
   /** Clear of the header and the panel while they show. */
   flashAvoid: boolean;
   flashReverse: FlashReverse;
+  /** Words the big word shows at a time (each hit lasts wordMs). */
+  perHit: number;
+  /** The stream: a fast word looper over the whole text, next to the big word. */
+  stream: boolean;
+  streamMs: number;
+  streamPerHit: number;
+  streamCopies: number;
+  streamPlace: StreamPlace;
+  streamFlow: StreamFlow;
+  streamSize: number;
+  streamOpacity: number;
+  streamColor: Accent;
   /** Where you are in each text: the phrase to read next, by the text's key. */
   at: Record<string, number>;
 }
@@ -146,6 +164,18 @@ export function newReader(): ReaderState {
     flashReverse: FLASH_REVERSE.includes(R.flashReverse as FlashReverse)
       ? (R.flashReverse as FlashReverse)
       : "off",
+    perHit: clampPerHit(R.perHit),
+    stream: R.stream === true,
+    streamMs: clampStreamMs(R.streamMs),
+    streamPerHit: clampPerHit(R.streamPerHit),
+    streamCopies: clampCopies(R.streamCopies),
+    streamPlace: STREAM_PLACES.includes(R.streamPlace as StreamPlace)
+      ? (R.streamPlace as StreamPlace)
+      : "above",
+    streamFlow: R.streamFlow === "row" ? "row" : "stacked",
+    streamSize: clampStreamSize(R.streamSize),
+    streamOpacity: clampOpacity(R.streamOpacity),
+    streamColor: R.streamColor in ACCENTS ? (R.streamColor as Accent) : "white",
     at: {},
   };
 }
@@ -163,6 +193,26 @@ export function clampPanelOpacity(v: number): number {
 /** A place on the screen, as a fraction, kept on it. */
 export function clampPlace(v: number): number {
   return clamp(Math.round(v * 1000) / 1000, 0.02, 0.98);
+}
+
+/** Words a hit: 1 to 5. */
+export function clampPerHit(n: number): number {
+  return clamp(Math.round(n), 1, 5);
+}
+
+/** The stream's time a hit (ms): from 16 (a frame) to 2000. */
+export function clampStreamMs(ms: number): number {
+  return clamp(Math.round(ms), 16, 2000);
+}
+
+/** The stream's copies: 1 to 12. */
+export function clampCopies(n: number): number {
+  return clamp(Math.round(n), 1, 12);
+}
+
+/** The stream's size, in rem, to a twentieth. */
+export function clampStreamSize(rem: number): number {
+  return clamp(Math.round(rem * 20) / 20, 0.4, 6);
 }
 
 /** Seconds of silence, to the millisecond, up to a minute. */
@@ -289,6 +339,18 @@ export function loadReader(data: unknown): ReaderState {
   if (typeof d.flashAvoid === "boolean") s.flashAvoid = d.flashAvoid;
   if (FLASH_REVERSE.includes(d.flashReverse as FlashReverse))
     s.flashReverse = d.flashReverse as FlashReverse;
+  s.perHit = clampPerHit(num(d.perHit, s.perHit));
+  if (typeof d.stream === "boolean") s.stream = d.stream;
+  s.streamMs = clampStreamMs(num(d.streamMs, s.streamMs));
+  s.streamPerHit = clampPerHit(num(d.streamPerHit, s.streamPerHit));
+  s.streamCopies = clampCopies(num(d.streamCopies, s.streamCopies));
+  if (STREAM_PLACES.includes(d.streamPlace as StreamPlace))
+    s.streamPlace = d.streamPlace as StreamPlace;
+  if (STREAM_FLOWS.includes(d.streamFlow as StreamFlow)) s.streamFlow = d.streamFlow as StreamFlow;
+  s.streamSize = clampStreamSize(num(d.streamSize, s.streamSize));
+  s.streamOpacity = clampOpacity(num(d.streamOpacity, s.streamOpacity));
+  if (typeof d.streamColor === "string" && d.streamColor in ACCENTS)
+    s.streamColor = d.streamColor as Accent;
   const at = d.at && typeof d.at === "object" ? (d.at as Record<string, unknown>) : {};
   for (const [k, v] of Object.entries(at))
     if (typeof v === "number" && Number.isFinite(v) && v >= 0) s.at[k] = Math.floor(v);
