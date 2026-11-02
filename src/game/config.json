@@ -2722,7 +2722,7 @@
     }
   },
   "reader": {
-    "_about": "The Read tab of the Recitation drill: a whole text, phrase by phrase in order (whole sentences, a short one joined to the next until it has minWords), each read passes times: the words light up one at a time, wordMs each, the big one in the middle and the whole phrase below. After a pass, a tap goes on (or, with auto, it goes on by itself after autoPauseMs). wordSize (rem) and phraseSize (rem) are the text sizes; font: display, plain or mono. speed is an overall playback speed on top of wordMs (2 = twice as fast). fps caps how often the screen is redrawn (it only redraws when the word changes anyway; a lower cap spares the battery and may make a word come a little late). All of these start here and change on the screen itself, and are kept; so is your place in each text. A pass gives Recitation XP like the Rehearse tab. The look: accent is the colour of the controls and the lit word (purple, cyan, gold, pink, white, green, red) on a black panel, panelOpacity its see-through (1 = solid). wordX/wordY and phraseX/phraseY place the big word and the whole phrase (their centres, as fractions of the screen; unlock to drag them). bytes: the whole text as a picture in the background, its raw bytes as pixels (bytesMode rgb: three bytes a pixel, gray: one, bits: one bit a pixel, black or white), at bytesOpacity, sharp or smooth. flash: every flashEvery seconds, the whole text flashes for flashMs milliseconds at flashSize pixels and flashOpacity (0.09 = 9%), a screen at a time, whole phrases only, through the whole text and round again.",
+    "_about": "The Read tab of the Recitation drill: a whole text, phrase by phrase in order (whole sentences, a short one joined to the next until it has minWords), each read passes times: the words light up one at a time, wordMs each, the big one in the middle and the whole phrase below. After a pass, a tap goes on (or, with auto, it goes on by itself after autoPauseMs). wordSize (rem) and phraseSize (rem) are the text sizes; font: display, plain or mono. speed is an overall playback speed on top of wordMs (2 = twice as fast). fps caps how often the screen is redrawn (it only redraws when the word changes anyway; a lower cap spares the battery and may make a word come a little late). All of these start here and change on the screen itself, and are kept; so is your place in each text. A pass gives Recitation XP like the Rehearse tab. The look: accent is the colour of the controls and the lit word (purple, cyan, gold, pink, white, green, red) on a black panel, panelOpacity its see-through (1 = solid). wordX/wordY and phraseX/phraseY place the big word and the whole phrase (their centres, as fractions of the screen; unlock to drag them). phraseChars: the most characters on a line of the whole phrase (it wraps between words). bytes: the whole text as a picture in the background, its raw bytes as pixels, in three layers blended together (screen, so none hides another): bytesRgb (three bytes a pixel), bytesGray (one) and bytesBits (one bit a pixel, black or white), each at its own opacity (0 leaves it out), and bytesOpacity over all of them; sharp or smooth. flash: every flashEvery seconds, the whole text flashes for flashMs milliseconds at flashSize pixels and flashOpacity (0.09 = 9%), a screen at a time, whole phrases only, through the whole text and round again.",
     "wordMs": 900,
     "wordMsMin": 200,
     "wordMsMax": 3000,
@@ -2742,9 +2742,12 @@
     "wordY": 0.34,
     "phraseX": 0.5,
     "phraseY": 0.45,
+    "phraseChars": 45,
     "bytes": true,
     "bytesOpacity": 0.12,
-    "bytesMode": "rgb",
+    "bytesRgb": 0.33,
+    "bytesGray": 0.33,
+    "bytesBits": 0.33,
     "bytesSharp": true,
     "flash": true,
     "flashEvery": 9.9,

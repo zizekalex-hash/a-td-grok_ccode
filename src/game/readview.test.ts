@@ -6,12 +6,13 @@ import {
   clampFlashMs,
   clampFlashSize,
   clampPanelOpacity,
+  clampPhraseChars,
   clampPlace,
   loadReader,
   newReader,
   nudge,
 } from "./readtext.ts";
-import { bytesPicture, flashPages, pixelCount } from "./readview.ts";
+import { bytesPicture, flashPages, pixelCount, wrapWords } from "./readview.ts";
 
 const R = CONFIG.reader;
 
@@ -23,14 +24,16 @@ describe("read tab: look, background and flash", () => {
     assert.equal(s.flashMs, R.flashMs);
     assert.equal(s.flashSize, R.flashSize);
     assert.equal(s.flashOpacity, R.flashOpacity);
-    assert.equal(s.bytesMode, R.bytesMode);
+    assert.deepEqual(s.layers, { rgb: R.bytesRgb, gray: R.bytesGray, bits: R.bytesBits });
+    assert.equal(s.phraseChars, R.phraseChars);
     assert.equal(s.locked, true);
     const back = loadReader({
       accent: "nope",
       panelOpacity: 0,
       wordX: -3,
       phraseY: 0.61234,
-      bytesMode: "bits",
+      layers: { rgb: 0.3, gray: -1, bits: "x" },
+      phraseChars: 3,
       bytesOpacity: 7,
       flash: false,
       flashEvery: 0,
@@ -43,7 +46,9 @@ describe("read tab: look, background and flash", () => {
     assert.equal(back.panelOpacity, 0.1, "the panel never quite goes");
     assert.equal(back.wordX, 0.02);
     assert.equal(back.phraseY, 0.612);
-    assert.equal(back.bytesMode, "bits");
+    assert.deepEqual(back.layers, { rgb: 0.3, gray: 0, bits: s.layers.bits });
+    assert.equal(back.phraseChars, 10);
+    assert.equal(clampPhraseChars(45.4), 45);
     assert.equal(back.bytesOpacity, 1);
     assert.equal(back.flash, false);
     assert.equal(back.flashEvery, 0.5);
@@ -101,6 +106,24 @@ describe("read tab: look, background and flash", () => {
 
     const capped = bytesPicture(new Uint8Array(1000), "bits", 1, 100);
     assert.ok(capped.width * capped.height < 120, "never more than the pixel cap (and a row)");
+  });
+
+  it("wraps a phrase between words, at most so many characters a line", () => {
+    const words = "Oxygen biosynthesis pacemaker elements of the heart".split(" ");
+    const lines = wrapWords(words, 20);
+    assert.deepEqual(
+      lines.map((l) => l.map((i) => words[i]).join(" ")),
+      ["Oxygen biosynthesis", "pacemaker elements", "of the heart"],
+    );
+    assert.ok(lines.every((l) => l.map((i) => words[i]).join(" ").length <= 20));
+    assert.deepEqual(
+      lines.flat(),
+      words.map((_, i) => i),
+      "every word once, in order",
+    );
+    assert.deepEqual(wrapWords(["a", "verylongwordindeed", "b"], 5), [[0], [1], [2]]);
+    assert.deepEqual(wrapWords(words, 999), [words.map((_, i) => i)]);
+    assert.deepEqual(wrapWords([], 45), []);
   });
 
   it("cuts the whole text into screens of whole phrases, in order, each once", () => {

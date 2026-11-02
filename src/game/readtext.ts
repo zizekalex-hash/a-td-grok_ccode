@@ -28,7 +28,7 @@ export const ACCENTS = {
 export type Accent = keyof typeof ACCENTS;
 export const ACCENT_NAMES = Object.keys(ACCENTS) as Accent[];
 
-/** How the text's bytes become pixels: three a pixel, one a pixel, or a bit a pixel. */
+/** How the text's bytes become pixels: three a pixel, one a pixel, or a bit a pixel (the three layers). */
 export type BytesMode = "rgb" | "gray" | "bits";
 export const BYTES_MODES: BytesMode[] = ["rgb", "gray", "bits"];
 
@@ -59,10 +59,12 @@ export interface ReaderState {
   wordY: number;
   phraseX: number;
   phraseY: number;
-  /** The whole text's bytes as a picture behind it all. */
+  /** The most characters on a line of the whole phrase. */
+  phraseChars: number;
+  /** The whole text's bytes as a picture behind it all: three layers, each at its own opacity, and one over all. */
   bytes: boolean;
   bytesOpacity: number;
-  bytesMode: BytesMode;
+  layers: Record<BytesMode, number>;
   bytesSharp: boolean;
   /** The whole text flashed, a screen at a time: every flashEvery s, for flashMs ms, at flashSize px. */
   flash: boolean;
@@ -97,9 +99,14 @@ export function newReader(): ReaderState {
     wordY: clampPlace(R.wordY),
     phraseX: clampPlace(R.phraseX),
     phraseY: clampPlace(R.phraseY),
+    phraseChars: clampPhraseChars(R.phraseChars),
     bytes: R.bytes !== false,
     bytesOpacity: clampOpacity(R.bytesOpacity),
-    bytesMode: BYTES_MODES.includes(R.bytesMode as BytesMode) ? (R.bytesMode as BytesMode) : "rgb",
+    layers: {
+      rgb: clampOpacity(R.bytesRgb),
+      gray: clampOpacity(R.bytesGray),
+      bits: clampOpacity(R.bytesBits),
+    },
     bytesSharp: R.bytesSharp !== false,
     flash: R.flash === true,
     flashEvery: clampFlashEvery(R.flashEvery),
@@ -123,6 +130,11 @@ export function clampPanelOpacity(v: number): number {
 /** A place on the screen, as a fraction, kept on it. */
 export function clampPlace(v: number): number {
   return clamp(Math.round(v * 1000) / 1000, 0.02, 0.98);
+}
+
+/** Characters on a line of the whole phrase: from 10 to 200. */
+export function clampPhraseChars(n: number): number {
+  return clamp(Math.round(n), 10, 200);
 }
 
 /** Seconds between flashes, a tenth at a time, from half a second to ten minutes. */
@@ -207,8 +219,13 @@ export function loadReader(data: unknown): ReaderState {
   s.phraseX = clampPlace(num(d.phraseX, s.phraseX));
   s.phraseY = clampPlace(num(d.phraseY, s.phraseY));
   if (typeof d.bytes === "boolean") s.bytes = d.bytes;
+  s.phraseChars = clampPhraseChars(num(d.phraseChars, s.phraseChars));
   s.bytesOpacity = clampOpacity(num(d.bytesOpacity, s.bytesOpacity));
-  if (BYTES_MODES.includes(d.bytesMode as BytesMode)) s.bytesMode = d.bytesMode as BytesMode;
+  const layers = (d.layers && typeof d.layers === "object" ? d.layers : {}) as Record<
+    string,
+    unknown
+  >;
+  for (const m of BYTES_MODES) s.layers[m] = clampOpacity(num(layers[m], s.layers[m]));
   if (typeof d.bytesSharp === "boolean") s.bytesSharp = d.bytesSharp;
   if (typeof d.flash === "boolean") s.flash = d.flash;
   s.flashEvery = clampFlashEvery(num(d.flashEvery, s.flashEvery));

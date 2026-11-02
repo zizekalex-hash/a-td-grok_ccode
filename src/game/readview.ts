@@ -99,3 +99,28 @@ export function flashPages(phrases: string[], fits: (text: string) => boolean): 
   }
   return pages;
 }
+
+/**
+ * The words of a phrase in lines of at most perLine characters (spaces
+ * between them counted), broken between words: each line is the indexes of
+ * its words, in order. A word longer than a line gets a line of its own.
+ */
+export function wrapWords(words: string[], perLine: number): number[][] {
+  const max = Math.max(1, Math.floor(perLine));
+  const lines: number[][] = [];
+  let line: number[] = [];
+  let len = 0;
+  words.forEach((w, i) => {
+    const add = line.length ? len + 1 + w.length : w.length;
+    if (line.length && add > max) {
+      lines.push(line);
+      line = [i];
+      len = w.length;
+    } else {
+      line.push(i);
+      len = add;
+    }
+  });
+  if (line.length) lines.push(line);
+  return lines;
+}

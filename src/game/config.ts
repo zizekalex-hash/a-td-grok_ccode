@@ -738,9 +738,12 @@ export interface GameConfig {
     wordY: number;
     phraseX: number;
     phraseY: number;
+    phraseChars: number;
     bytes: boolean;
     bytesOpacity: number;
-    bytesMode: string;
+    bytesRgb: number;
+    bytesGray: number;
+    bytesBits: number;
     bytesSharp: boolean;
     flash: boolean;
     flashEvery: number;

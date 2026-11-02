@@ -1,10 +1,12 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type MutableRefObject,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -43,6 +45,7 @@ import {
   clampOpacity,
   clampPanelOpacity,
   clampPasses,
+  clampPhraseChars,
   clampPhraseSize,
   clampPlace,
   clampSpeed,
@@ -67,7 +70,7 @@ import {
   type ReaderFont,
   type ReaderState,
 } from "@/game/readtext";
-import { bytesPicture, flashPages } from "@/game/readview";
+import { bytesPicture, flashPages, wrapWords } from "@/game/readview";
 import { holdRest } from "@/game/rest";
 import { useGame } from "@/game/store";
 
@@ -84,7 +87,10 @@ const TAB_NAME: Record<PanelTab, string> = {
   bytes: "Bytes",
   flash: "Flash",
 };
-const BYTES_NAME: Record<BytesMode, string> = { rgb: "RGB", gray: "Gray", bits: "Bits" };
+const CHARS_STEPS: [number, number][] = [
+  [20, 1],
+  [Infinity, 5],
+];
 
 /** Step sizes: fine low down, coarser higher up. */
 const OPACITY_STEPS: [number, number][] = [
@@ -172,17 +178,66 @@ function textBytes(lines: string[]): Uint8Array {
   return new TextEncoder().encode(lines.join("\n"));
 }
 
-function screenAspect(): number {
-  return window.innerWidth / Math.max(1, window.innerHeight);
+/** The screen's size in device pixels (at most 2048 on the long side), for the bytes picture. */
+function screenPixels(): { w: number; h: number } {
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  let w = Math.max(1, Math.round(window.innerWidth * dpr));
+  let h = Math.max(1, Math.round(window.innerHeight * dpr));
+  const k = Math.min(1, 2048 / Math.max(w, h));
+  w = Math.max(1, Math.round(w * k));
+  h = Math.max(1, Math.round(h * k));
+  return { w, h };
 }
 
-/** The bytes picture as a .png (lossless: every byte is in it). */
-async function exportPicture(name: string, lines: string[], mode: BytesMode) {
-  const pic = bytesPicture(textBytes(lines), mode, screenAspect());
+/** One byte picture on a canvas of its own size. */
+function pictureCanvas(bytes: Uint8Array, mode: BytesMode, aspect: number): HTMLCanvasElement {
+  const pic = bytesPicture(bytes, mode, aspect);
   const c = document.createElement("canvas");
   c.width = pic.width;
   c.height = pic.height;
   c.getContext("2d")?.putImageData(new ImageData(pic.data, pic.width, pic.height), 0, 0);
+  return c;
+}
+
+/**
+ * The three byte pictures on one canvas of w × h, each at its own opacity,
+ * blended with "screen" (light adds up: none hides another).
+ */
+function drawLayers(
+  c: HTMLCanvasElement,
+  pictures: (mode: BytesMode) => HTMLCanvasElement,
+  layers: Record<BytesMode, number>,
+  sharp: boolean,
+  w: number,
+  h: number,
+) {
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = !sharp;
+  ctx.globalCompositeOperation = "screen";
+  for (const m of BYTES_MODES) {
+    if (layers[m] <= 0) continue;
+    ctx.globalAlpha = layers[m];
+    ctx.drawImage(pictures(m), 0, 0, w, h);
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+}
+
+/** The bytes picture as a .png, as the background shows it (at full strength). */
+async function exportPicture(
+  name: string,
+  lines: string[],
+  layers: Record<BytesMode, number>,
+  sharp: boolean,
+) {
+  const { w, h } = screenPixels();
+  const bytes = textBytes(lines);
+  const c = document.createElement("canvas");
+  drawLayers(c, (m) => pictureCanvas(bytes, m, w / h), layers, sharp, w, h);
   const blob = await new Promise<Blob | null>((ok) => c.toBlob(ok, "image/png"));
   if (!blob) {
     flashToast("Could not make the picture");
@@ -391,39 +446,50 @@ function Toggle({
 }
 
 /**
- * The whole text as a picture: its raw bytes as pixels (three a pixel, one, or
- * a bit a pixel), shaped like the screen and stretched over all of it, faint.
- * Drawn once (again only when the text or the kind of pixels change).
+ * The whole text as a picture: its raw bytes as pixels in three layers (RGB:
+ * three bytes a pixel; Gray: one; Bits: one bit a pixel), each at its own
+ * opacity, blended so none hides another, shaped like the screen and stretched
+ * over all of it, with one opacity over all. Drawn once, into one still canvas
+ * (again only when the text or a layer changes).
  */
 function BytesBackground({
   lines,
-  mode,
+  layers,
   opacity,
   sharp,
 }: {
   lines: string[];
-  mode: BytesMode;
+  layers: Record<BytesMode, number>;
   opacity: number;
   sharp: boolean;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const [aspect] = useState(screenAspect);
+  const [size] = useState(screenPixels);
+  const bytes = useMemo(() => textBytes(lines), [lines]);
+  // Each layer's own picture, made once for this text.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- a new store for each text's bytes
+  const made = useMemo(() => new Map<BytesMode, HTMLCanvasElement>(), [bytes]);
+  const { rgb, gray, bits } = layers;
   useEffect(() => {
     const c = ref.current;
-    const ctx = c?.getContext("2d");
-    if (!c || !ctx) return;
-    const pic = bytesPicture(textBytes(lines), mode, aspect);
-    c.width = pic.width;
-    c.height = pic.height;
-    ctx.putImageData(new ImageData(pic.data, pic.width, pic.height), 0, 0);
-  }, [lines, mode, aspect]);
+    if (!c) return;
+    const pictures = (m: BytesMode) => {
+      let p = made.get(m);
+      if (!p) {
+        p = pictureCanvas(bytes, m, size.w / size.h);
+        made.set(m, p);
+      }
+      return p;
+    };
+    drawLayers(c, pictures, { rgb, gray, bits }, sharp, size.w, size.h);
+  }, [bytes, made, rgb, gray, bits, sharp, size]);
   return (
     <canvas
       ref={ref}
       aria-hidden
-      data-bytes={mode}
+      data-bytes={BYTES_MODES.filter((m) => layers[m] > 0).join(" ")}
       className="pointer-events-none absolute inset-0 h-full w-full"
-      style={{ opacity, imageRendering: sharp ? "pixelated" : "auto" }}
+      style={{ opacity }}
     />
   );
 }
@@ -443,6 +509,7 @@ function SubliminalFlash({
   font,
   running,
   onScreens,
+  test,
 }: {
   phrases: string[];
   every: number;
@@ -452,11 +519,56 @@ function SubliminalFlash({
   font: string;
   running: boolean;
   onScreens: (n: number) => void;
+  /** Set here: a flash now, for ms at an opacity (the Test buttons). */
+  test: MutableRefObject<((ms: number, opacity: number) => void) | null>;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const probe = useRef<HTMLDivElement>(null);
   const pages = useRef<string[]>([]);
   const next = useRef(0);
+  const frame = useRef(0);
+  const hide = useRef(0);
+  const latest = useRef({ ms, opacity });
+
+  useEffect(() => {
+    latest.current = { ms, opacity };
+  }, [ms, opacity]);
+
+  /** The next screen of the text: shown in the next frame, gone ms later (a frame at the least). */
+  const show = useCallback((forMs: number, atOpacity: number) => {
+    const el = box.current;
+    const list = pages.current;
+    if (!el || !list.length) return;
+    const k = next.current % list.length;
+    next.current = (k + 1) % list.length;
+    cancelAnimationFrame(frame.current);
+    window.clearTimeout(hide.current);
+    frame.current = requestAnimationFrame(() => {
+      el.textContent = list[k] ?? "";
+      el.style.opacity = String(atOpacity);
+      el.style.display = "block";
+      el.dataset.screen = String(k + 1);
+      hide.current = window.setTimeout(() => {
+        el.style.display = "none";
+        el.textContent = "";
+      }, forMs);
+    });
+  }, []);
+
+  useEffect(() => {
+    test.current = show;
+    return () => {
+      test.current = null;
+    };
+  }, [test, show]);
+
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(frame.current);
+      window.clearTimeout(hide.current);
+    },
+    [],
+  );
   const [view, setView] = useState(() => `${window.innerWidth}x${window.innerHeight}`);
 
   useEffect(() => {
@@ -481,34 +593,13 @@ function SubliminalFlash({
   }, [phrases, size, font, view, onScreens]);
 
   useEffect(() => {
-    const shown = box.current;
-    if (!running || !shown) return;
-    let frame = 0;
-    let hide = 0;
-    const id = window.setInterval(() => {
-      const el = shown;
-      const list = pages.current;
-      if (!list.length) return;
-      const k = next.current % list.length;
-      next.current = (k + 1) % list.length;
-      // Shown in the next frame, and gone ms later (so a frame at the least).
-      frame = requestAnimationFrame(() => {
-        el.textContent = list[k] ?? "";
-        el.style.display = "block";
-        el.dataset.screen = String(k + 1);
-        hide = window.setTimeout(() => {
-          el.style.display = "none";
-          el.textContent = "";
-        }, ms);
-      });
-    }, every * 1000);
-    return () => {
-      window.clearInterval(id);
-      cancelAnimationFrame(frame);
-      window.clearTimeout(hide);
-      shown.style.display = "none";
-    };
-  }, [running, every, ms]);
+    if (!running) return;
+    const id = window.setInterval(
+      () => show(latest.current.ms, latest.current.opacity),
+      every * 1000,
+    );
+    return () => window.clearInterval(id);
+  }, [running, every, show]);
 
   const style: CSSProperties = { fontSize: `${size}px`, lineHeight: 1.15, display: "none" };
   return (
@@ -524,7 +615,7 @@ function SubliminalFlash({
         aria-hidden
         data-flash
         className={`${font} pointer-events-none fixed inset-0 z-[90] overflow-hidden p-2 break-words text-fg`}
-        style={{ ...style, opacity }}
+        style={style}
       />
     </>
   );
@@ -567,6 +658,7 @@ function Reader({
   const heldByEdit = useRef(false);
   const session = useRef({ began: Date.now(), phrases: 0, logged: false });
   const [screens, setScreens] = useState(0);
+  const testFlash = useRef<((ms: number, opacity: number) => void) | null>(null);
   /** The word or phrase being dragged (unlocked), and where. */
   const [drag, setDrag] = useState<{ spot: Spot; x: number; y: number } | null>(null);
   const dragFrom = useRef<{ px: number; py: number; x: number; y: number } | null>(null);
@@ -781,6 +873,10 @@ function Reader({
   const phraseSpot = spotProps("phrase");
   const font = FONT_CLASS[reader.font];
   const set = (patch: Partial<ReaderState>) => save({ ...reader, ...patch });
+  const setLayer = (m: BytesMode, dir: 1 | -1) =>
+    set({
+      layers: { ...reader.layers, [m]: clampOpacity(nudge(reader.layers[m], dir, OPACITY_STEPS)) },
+    });
   const pct = (v: number) => v.toFixed(2);
   const lit = heldAt !== null ? "text-muted" : "text-fg";
 
@@ -856,6 +952,24 @@ function Reader({
               set({ panelOpacity: clampPanelOpacity(nudge(reader.panelOpacity, 1, OPACITY_STEPS)) })
             }
           />
+          <Stepper
+            label="chars a line"
+            value={String(reader.phraseChars)}
+            onLess={() =>
+              set({ phraseChars: clampPhraseChars(nudge(reader.phraseChars, -1, CHARS_STEPS)) })
+            }
+            onMore={() =>
+              set({ phraseChars: clampPhraseChars(nudge(reader.phraseChars, 1, CHARS_STEPS)) })
+            }
+          />
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => set({ wordX: 0.5, phraseX: 0.5 })}
+            aria-label="Center the word and the phrase"
+          >
+            ↔ Center
+          </button>
           <button
             type="button"
             className="btn min-h-10 px-1"
@@ -915,7 +1029,7 @@ function Reader({
             Bytes background: {reader.bytes ? "on" : "off"}
           </Toggle>
           <Stepper
-            label="bytes opacity"
+            label="all bytes (over all)"
             value={pct(reader.bytesOpacity)}
             onLess={() =>
               set({ bytesOpacity: clampOpacity(nudge(reader.bytesOpacity, -1, OPACITY_STEPS)) })
@@ -924,21 +1038,29 @@ function Reader({
               set({ bytesOpacity: clampOpacity(nudge(reader.bytesOpacity, 1, OPACITY_STEPS)) })
             }
           />
+          <Stepper
+            label="RGB layer"
+            value={pct(reader.layers.rgb)}
+            onLess={() => setLayer("rgb", -1)}
+            onMore={() => setLayer("rgb", 1)}
+          />
+          <Stepper
+            label="Gray layer"
+            value={pct(reader.layers.gray)}
+            onLess={() => setLayer("gray", -1)}
+            onMore={() => setLayer("gray", 1)}
+          />
+          <Stepper
+            label="Bits layer"
+            value={pct(reader.layers.bits)}
+            onLess={() => setLayer("bits", -1)}
+            onMore={() => setLayer("bits", 1)}
+          />
+          <p className="self-center text-center text-[0.65rem] leading-tight text-muted">
+            The three blend (light adds up), so none hides another; 0 leaves one out
+          </p>
         </div>
-        <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-          <button
-            type="button"
-            className="btn min-h-10 px-1"
-            onClick={() =>
-              set({
-                bytesMode:
-                  BYTES_MODES[(BYTES_MODES.indexOf(reader.bytesMode) + 1) % BYTES_MODES.length]!,
-              })
-            }
-            aria-label={`Pixels: ${BYTES_NAME[reader.bytesMode]}. Change them`}
-          >
-            Pixels: {BYTES_NAME[reader.bytesMode]}
-          </button>
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
           <button
             type="button"
             className="btn min-h-10 px-1"
@@ -949,7 +1071,7 @@ function Reader({
           <button
             type="button"
             className="btn min-h-10 px-1"
-            onClick={() => void exportPicture(text.name, lines, reader.bytesMode)}
+            onClick={() => void exportPicture(text.name, lines, reader.layers, reader.bytesSharp)}
             aria-label={`Export ${text.name} as a .png picture`}
           >
             <Download className="size-4" aria-hidden />
@@ -1001,6 +1123,22 @@ function Reader({
             phrases, then round again
           </p>
         </div>
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => testFlash.current?.(reader.flashMs, reader.flashOpacity)}
+          >
+            Test once (as set)
+          </button>
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => testFlash.current?.(1500, Math.max(0.6, reader.flashOpacity))}
+          >
+            Test slow (1.5 s, clear)
+          </button>
+        </div>
       </>
     ),
   };
@@ -1015,7 +1153,7 @@ function Reader({
       {reader.bytes && reader.bytesOpacity > 0 && (
         <BytesBackground
           lines={lines}
-          mode={reader.bytesMode}
+          layers={reader.layers}
           opacity={reader.bytesOpacity}
           sharp={reader.bytesSharp}
         />
@@ -1075,14 +1213,23 @@ function Reader({
             style={{ ...phraseSpot.style, fontSize: `${reader.phraseSize}rem` }}
             aria-label="The whole phrase"
           >
-            {words.map((w, i) => (
-              <span
-                key={i}
-                className={
-                  i === at.word && !at.over ? "text-cyan" : i <= at.word ? "text-fg" : "text-fg/45"
-                }
-              >
-                {w}{" "}
+            {wrapWords(words, reader.phraseChars).map((row, r) => (
+              <span key={r} className="block">
+                {row.map((i) => (
+                  <span
+                    key={i}
+                    className={
+                      i === at.word && !at.over
+                        ? "text-cyan"
+                        : i <= at.word
+                          ? "text-fg"
+                          : "text-fg/45"
+                    }
+                  >
+                    {words[i]}
+                    {i === row[row.length - 1] ? "" : " "}
+                  </span>
+                ))}
               </span>
             ))}
           </p>
@@ -1241,18 +1388,17 @@ function Reader({
         </div>
       )}
 
-      {reader.flash && (
-        <SubliminalFlash
-          phrases={phrases}
-          every={reader.flashEvery}
-          ms={reader.flashMs}
-          size={reader.flashSize}
-          opacity={reader.flashOpacity}
-          font={font}
-          running={!finished && heldAt === null && editing === null}
-          onScreens={setScreens}
-        />
-      )}
+      <SubliminalFlash
+        phrases={phrases}
+        every={reader.flashEvery}
+        ms={reader.flashMs}
+        size={reader.flashSize}
+        opacity={reader.flashOpacity}
+        font={font}
+        running={reader.flash && !finished && heldAt === null && editing === null}
+        onScreens={setScreens}
+        test={testFlash}
+      />
     </div>,
     document.body,
   );
