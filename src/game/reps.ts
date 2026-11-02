@@ -56,7 +56,8 @@ export interface ActiveSet {
 
 /** A line in the history: a finished set (its phrase as it was, reps and time), or a reset (what it cleared). */
 export interface LogEntry {
-  kind: "set" | "reset";
+  /** A finished set, a reset, or a reading in the Read tab (text: its name, reps: phrases read). */
+  kind: "set" | "reset" | "read";
   /** When (ms since 1970). */
   at: number;
   text: string;
@@ -64,6 +65,8 @@ export interface LogEntry {
   ms: number;
   /** A timed set (a time rather than a number of reps). */
   timed?: boolean;
+  /** A reading that reached the end of its text. */
+  done?: boolean;
 }
 
 export interface RepsState {
@@ -333,6 +336,21 @@ export function resetAll(s: RepsState, now = Date.now()): RepsState {
   });
 }
 
+/** A reading in the Read tab goes into the history: the text's name, phrases read, the time, and whether it reached the end. */
+export function logRead(
+  s: RepsState,
+  e: { at: number; text: string; phrases: number; ms: number; done: boolean },
+): RepsState {
+  return logged(s, {
+    kind: "read",
+    at: e.at,
+    text: e.text,
+    reps: Math.max(0, Math.floor(e.phrases)),
+    ms: Math.max(0, Math.round(e.ms)),
+    ...(e.done ? { done: true } : {}),
+  });
+}
+
 /** Empties the history; the totals in Reps stay. */
 export function clearHistory(s: RepsState): RepsState {
   return { ...s, log: [] };
@@ -548,7 +566,8 @@ export function loadReps(data: unknown): RepsState {
     if (s.log.length >= R.historyKeep) break;
     if (!raw || typeof raw !== "object") continue;
     const e = raw as Record<string, unknown>;
-    const kind = e.kind === "reset" ? "reset" : e.kind === "set" ? "set" : null;
+    const kind =
+      e.kind === "reset" ? "reset" : e.kind === "set" ? "set" : e.kind === "read" ? "read" : null;
     if (!kind) continue;
     s.log.push({
       kind,
@@ -557,6 +576,7 @@ export function loadReps(data: unknown): RepsState {
       reps: whole(e.reps),
       ms: whole(e.ms),
       ...(e.timed === true ? { timed: true } : {}),
+      ...(e.done === true ? { done: true } : {}),
     });
   }
   const a = d.active as Record<string, unknown> | null | undefined;

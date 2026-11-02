@@ -23,15 +23,16 @@ import {
 import { useGame } from "@/game/store";
 import { RepsTab } from "@/components/game/RepsTab";
 import { RepsHistory } from "@/components/game/RepsHistory";
+import { ReadTab } from "@/components/game/ReadTab";
 
-type DrillTab = "rehearse" | "recall" | "reps" | "history";
+type DrillTab = "rehearse" | "recall" | "read" | "reps" | "history";
 const TAB_KEY = "azshara-drill-tab";
 
 /** The tab last used, so the drill opens where you left it. */
 function lastTab(): DrillTab {
   try {
     const t = localStorage.getItem(TAB_KEY);
-    return t === "recall" || t === "reps" || t === "history" ? t : "rehearse";
+    return t === "recall" || t === "read" || t === "reps" || t === "history" ? t : "rehearse";
   } catch {
     return "rehearse";
   }
@@ -228,20 +229,23 @@ export function DrillPanel() {
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
           <SkillBar skill="recitation" />
           {/* Reps only gives Recitation XP: the rest stays out of the way of your phrases. */}
-          {tab !== "reps" && tab !== "history" && (
+          {(tab === "rehearse" || tab === "recall") && (
             <>
               <SkillBar skill="recall" />
               <CoreLine />
             </>
           )}
 
-          {/* Four tabs: two rows of two on a phone. */}
-          <div className="mt-4 grid grid-cols-4 gap-2 max-[480px]:grid-cols-2">
+          {/* Five tabs: two rows on a phone. */}
+          <div className="mt-4 grid grid-cols-5 gap-2 max-[480px]:grid-cols-3">
             <button type="button" className="btn" data-on={tab === "rehearse"} aria-pressed={tab === "rehearse"} onClick={() => setTab("rehearse")}>
               Rehearse
             </button>
             <button type="button" className="btn" data-on={tab === "recall"} aria-pressed={tab === "recall"} onClick={() => setTab("recall")}>
               Recall
+            </button>
+            <button type="button" className="btn" data-on={tab === "read"} aria-pressed={tab === "read"} onClick={() => setTab("read")}>
+              Read
             </button>
             <button type="button" className="btn" data-on={tab === "reps"} aria-pressed={tab === "reps"} onClick={() => setTab("reps")}>
               Reps
@@ -251,8 +255,10 @@ export function DrillPanel() {
             </button>
           </div>
 
-          {tab === "reps" || tab === "history" ? (
-            <div className="mt-4">{tab === "reps" ? <RepsTab /> : <RepsHistory />}</div>
+          {tab === "reps" || tab === "history" || tab === "read" ? (
+            <div className="mt-4">
+              {tab === "reps" ? <RepsTab /> : tab === "read" ? <ReadTab /> : <RepsHistory />}
+            </div>
           ) : (
             <>
               <div className="mt-4 flex items-center justify-between gap-2">

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Check, EyeOff, X } from "lucide-react";
+import { Check, EyeOff, RotateCcw, X } from "lucide-react";
 import { BinaryWall } from "@/components/game/BinaryWall";
 import { Confirm } from "@/components/game/Confirm";
 import { buzz } from "@/components/game/feel";
@@ -19,6 +19,7 @@ import {
   partOf,
   repsOf,
   setXp,
+  startSet,
   timeLeft,
   totalTime,
   type RepsState,
@@ -56,6 +57,7 @@ export function RestSet({
   title,
   reward,
   color = "#7fe7ff",
+  repeat = false,
 }: {
   state: RepsState;
   /** The reps after a change (Done or Cancel), to save. */
@@ -63,6 +65,8 @@ export function RestSet({
   /** After Done, with what it added. */
   onDone?: (done: SetDone) => void;
   title: string;
+  /** Offer "Done, and again": the same set of the same phrase, straight on. */
+  repeat?: boolean;
   /** What Done also pays, in words. */
   reward?: ReactNode;
   color?: string;
@@ -123,16 +127,30 @@ export function RestSet({
     onChange(next);
   };
 
-  const done = () => {
+  /** Done: the set counts. With `again`, another of the same starts at once, here. */
+  const done = (again = false) => {
     const t = Date.now();
     const next = finishSet(state, t);
     if (next === state) return;
-    onChange(next);
+    onChange(
+      again
+        ? startSet(next, active.id, t, {
+            mode: active.mode ?? "count",
+            target: active.target || undefined,
+            minutes: active.duration ? active.duration / 60_000 : undefined,
+          })
+        : next,
+    );
     const before = levelForXp(useGame.getState().skills.recitation);
     grantSkillXp("recitation", setXp(text, xpReps));
     const after = levelForXp(useGame.getState().skills.recitation);
     if (after > before) flashToast(`Recitation level ${after}`);
     buzz(30);
+    if (again) {
+      flashToast(`+${reps.toLocaleString()} ${text} · again`);
+      setNow(t);
+      return;
+    }
     const now = next.items.find((i) => i.id === active.id);
     onDone?.({
       id: active.id,
@@ -203,15 +221,29 @@ export function RestSet({
               : `${active.target.toLocaleString()} reps · Done opens in ${clock(left, true)}`}
         </p>
         {reward && <p className="mt-2 text-xs text-gold">{reward}</p>}
-        <button type="button" className="btn mt-4 min-h-14 w-full" onClick={() => setBlank(true)}>
-          <EyeOff className="size-5" aria-hidden />
-          Blank the screen (tap again to show)
-        </button>
+        <div className={`mt-4 grid gap-2 ${repeat ? "grid-cols-2" : "grid-cols-1"}`}>
+          <button type="button" className="btn min-h-14" onClick={() => setBlank(true)}>
+            <EyeOff className="size-5" aria-hidden />
+            {repeat ? "Blank screen" : "Blank the screen (tap again to show)"}
+          </button>
+          {repeat && (
+            <button
+              type="button"
+              className={`btn min-h-14 ${ready && last ? "btn-gold" : ""}`}
+              disabled={!ready || !last}
+              onClick={() => done(true)}
+              aria-label={`Done, and again: another ${both ? "set" : part === "timer" ? clock(timerLength) : active.target} of ${text}`}
+            >
+              <RotateCcw className="size-5" aria-hidden />
+              Done, and again
+            </button>
+          )}
+        </div>
         <button
           type="button"
           className={`btn mt-2 min-h-20 w-full flex-col gap-0 text-lg ${ready ? "btn-gold" : "opacity-70"}`}
           disabled={!ready}
-          onClick={last ? done : onward}
+          onClick={last ? () => done() : onward}
         >
           <span className="flex items-center gap-2">
             <Check className="size-5" aria-hidden />

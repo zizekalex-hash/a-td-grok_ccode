@@ -97,6 +97,15 @@ When a round of reciting is complete (3 phrases of 3 passes, or what you set), t
 
 Load .txt (title screen, tome, Options → Text) takes one file or several at once. Several are read in turn, in name order (1, 2, 3 ... 10): the shots carry phrases from text 1 until it has been read through, then text 2 takes over, and after the last, text 1 comes back. The field, the binary rain and the core show the text in use. Two sliders in Options → Game set the timing: Pause between phrases (the least time between two phrases on shots, 300 ms to start) and Pause between texts (a break after a text has been read through, before the next one, or the same one again, starts; 2 s to start). Shots inside a pause fly plain; spells always carry a phrase. Loading adds to what is loaded, from any folder and as often as you like: the texts already there stay until you take one out with its ✕ (a text already loaded is not added twice; a different one with a taken name gets a number, "notes (2)"). Pasted text is added the same way. The text in use stays in use. The tome and Options → Text list the loaded texts (one or more): tap one to switch to it now, Next for the next, ✕ to drop one. Up to 30 texts stay on the device between visits.
 
+## Read (a whole text, phrase by phrase)
+
+Recitation drill → Read: your texts are kept in the app (the same ones the game reads; Load .txt adds more, ✕ takes one out after asking), each with your place in it. Tap one to read it from where you left off, phrase by phrase in order ("Phrase 12 / 340 · pass 2 / 3", with the text's name at the top), like the Court's recite screen: the big word in the middle, the whole phrase below lighting up word by word, a bar for the pass.
+
+- After a pass, tap the middle or Complete ✓ to go on; with **Auto** on it goes on by itself. Each pass gives Recitation XP.
+- Everything changes right on the screen and is kept: seconds a word, passes per phrase, word size, phrase size, font (Display, Plain, Mono), Auto; Back, Hold and Skip move through the phrases.
+- Reaching the end puts "Finished “text” · 340 phrases · time" in the History, and the text starts from the top next time; leaving midway puts "Read “text” · N phrases" there. The game behind rests while you read.
+- Defaults: `reader` in config.json.
+
 ## Reps
 
 Recitation drill (on the title screen), tab Reps: count reps of your own words and phrases.
@@ -112,6 +121,7 @@ Recitation drill (on the title screen), tab Reps: count reps of your own words a
 - **A set is:** **Reps** (a number of reps: pick 10, 50 or 100, or type any number), **Timer** (a time, 1 to 9 minutes or typed: repeat it nonstop until the time is up; a long buzz, then Done adds the time) or **Both**: the two one after the other, never at once: first the reps (Done opens after a second a rep; tap "Reps done: on to the timer"), then the timer (repeat nonstop until it is up), then Done adds the reps and the time of both parts. "Timer first, then reps" turns the order round. Timed sets show ⏱ in the History, and a timer's XP counts the reps it is reckoned at (2 s a rep; `reps.timer`).
 - **Start sets on a blank screen:** every set opens all black (tap to see the clock and Done).
 - **A set:** tap a phrase (or its play button) and recite it that many times.
+  - **Done, and again** (next to Blank screen) counts the set and starts another of the same phrase and size at once, without going back to the list.
   - **Blank the screen** on the rest screen turns it pure black (pixels off on most phones): nothing drawn, nothing updating, until you tap anywhere; a buzz when Done opens. No need to cover it with the notification shade.
   - The set has its own rest screen, over everything: black, with the word or phrase standing behind in raw binary (its letters as bytes of 0s and 1s, at 36%, 3 to 9 px, whole copies spread evenly so nothing is cut off; `reps.wall`). Nothing moves while it shows: every game below stops drawing until the set ends, to spare the battery while you recite from memory.
   - A stopwatch runs from the start of the set. Done opens after at least a second a rep (100 reps: 1:40), and nothing counts on screen meanwhile.

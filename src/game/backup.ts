@@ -28,6 +28,7 @@ export const SAVE_NAMES: Record<string, string> = {
   "azshara-court-v1": "The Court",
   "azshara-court-bag-v1": "The Court's phrases already recited",
   "azshara-reps-v1": "Reps and their history",
+  "azshara-reader-v1": "The Read tab: its settings and your place in each text",
   "azshara-chess-v1": "Auto chess",
   "azshara-td-v1": "Tower defense",
   "azshara-td-run-v1": "A tower defense run in progress",

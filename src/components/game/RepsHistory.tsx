@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { History, RotateCcw, Trash2 } from "lucide-react";
+import { BookOpen, History, RotateCcw, Trash2 } from "lucide-react";
 import { Confirm } from "@/components/game/Confirm";
 import {
   clearHistory,
@@ -129,7 +129,19 @@ export function RepsHistory() {
               </p>
               <ul className="mt-1 space-y-0.5">
                 {d.entries.map((e, i) =>
-                  e.kind === "reset" ? (
+                  e.kind === "read" ? (
+                    <li key={`${e.at}-${i}`} className="flex gap-2 text-sm">
+                      <span className="w-11 shrink-0 pt-0.5 text-xs text-muted tabular-nums">
+                        {timeOf(e.at)}
+                      </span>
+                      <span className="min-w-0 break-words text-violet">
+                        <BookOpen className="mr-1 inline size-3.5 align-[-2px]" aria-hidden />
+                        {e.done ? "Finished" : "Read"} “{e.text}” ·{" "}
+                        {e.reps.toLocaleString()} phrase{e.reps === 1 ? "" : "s"}{" "}
+                        <span className="whitespace-nowrap text-cyan">· {clock(e.ms)}</span>
+                      </span>
+                    </li>
+                  ) : e.kind === "reset" ? (
                     <li key={`${e.at}-${i}`} className="flex gap-2 text-xs text-danger/90">
                       <span className="w-11 shrink-0 text-muted tabular-nums">{timeOf(e.at)}</span>
                       <span>

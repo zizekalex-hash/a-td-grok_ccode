@@ -243,10 +243,16 @@ function persistShared() {
         skills: s.skills,
       }),
     );
-  } catch {
-    /* private mode / quota */
+  } catch (e) {
+    // The device's storage is full: say so (once), so texts are not lost unseen.
+    if (!storageWarned && /quota/i.test(String((e as Error)?.name ?? e))) {
+      storageWarned = true;
+      flashToast("Storage full: your newest texts may not be kept. Take out texts you no longer need.");
+    }
   }
 }
+
+let storageWarned = false;
 
 /** Writes every save now, the running game's too, so a backup has the latest. */
 export function saveAllNow() {

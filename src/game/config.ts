@@ -717,6 +717,20 @@ export interface GameConfig {
     pickupLines: string[];
     queens: Record<CourtQueenKey, CourtQueenSpec>;
   };
+  /** The Read tab of the Recitation drill (see reader._about). */
+  reader: {
+    wordMs: number;
+    wordMsMin: number;
+    wordMsMax: number;
+    passes: number;
+    maxPasses: number;
+    wordSize: number;
+    phraseSize: number;
+    auto: boolean;
+    autoPauseMs: number;
+    font: string;
+    minWords: number;
+  };
   /** The Reps tab of the Recitation drill (see reps._about). */
   reps: {
     setSizes: number[];

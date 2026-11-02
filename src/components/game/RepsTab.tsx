@@ -155,6 +155,7 @@ export function RepsTab() {
         state={state}
         onChange={save}
         title="Reps"
+        repeat
         onDone={(d) =>
           setSaved({
             id: d.id,

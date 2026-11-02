@@ -2721,6 +2721,20 @@
       }
     }
   },
+  "reader": {
+    "_about": "The Read tab of the Recitation drill: a whole text, phrase by phrase in order (whole sentences, a short one joined to the next until it has minWords), each read passes times: the words light up one at a time, wordMs each, the big one in the middle and the whole phrase below. After a pass, a tap goes on (or, with auto, it goes on by itself after autoPauseMs). wordSize (rem) and phraseSize (rem) are the text sizes; font: display, plain or mono. All of these start here and change on the screen itself, and are kept; so is your place in each text. A pass gives Recitation XP like the Rehearse tab.",
+    "wordMs": 900,
+    "wordMsMin": 200,
+    "wordMsMax": 3000,
+    "passes": 3,
+    "maxPasses": 20,
+    "wordSize": 2.4,
+    "phraseSize": 1.1,
+    "auto": false,
+    "autoPauseMs": 400,
+    "font": "display",
+    "minWords": 3
+  },
   "reps": {
     "_about": "The Reps tab of the Recitation drill: write a word or phrase, then do sets of reps of it, adding each finished set to its total. setSizes: the quick set sizes; set: the size picked at first (up to maxSet). A set of N reps takes at least N times secondsPerRep before Done can be tapped. xpPerWordRep: Recitation XP for each word of each rep in a finished set (0 for none). historyKeep: how many finished sets and resets the History tab keeps (resets do not clear it).",
     "setSizes": [10, 50, 100],
