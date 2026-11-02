@@ -732,6 +732,21 @@ export interface GameConfig {
     autoPauseMs: number;
     font: string;
     minWords: number;
+    accent: string;
+    panelOpacity: number;
+    wordX: number;
+    wordY: number;
+    phraseX: number;
+    phraseY: number;
+    bytes: boolean;
+    bytesOpacity: number;
+    bytesMode: string;
+    bytesSharp: boolean;
+    flash: boolean;
+    flashEvery: number;
+    flashMs: number;
+    flashSize: number;
+    flashOpacity: number;
   };
   /** The Reps tab of the Recitation drill (see reps._about). */
   reps: {

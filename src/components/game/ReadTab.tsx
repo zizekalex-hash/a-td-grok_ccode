@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   BookOpen,
@@ -7,6 +16,8 @@ import {
   ChevronRight,
   ChevronUp,
   Download,
+  Lock,
+  LockOpen,
   LogOut,
   Minus,
   Pause,
@@ -22,14 +33,26 @@ import { flashToast, grantSkillXp, loadCodexTexts, removeText, updateText } from
 import { levelForXp, repXp } from "@/game/recite";
 import { clock, logRead, readReps, writeReps } from "@/game/reps";
 import {
+  ACCENT_NAMES,
+  ACCENTS,
+  BYTES_MODES,
+  clampFlashEvery,
+  clampFlashMs,
+  clampFlashSize,
   clampFps,
+  clampOpacity,
+  clampPanelOpacity,
   clampPasses,
   clampPhraseSize,
+  clampPlace,
   clampSpeed,
   clampWordMs,
   clampWordSize,
   editPhrase,
   FONTS,
+  newReader,
+  nudge,
+  PANEL_TABS,
   passAt,
   percentDone,
   placeOf,
@@ -39,9 +62,12 @@ import {
   textKey,
   wordTime,
   writeReader,
+  type BytesMode,
+  type PanelTab,
   type ReaderFont,
   type ReaderState,
 } from "@/game/readtext";
+import { bytesPicture, flashPages } from "@/game/readview";
 import { holdRest } from "@/game/rest";
 import { useGame } from "@/game/store";
 
@@ -52,6 +78,34 @@ const FONT_CLASS: Record<ReaderFont, string> = {
   mono: "font-mono",
 };
 const FONT_NAME: Record<ReaderFont, string> = { display: "Display", plain: "Plain", mono: "Mono" };
+const TAB_NAME: Record<PanelTab, string> = {
+  play: "Play",
+  look: "Look",
+  bytes: "Bytes",
+  flash: "Flash",
+};
+const BYTES_NAME: Record<BytesMode, string> = { rgb: "RGB", gray: "Gray", bits: "Bits" };
+
+/** Step sizes: fine low down, coarser higher up. */
+const OPACITY_STEPS: [number, number][] = [
+  [0.1, 0.01],
+  [0.4, 0.02],
+  [Infinity, 0.05],
+];
+const EVERY_STEPS: [number, number][] = [
+  [10, 0.1],
+  [60, 1],
+  [Infinity, 5],
+];
+const MS_STEPS: [number, number][] = [
+  [10, 0.1],
+  [100, 1],
+  [Infinity, 10],
+];
+const PX_STEPS: [number, number][] = [
+  [12, 0.5],
+  [Infinity, 1],
+];
 
 /** A text to read: its name and lines. */
 interface OpenText {
@@ -59,37 +113,44 @@ interface OpenText {
   lines: string[];
 }
 
-/** "notes.txt", safe for a file name. */
-function fileName(name: string): string {
+/** "notes.txt", safe for a file name (or "notes.png"). */
+function fileName(name: string, ext = "txt"): string {
   const clean = name.replace(/[\\/:*?"<>|]+/g, "-").trim() || "text";
-  return /\.txt$/i.test(clean) ? clean : `${clean}.txt`;
+  const base = clean.replace(/\.txt$/i, "");
+  return `${base}.${ext}`;
+}
+
+function base64Of(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ""));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
 }
 
 /**
- * A text out of the app, as a .txt: on the phone, the share sheet (save it to
- * Files, Drive, a chat, …); in a browser, a download.
+ * A file out of the app: on the phone, the share sheet (save it to Files,
+ * Drive, a chat, a computer, …); in a browser, a download.
  */
-async function exportText(name: string, lines: string[]) {
-  const body = `${lines.join("\n")}\n`;
-  const file = fileName(name);
+async function saveFile(file: string, blob: Blob, title: string) {
   try {
     const { Capacitor } = await import("@capacitor/core");
     if (Capacitor.isNativePlatform()) {
-      const { Filesystem, Directory, Encoding } = await import("@capacitor/filesystem");
+      const { Filesystem, Directory } = await import("@capacitor/filesystem");
       const { Share } = await import("@capacitor/share");
       const out = await Filesystem.writeFile({
         path: file,
-        data: body,
+        data: await base64Of(blob),
         directory: Directory.Cache,
-        encoding: Encoding.UTF8,
       });
-      await Share.share({ title: file, dialogTitle: "Save or send the text", files: [out.uri] });
+      await Share.share({ title: file, dialogTitle: title, files: [out.uri] });
       return;
     }
   } catch (e) {
     if (/cancel/i.test(String((e as Error)?.message ?? e))) return;
   }
-  const url = URL.createObjectURL(new Blob([body], { type: "text/plain;charset=utf-8" }));
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = file;
@@ -98,6 +159,36 @@ async function exportText(name: string, lines: string[]) {
   a.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
   flashToast(`Saved ${file}`);
+}
+
+/** A text as a .txt. */
+async function exportText(name: string, lines: string[]) {
+  const blob = new Blob([`${lines.join("\n")}\n`], { type: "text/plain;charset=utf-8" });
+  await saveFile(fileName(name), blob, "Save or send the text");
+}
+
+/** The whole text's bytes, as the background draws them. */
+function textBytes(lines: string[]): Uint8Array {
+  return new TextEncoder().encode(lines.join("\n"));
+}
+
+function screenAspect(): number {
+  return window.innerWidth / Math.max(1, window.innerHeight);
+}
+
+/** The bytes picture as a .png (lossless: every byte is in it). */
+async function exportPicture(name: string, lines: string[], mode: BytesMode) {
+  const pic = bytesPicture(textBytes(lines), mode, screenAspect());
+  const c = document.createElement("canvas");
+  c.width = pic.width;
+  c.height = pic.height;
+  c.getContext("2d")?.putImageData(new ImageData(pic.data, pic.width, pic.height), 0, 0);
+  const blob = await new Promise<Blob | null>((ok) => c.toBlob(ok, "image/png"));
+  if (!blob) {
+    flashToast("Could not make the picture");
+    return;
+  }
+  await saveFile(fileName(name, "png"), blob, "Save or send the picture");
 }
 
 /**
@@ -276,12 +367,178 @@ function Stepper({
   );
 }
 
+/** An on/off button for the reader's panel. */
+function Toggle({
+  on,
+  onClick,
+  children,
+}: {
+  on: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className="btn min-h-10 px-1"
+      data-on={on}
+      aria-pressed={on}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * The whole text as a picture: its raw bytes as pixels (three a pixel, one, or
+ * a bit a pixel), shaped like the screen and stretched over all of it, faint.
+ * Drawn once (again only when the text or the kind of pixels change).
+ */
+function BytesBackground({
+  lines,
+  mode,
+  opacity,
+  sharp,
+}: {
+  lines: string[];
+  mode: BytesMode;
+  opacity: number;
+  sharp: boolean;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const [aspect] = useState(screenAspect);
+  useEffect(() => {
+    const c = ref.current;
+    const ctx = c?.getContext("2d");
+    if (!c || !ctx) return;
+    const pic = bytesPicture(textBytes(lines), mode, aspect);
+    c.width = pic.width;
+    c.height = pic.height;
+    ctx.putImageData(new ImageData(pic.data, pic.width, pic.height), 0, 0);
+  }, [lines, mode, aspect]);
+  return (
+    <canvas
+      ref={ref}
+      aria-hidden
+      data-bytes={mode}
+      className="pointer-events-none absolute inset-0 h-full w-full"
+      style={{ opacity, imageRendering: sharp ? "pixelated" : "auto" }}
+    />
+  );
+}
+
+/**
+ * The whole text flashed: every `every` seconds, a screen of it for `ms`
+ * milliseconds (at least one frame), tiny and faint. Each screen holds as many
+ * whole phrases as fit; the next flash shows the next screen, through the whole
+ * text and round again. The flash is drawn straight into the page, not by React.
+ */
+function SubliminalFlash({
+  phrases,
+  every,
+  ms,
+  size,
+  opacity,
+  font,
+  running,
+  onScreens,
+}: {
+  phrases: string[];
+  every: number;
+  ms: number;
+  size: number;
+  opacity: number;
+  font: string;
+  running: boolean;
+  onScreens: (n: number) => void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const probe = useRef<HTMLDivElement>(null);
+  const pages = useRef<string[]>([]);
+  const next = useRef(0);
+  const [view, setView] = useState(() => `${window.innerWidth}x${window.innerHeight}`);
+
+  useEffect(() => {
+    const onResize = () => setView(`${window.innerWidth}x${window.innerHeight}`);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // The screens: as many whole phrases as fit at this size, measured for real.
+  useLayoutEffect(() => {
+    const p = probe.current;
+    if (!p) return;
+    p.style.display = "block";
+    pages.current = flashPages(phrases, (t) => {
+      p.textContent = t;
+      return p.scrollHeight <= p.clientHeight + 1;
+    });
+    p.textContent = "";
+    p.style.display = "none";
+    if (next.current >= pages.current.length) next.current = 0;
+    onScreens(pages.current.length);
+  }, [phrases, size, font, view, onScreens]);
+
+  useEffect(() => {
+    const shown = box.current;
+    if (!running || !shown) return;
+    let frame = 0;
+    let hide = 0;
+    const id = window.setInterval(() => {
+      const el = shown;
+      const list = pages.current;
+      if (!list.length) return;
+      const k = next.current % list.length;
+      next.current = (k + 1) % list.length;
+      // Shown in the next frame, and gone ms later (so a frame at the least).
+      frame = requestAnimationFrame(() => {
+        el.textContent = list[k] ?? "";
+        el.style.display = "block";
+        el.dataset.screen = String(k + 1);
+        hide = window.setTimeout(() => {
+          el.style.display = "none";
+          el.textContent = "";
+        }, ms);
+      });
+    }, every * 1000);
+    return () => {
+      window.clearInterval(id);
+      cancelAnimationFrame(frame);
+      window.clearTimeout(hide);
+      shown.style.display = "none";
+    };
+  }, [running, every, ms]);
+
+  const style: CSSProperties = { fontSize: `${size}px`, lineHeight: 1.15, display: "none" };
+  return (
+    <>
+      <div
+        ref={probe}
+        aria-hidden
+        className={`${font} pointer-events-none fixed inset-0 overflow-hidden p-2 break-words`}
+        style={{ ...style, visibility: "hidden" }}
+      />
+      <div
+        ref={box}
+        aria-hidden
+        data-flash
+        className={`${font} pointer-events-none fixed inset-0 z-[90] overflow-hidden p-2 break-words text-fg`}
+        style={{ ...style, opacity }}
+      />
+    </>
+  );
+}
+
+type Spot = "word" | "phrase";
+
 /**
  * A text read through, phrase by phrase: each phrase `passes` times, its words
- * lit one at a time. After a pass, a tap (anywhere in the middle, or the big
+ * lit one at a time. After a pass, a tap (anywhere on the screen, or the big
  * button) goes on, or it goes on by itself with Auto. Everything changes right
- * here and is kept. Nothing moves between words: the screen is redrawn only when
- * the word changes (at most `fps` times a second), and the game behind rests.
+ * here, in the panel's tabs, and is kept. Nothing moves between words: the
+ * screen is redrawn only when the word changes (at most `fps` times a second),
+ * and the game behind rests.
  */
 function Reader({
   text,
@@ -297,6 +554,7 @@ function Reader({
   const key = textKey(text.name);
   const [lines, setLines] = useState(text.lines);
   const units = useMemo(() => readUnits(lines), [lines]);
+  const phrases = useMemo(() => units.map((u) => u.text), [units]);
   const total = units.length;
   const [index, setIndex] = useState(() => placeOf(reader, key, total));
   const [pass, setPass] = useState(0);
@@ -308,6 +566,10 @@ function Reader({
   const [editing, setEditing] = useState<string | null>(null);
   const heldByEdit = useRef(false);
   const session = useRef({ began: Date.now(), phrases: 0, logged: false });
+  const [screens, setScreens] = useState(0);
+  /** The word or phrase being dragged (unlocked), and where. */
+  const [drag, setDrag] = useState<{ spot: Spot; x: number; y: number } | null>(null);
+  const dragFrom = useRef<{ px: number; py: number; x: number; y: number } | null>(null);
 
   // The game behind stops drawing while you read.
   useEffect(() => holdRest(), []);
@@ -459,32 +721,311 @@ function Reader({
     onClose();
   };
 
+  // ---- Where the big word and the phrase are, and dragging them (unlocked) ----
+
+  const spotAt = (spot: Spot) =>
+    drag?.spot === spot
+      ? drag
+      : spot === "word"
+        ? { x: reader.wordX, y: reader.wordY }
+        : { x: reader.phraseX, y: reader.phraseY };
+
+  const spotProps = (spot: Spot) => {
+    const p = spotAt(spot);
+    const style: CSSProperties = {
+      left: `${p.x * 100}%`,
+      top: `${p.y * 100}%`,
+      transform: "translate(-50%, -50%)",
+    };
+    if (reader.locked) return { style: { ...style, pointerEvents: "none" as const } };
+    const end = () => {
+      const d = dragFrom.current && drag;
+      dragFrom.current = null;
+      setDrag(null);
+      if (!d) return;
+      save(
+        spot === "word"
+          ? { ...reader, wordX: d.x, wordY: d.y }
+          : { ...reader, phraseX: d.x, phraseY: d.y },
+      );
+    };
+    return {
+      style: {
+        ...style,
+        touchAction: "none" as const,
+        cursor: "move",
+        outline: "1px dashed var(--color-cyan)",
+        outlineOffset: "6px",
+      },
+      "data-spot": spot,
+      onPointerDown: (e: ReactPointerEvent<HTMLElement>) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        dragFrom.current = { px: e.clientX, py: e.clientY, x: p.x, y: p.y };
+        setDrag({ spot, x: p.x, y: p.y });
+      },
+      onPointerMove: (e: ReactPointerEvent<HTMLElement>) => {
+        const f = dragFrom.current;
+        if (!f) return;
+        setDrag({
+          spot,
+          x: clampPlace(f.x + (e.clientX - f.px) / Math.max(1, window.innerWidth)),
+          y: clampPlace(f.y + (e.clientY - f.py) / Math.max(1, window.innerHeight)),
+        });
+      },
+      onPointerUp: end,
+      onPointerCancel: end,
+    };
+  };
+
+  const wordSpot = spotProps("word");
+  const phraseSpot = spotProps("phrase");
   const font = FONT_CLASS[reader.font];
+  const set = (patch: Partial<ReaderState>) => save({ ...reader, ...patch });
+  const pct = (v: number) => v.toFixed(2);
+  const lit = heldAt !== null ? "text-muted" : "text-fg";
+
+  const tabBody: Record<PanelTab, ReactNode> = {
+    play: (
+      <>
+        <div className="grid grid-cols-2 gap-1.5">
+          <Stepper
+            label="s a word"
+            value={(reader.wordMs / 1000).toFixed(2)}
+            onLess={() => setPace({ ...reader, wordMs: clampWordMs(reader.wordMs - 100) })}
+            onMore={() => setPace({ ...reader, wordMs: clampWordMs(reader.wordMs + 100) })}
+          />
+          <Stepper
+            label="speed"
+            value={`${reader.speed.toFixed(2)}×`}
+            onLess={() => setPace({ ...reader, speed: clampSpeed(reader.speed - 0.05) })}
+            onMore={() => setPace({ ...reader, speed: clampSpeed(reader.speed + 0.05) })}
+          />
+          <Stepper
+            label="passes"
+            value={`${reader.passes}×`}
+            onLess={() => set({ passes: clampPasses(reader.passes - 1) })}
+            onMore={() => set({ passes: clampPasses(reader.passes + 1) })}
+          />
+          <Stepper
+            label="fps (most)"
+            value={String(reader.fps)}
+            onLess={() => set({ fps: clampFps(reader.fps - (reader.fps > 10 ? 5 : 1)) })}
+            onMore={() => set({ fps: clampFps(reader.fps + (reader.fps >= 10 ? 5 : 1)) })}
+          />
+        </div>
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+          <Toggle on={reader.auto} onClick={() => set({ auto: !reader.auto })}>
+            Auto: {reader.auto ? "on" : "off"}
+          </Toggle>
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => void exportText(text.name, lines)}
+            aria-label={`Export ${text.name} as .txt`}
+          >
+            <Download className="size-4" aria-hidden />
+            .txt
+          </button>
+        </div>
+      </>
+    ),
+    look: (
+      <>
+        <div className="grid grid-cols-2 gap-1.5">
+          <Stepper
+            label="big word size"
+            value={reader.wordSize.toFixed(1)}
+            onLess={() => set({ wordSize: clampWordSize(reader.wordSize - 0.2) })}
+            onMore={() => set({ wordSize: clampWordSize(reader.wordSize + 0.2) })}
+          />
+          <Stepper
+            label="phrase size"
+            value={reader.phraseSize.toFixed(2)}
+            onLess={() => set({ phraseSize: clampPhraseSize(reader.phraseSize - 0.05) })}
+            onMore={() => set({ phraseSize: clampPhraseSize(reader.phraseSize + 0.05) })}
+          />
+          <Stepper
+            label="panel opacity"
+            value={pct(reader.panelOpacity)}
+            onLess={() =>
+              set({
+                panelOpacity: clampPanelOpacity(nudge(reader.panelOpacity, -1, OPACITY_STEPS)),
+              })
+            }
+            onMore={() =>
+              set({ panelOpacity: clampPanelOpacity(nudge(reader.panelOpacity, 1, OPACITY_STEPS)) })
+            }
+          />
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() =>
+              set({
+                accent:
+                  ACCENT_NAMES[(ACCENT_NAMES.indexOf(reader.accent) + 1) % ACCENT_NAMES.length]!,
+              })
+            }
+            aria-label={`Colour: ${reader.accent}. Change it`}
+          >
+            <span
+              className="inline-block size-3 rounded-full"
+              style={{ background: ACCENTS[reader.accent] }}
+              aria-hidden
+            />
+            Colour: {reader.accent}
+          </button>
+        </div>
+        <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => set({ font: FONTS[(FONTS.indexOf(reader.font) + 1) % FONTS.length]! })}
+            aria-label={`Font: ${FONT_NAME[reader.font]}. Change it`}
+          >
+            Font: {FONT_NAME[reader.font]}
+          </button>
+          <Toggle on={!reader.locked} onClick={() => set({ locked: !reader.locked })}>
+            {reader.locked ? (
+              <>
+                <Lock className="size-4" aria-hidden /> Locked
+              </>
+            ) : (
+              <>
+                <LockOpen className="size-4" aria-hidden /> Drag, then lock
+              </>
+            )}
+          </Toggle>
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => {
+              const d = newReader();
+              set({ wordX: d.wordX, wordY: d.wordY, phraseX: d.phraseX, phraseY: d.phraseY });
+            }}
+          >
+            Reset places
+          </button>
+        </div>
+      </>
+    ),
+    bytes: (
+      <>
+        <div className="grid grid-cols-2 gap-1.5">
+          <Toggle on={reader.bytes} onClick={() => set({ bytes: !reader.bytes })}>
+            Bytes background: {reader.bytes ? "on" : "off"}
+          </Toggle>
+          <Stepper
+            label="bytes opacity"
+            value={pct(reader.bytesOpacity)}
+            onLess={() =>
+              set({ bytesOpacity: clampOpacity(nudge(reader.bytesOpacity, -1, OPACITY_STEPS)) })
+            }
+            onMore={() =>
+              set({ bytesOpacity: clampOpacity(nudge(reader.bytesOpacity, 1, OPACITY_STEPS)) })
+            }
+          />
+        </div>
+        <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() =>
+              set({
+                bytesMode:
+                  BYTES_MODES[(BYTES_MODES.indexOf(reader.bytesMode) + 1) % BYTES_MODES.length]!,
+              })
+            }
+            aria-label={`Pixels: ${BYTES_NAME[reader.bytesMode]}. Change them`}
+          >
+            Pixels: {BYTES_NAME[reader.bytesMode]}
+          </button>
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => set({ bytesSharp: !reader.bytesSharp })}
+          >
+            {reader.bytesSharp ? "Sharp" : "Smooth"}
+          </button>
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => void exportPicture(text.name, lines, reader.bytesMode)}
+            aria-label={`Export ${text.name} as a .png picture`}
+          >
+            <Download className="size-4" aria-hidden />
+            .png
+          </button>
+        </div>
+      </>
+    ),
+    flash: (
+      <>
+        <div className="grid grid-cols-2 gap-1.5">
+          <Toggle on={reader.flash} onClick={() => set({ flash: !reader.flash })}>
+            Flash: {reader.flash ? "on" : "off"}
+          </Toggle>
+          <Stepper
+            label="every (s)"
+            value={reader.flashEvery.toFixed(1)}
+            onLess={() =>
+              set({ flashEvery: clampFlashEvery(nudge(reader.flashEvery, -1, EVERY_STEPS)) })
+            }
+            onMore={() =>
+              set({ flashEvery: clampFlashEvery(nudge(reader.flashEvery, 1, EVERY_STEPS)) })
+            }
+          />
+          <Stepper
+            label="for (ms)"
+            value={reader.flashMs.toFixed(1)}
+            onLess={() => set({ flashMs: clampFlashMs(nudge(reader.flashMs, -1, MS_STEPS)) })}
+            onMore={() => set({ flashMs: clampFlashMs(nudge(reader.flashMs, 1, MS_STEPS)) })}
+          />
+          <Stepper
+            label="size (px)"
+            value={String(reader.flashSize)}
+            onLess={() => set({ flashSize: clampFlashSize(nudge(reader.flashSize, -1, PX_STEPS)) })}
+            onMore={() => set({ flashSize: clampFlashSize(nudge(reader.flashSize, 1, PX_STEPS)) })}
+          />
+          <Stepper
+            label="flash opacity"
+            value={pct(reader.flashOpacity)}
+            onLess={() =>
+              set({ flashOpacity: clampOpacity(nudge(reader.flashOpacity, -1, OPACITY_STEPS)) })
+            }
+            onMore={() =>
+              set({ flashOpacity: clampOpacity(nudge(reader.flashOpacity, 1, OPACITY_STEPS)) })
+            }
+          />
+          <p className="self-center text-center text-[0.65rem] leading-tight text-muted">
+            The whole text, {screens.toLocaleString()} screen{screens === 1 ? "" : "s"} of whole
+            phrases, then round again
+          </p>
+        </div>
+      </>
+    ),
+  };
+
   return createPortal(
     <div
-      className="rest-screen fixed inset-0 z-[70] flex flex-col bg-bg p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] text-fg"
+      className="rest-screen fixed inset-0 z-[70] overflow-hidden bg-bg text-fg"
+      style={{ "--color-cyan": ACCENTS[reader.accent] } as CSSProperties}
       role="dialog"
       aria-label={`Reading ${text.name}`}
     >
-      <header className="glass flex items-center justify-between gap-2 px-3 py-2">
-        <div className="min-w-0">
-          <p className="truncate font-display text-xs tracking-[0.12em] text-cyan">
-            {text.name.toUpperCase()}
-          </p>
-          <p className="text-xs text-muted tabular-nums">
-            Phrase {(index + 1).toLocaleString()} / {total.toLocaleString()} · pass {pass + 1} /{" "}
-            {reader.passes} ·{" "}
-            <span className="text-gold">{percentDone(finished ? total : index, total)}%</span>
-          </p>
-        </div>
-        <button type="button" className="btn shrink-0 px-2" onClick={leave}>
-          <LogOut className="size-4" aria-hidden />
-          Leave
-        </button>
-      </header>
+      {reader.bytes && reader.bytesOpacity > 0 && (
+        <BytesBackground
+          lines={lines}
+          mode={reader.bytesMode}
+          opacity={reader.bytesOpacity}
+          sharp={reader.bytesSharp}
+        />
+      )}
 
       {finished ? (
-        <div className="flex flex-1 flex-col items-center justify-center text-center" role="status">
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center p-4 text-center"
+          role="status"
+        >
           <p className="font-display text-xl tracking-[0.12em] text-gold">TEXT FINISHED ✓</p>
           <p className="mt-2 text-sm">
             “{text.name}”: {total.toLocaleString()} phrases, in{" "}
@@ -509,26 +1050,71 @@ function Reader({
         </div>
       ) : (
         <>
-          {/* Only the word: the middle answers a tap once the words of the pass have finished. */}
+          {/* A tap anywhere (not on the panel) goes on once the words of the pass have finished. */}
           <div
-            className="flex min-h-0 flex-1 cursor-pointer touch-manipulation items-center justify-center overflow-hidden select-none"
+            className="absolute inset-0 cursor-pointer touch-manipulation select-none"
             onPointerDown={(e) => {
               if (e.button > 0) return;
               complete();
             }}
+          />
+          <p
+            {...wordSpot}
+            className={`${font} absolute z-10 leading-none whitespace-nowrap select-none ${lit}`}
+            style={{
+              ...wordSpot.style,
+              fontSize: `min(${reader.wordSize}rem, ${(92 / Math.max(1, (words[at.word] ?? "").length * 0.6)).toFixed(2)}vw)`,
+            }}
+            aria-live="off"
           >
-            <p
-              className={`${font} max-w-full leading-none whitespace-nowrap ${heldAt !== null ? "text-muted" : "text-fg"}`}
-              style={{
-                fontSize: `min(${reader.wordSize}rem, ${(92 / Math.max(1, (words[at.word] ?? "").length * 0.6)).toFixed(2)}vw)`,
-              }}
-              aria-live="off"
-            >
-              {words[at.word] ?? ""}
+            {words[at.word] ?? ""}
+          </p>
+          <p
+            {...phraseSpot}
+            className={`${font} absolute z-10 w-max max-w-[94vw] text-center leading-relaxed select-none`}
+            style={{ ...phraseSpot.style, fontSize: `${reader.phraseSize}rem` }}
+            aria-label="The whole phrase"
+          >
+            {words.map((w, i) => (
+              <span
+                key={i}
+                className={
+                  i === at.word && !at.over ? "text-cyan" : i <= at.word ? "text-fg" : "text-fg/45"
+                }
+              >
+                {w}{" "}
+              </span>
+            ))}
+          </p>
+        </>
+      )}
+
+      <header className="absolute inset-x-0 top-0 z-20 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="flex items-center justify-between gap-2 rounded-[var(--radius)] border border-cyan/40 bg-black px-3 py-2">
+          <div className="min-w-0">
+            <p className="truncate font-display text-xs tracking-[0.12em] text-cyan">
+              {text.name.toUpperCase()}
+            </p>
+            <p className="text-xs text-muted tabular-nums">
+              Phrase {(index + 1).toLocaleString()} / {total.toLocaleString()} · pass {pass + 1} /{" "}
+              {reader.passes} ·{" "}
+              <span className="text-gold">{percentDone(finished ? total : index, total)}%</span>
             </p>
           </div>
+          <button type="button" className="btn shrink-0 px-2" onClick={leave}>
+            <LogOut className="size-4" aria-hidden />
+            Leave
+          </button>
+        </div>
+      </header>
 
-          <div className="glass p-3">
+      {!finished && (
+        <div className="absolute inset-x-0 bottom-0 z-20 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div
+            className="rounded-[var(--radius)] border border-cyan/40 bg-black p-3"
+            style={{ opacity: reader.panelOpacity }}
+            data-panel
+          >
             {editing !== null ? (
               <div>
                 <label className="text-xs tracking-wider text-muted uppercase" htmlFor="read-edit">
@@ -551,39 +1137,17 @@ function Reader({
                 </div>
               </div>
             ) : (
-              <>
-                <p
-                  className={`${font} max-h-[30dvh] overflow-y-auto text-center leading-relaxed`}
-                  style={{ fontSize: `${reader.phraseSize}rem` }}
-                  aria-label="The whole phrase"
-                >
-                  {words.map((w, i) => (
-                    <span
-                      key={i}
-                      className={
-                        i === at.word && !at.over
-                          ? "text-cyan"
-                          : i <= at.word
-                            ? "text-fg"
-                            : "text-fg/45"
-                      }
-                    >
-                      {w}{" "}
-                    </span>
-                  ))}
-                </p>
-                <button
-                  type="button"
-                  className={`btn mt-3 min-h-16 w-full text-lg ${at.over ? "btn-gold" : "opacity-70"}`}
-                  aria-disabled={!at.over}
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    complete();
-                  }}
-                >
-                  {heldAt !== null ? "Held" : at.over ? "Complete ✓" : "Reading…"}
-                </button>
-              </>
+              <button
+                type="button"
+                className={`btn min-h-12 w-full text-base ${at.over ? "btn-gold" : "opacity-70"}`}
+                aria-disabled={!at.over}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  complete();
+                }}
+              >
+                {heldAt !== null ? "Held" : at.over ? "Complete ✓" : "Reading…"}
+              </button>
             )}
             <div className="mt-2 grid grid-cols-4 gap-1.5">
               <button
@@ -637,109 +1201,57 @@ function Reader({
             </div>
             {reader.controls && (
               <>
-                <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                  <Stepper
-                    label="s a word"
-                    value={(reader.wordMs / 1000).toFixed(2)}
-                    onLess={() => setPace({ ...reader, wordMs: clampWordMs(reader.wordMs - 100) })}
-                    onMore={() => setPace({ ...reader, wordMs: clampWordMs(reader.wordMs + 100) })}
-                  />
-                  <Stepper
-                    label="speed"
-                    value={`${reader.speed.toFixed(2)}×`}
-                    onLess={() => setPace({ ...reader, speed: clampSpeed(reader.speed - 0.05) })}
-                    onMore={() => setPace({ ...reader, speed: clampSpeed(reader.speed + 0.05) })}
-                  />
-                  <Stepper
-                    label="passes"
-                    value={`${reader.passes}×`}
-                    onLess={() => save({ ...reader, passes: clampPasses(reader.passes - 1) })}
-                    onMore={() => save({ ...reader, passes: clampPasses(reader.passes + 1) })}
-                  />
-                  <Stepper
-                    label="big word size"
-                    value={reader.wordSize.toFixed(1)}
-                    onLess={() =>
-                      save({ ...reader, wordSize: clampWordSize(reader.wordSize - 0.2) })
-                    }
-                    onMore={() =>
-                      save({ ...reader, wordSize: clampWordSize(reader.wordSize + 0.2) })
-                    }
-                  />
-                  <Stepper
-                    label="phrase size"
-                    value={reader.phraseSize.toFixed(2)}
-                    onLess={() =>
-                      save({ ...reader, phraseSize: clampPhraseSize(reader.phraseSize - 0.05) })
-                    }
-                    onMore={() =>
-                      save({ ...reader, phraseSize: clampPhraseSize(reader.phraseSize + 0.05) })
-                    }
-                  />
-                  <Stepper
-                    label="fps (most)"
-                    value={String(reader.fps)}
-                    onLess={() =>
-                      save({ ...reader, fps: clampFps(reader.fps - (reader.fps > 10 ? 5 : 1)) })
-                    }
-                    onMore={() =>
-                      save({ ...reader, fps: clampFps(reader.fps + (reader.fps >= 10 ? 5 : 1)) })
-                    }
-                  />
+                <div className="mt-2 grid grid-cols-4 gap-1.5" role="tablist" aria-label="Settings">
+                  {PANEL_TABS.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      role="tab"
+                      aria-selected={reader.tab === t}
+                      data-on={reader.tab === t}
+                      className="btn min-h-9 px-1"
+                      onClick={() => set({ tab: t })}
+                    >
+                      {TAB_NAME[t]}
+                    </button>
+                  ))}
                 </div>
-                <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-                  <button
-                    type="button"
-                    className="btn min-h-10 px-1"
-                    onClick={() =>
-                      save({
-                        ...reader,
-                        font: FONTS[(FONTS.indexOf(reader.font) + 1) % FONTS.length]!,
-                      })
-                    }
-                    aria-label={`Font: ${FONT_NAME[reader.font]}. Change it`}
-                  >
-                    Font: {FONT_NAME[reader.font]}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn min-h-10 px-1"
-                    data-on={reader.auto}
-                    aria-pressed={reader.auto}
-                    onClick={() => save({ ...reader, auto: !reader.auto })}
-                  >
-                    Auto: {reader.auto ? "on" : "off"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn min-h-10 px-1"
-                    onClick={() => void exportText(text.name, lines)}
-                    aria-label={`Export ${text.name} as .txt`}
-                  >
-                    <Download className="size-4" aria-hidden />
-                    .txt
-                  </button>
+                <div className="mt-1.5" role="tabpanel" aria-label={TAB_NAME[reader.tab]}>
+                  {tabBody[reader.tab]}
                 </div>
               </>
             )}
             <button
               type="button"
               className="mt-1.5 flex w-full items-center justify-center gap-1 text-[0.65rem] text-muted"
-              onClick={() => save({ ...reader, controls: !reader.controls })}
+              onClick={() => set({ controls: !reader.controls })}
               aria-expanded={reader.controls}
             >
               {reader.controls ? (
                 <>
-                  <ChevronDown className="size-3" aria-hidden /> Fold the controls away
+                  <ChevronDown className="size-3" aria-hidden /> Fold the settings away
                 </>
               ) : (
                 <>
-                  <ChevronUp className="size-3" aria-hidden /> Sizes, speed, font
+                  <ChevronUp className="size-3" aria-hidden /> Settings: play, look, bytes, flash
                 </>
               )}
             </button>
           </div>
-        </>
+        </div>
+      )}
+
+      {reader.flash && (
+        <SubliminalFlash
+          phrases={phrases}
+          every={reader.flashEvery}
+          ms={reader.flashMs}
+          size={reader.flashSize}
+          opacity={reader.flashOpacity}
+          font={font}
+          running={!finished && heldAt === null && editing === null}
+          onScreens={setScreens}
+        />
       )}
     </div>,
     document.body,

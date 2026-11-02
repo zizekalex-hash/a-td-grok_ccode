@@ -103,6 +103,11 @@ Recitation drill → Read: your texts are kept in the app (the same ones the gam
 
 - After a pass, tap the middle or Complete ✓ to go on; with **Auto** on it goes on by itself. Each pass gives Recitation XP.
 - Everything changes right on the screen and is kept: seconds a word (0.9 by default), playback speed (× on top of it, 0.25× to 4×), passes per phrase, big word size, phrase size, fps (the most redraws a second, 1 to 60: lower saves battery; the screen only redraws when the next word is due anyway), font (Display, Plain, Mono), Auto. Back, Hold and Skip move through the phrases; "Fold the controls away" leaves only those.
+- The settings sit in a black panel (purple by default) with four tabs, and fold away to just Back, Hold, Edit and Skip:
+  - **Play**: seconds a word, speed, passes, fps, Auto, .txt.
+  - **Look**: big word size, phrase size, panel opacity (down to 0.1, see-through), colour (purple, cyan, gold, pink, white, green, red), font, and **Locked / Drag, then lock**: unlock, drag the big word and the phrase wherever you like, lock again (Reset places puts them back: the phrase just under the word).
+  - **Bytes**: the whole text as a picture behind everything, its raw bytes as pixels (RGB: three bytes a pixel; Gray: one; Bits: one bit a pixel, black or white), at its own opacity (0.12 to start), sharp or smooth, and **.png** to save that picture (lossless, every byte in it).
+  - **Flash**: every 9.9 s the whole text flashes for 9.9 ms (at least one frame), at 9 px and 0.09 opacity, a screen at a time: each screen holds as many whole phrases as fit (never one cut in two), the next flash shows the next screen, through the whole text and round again. Every one of those numbers has its own + and −. It pauses with Hold and Edit.
 - **Edit** holds the reading and opens the phrase: rewrite it and Save, and the text itself is fixed (kept in the app, in the game, and in the backup); your place stays.
 - **⬇ Export** (in the list) and **.txt** (while reading) save the text as a .txt: a download in a browser, the share sheet on Android (Save to Files, Drive, send to a computer).
 - Reaching the end puts "Finished “text” · 340 phrases · time" in the History, and the text starts from the top next time; leaving midway puts "Read “text” · N phrases" there. The game behind rests while you read.
