@@ -729,7 +729,8 @@ export interface GameConfig {
     speed: number;
     fps: number;
     auto: boolean;
-    autoPauseMs: number;
+    silence: number;
+    phraseSilence: number;
     font: string;
     minWords: number;
     accent: string;
@@ -739,6 +740,8 @@ export interface GameConfig {
     phraseX: number;
     phraseY: number;
     phraseChars: number;
+    centered: boolean;
+    miniAuto: boolean;
     bytes: boolean;
     bytesOpacity: number;
     bytesRgb: number;
@@ -750,6 +753,10 @@ export interface GameConfig {
     flashMs: number;
     flashSize: number;
     flashOpacity: number;
+    flashColor: string;
+    flashChars: number;
+    flashAvoid: boolean;
+    flashReverse: string;
   };
   /** The Reps tab of the Recitation drill (see reps._about). */
   reps: {

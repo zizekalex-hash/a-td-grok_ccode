@@ -18,19 +18,21 @@ import {
   ChevronRight,
   ChevronUp,
   Download,
+  Eye,
+  EyeOff,
   Lock,
   LockOpen,
   LogOut,
   Minus,
   Pause,
   Pencil,
+  PictureInPicture2,
   Play,
   Plus,
   Upload,
   X,
 } from "lucide-react";
 import { Confirm } from "@/components/game/Confirm";
-import { CONFIG } from "@/game/config";
 import { flashToast, grantSkillXp, loadCodexTexts, removeText, updateText } from "@/game/engine";
 import { levelForXp, repXp } from "@/game/recite";
 import { clock, logRead, readReps, writeReps } from "@/game/reps";
@@ -39,6 +41,7 @@ import {
   ACCENTS,
   BYTES_MODES,
   clampFlashEvery,
+  clampFlashChars,
   clampFlashMs,
   clampFlashSize,
   clampFps,
@@ -48,10 +51,12 @@ import {
   clampPhraseChars,
   clampPhraseSize,
   clampPlace,
+  clampSilence,
   clampSpeed,
   clampWordMs,
   clampWordSize,
   editPhrase,
+  FLASH_REVERSE,
   FONTS,
   newReader,
   nudge,
@@ -66,15 +71,15 @@ import {
   wordTime,
   writeReader,
   type BytesMode,
+  type FlashReverse,
   type PanelTab,
   type ReaderFont,
   type ReaderState,
 } from "@/game/readtext";
-import { bytesPicture, flashPages, wrapWords } from "@/game/readview";
+import { bytesPicture, flashPages, flashRounds, reversedPhrases, wrapWords } from "@/game/readview";
 import { holdRest } from "@/game/rest";
 import { useGame } from "@/game/store";
 
-const R = CONFIG.reader;
 const FONT_CLASS: Record<ReaderFont, string> = {
   display: "font-display",
   plain: "font-sans",
@@ -87,6 +92,21 @@ const TAB_NAME: Record<PanelTab, string> = {
   bytes: "Bytes",
   flash: "Flash",
 };
+const REVERSE_NAME: Record<FlashReverse, string> = {
+  off: "off",
+  phrases: "phrases",
+  words: "words",
+  letters: "letters",
+};
+const SILENCE_STEPS: [number, number][] = [
+  [1, 0.01],
+  [10, 0.1],
+  [Infinity, 1],
+];
+const FLASH_CHARS_STEPS: [number, number][] = [
+  [100, 5],
+  [Infinity, 10],
+];
 const CHARS_STEPS: [number, number][] = [
   [20, 1],
   [Infinity, 5],
@@ -112,6 +132,30 @@ const PX_STEPS: [number, number][] = [
   [12, 0.5],
   [Infinity, 1],
 ];
+
+/** The Android app's mini window (picture in picture): MiniWindowPlugin.java. */
+interface MiniWindowApi {
+  available(): Promise<{ available: boolean }>;
+  enter(o: { width: number; height: number }): Promise<{ entered: boolean }>;
+  setAuto(o: { on: boolean; width: number; height: number }): Promise<void>;
+}
+
+let mini: Promise<{ api: MiniWindowApi } | null> | null = null;
+
+/** The mini window, in the Android app only (wrapped: a plugin is not a promise's result). */
+function miniWindow(): Promise<{ api: MiniWindowApi } | null> {
+  mini ??= import("@capacitor/core")
+    .then(({ Capacitor, registerPlugin }) =>
+      Capacitor.getPlatform() === "android"
+        ? { api: registerPlugin<MiniWindowApi>("MiniWindow") }
+        : null,
+    )
+    .catch(() => null);
+  return mini;
+}
+
+/** The mini window's shape: the words' area, a little wider than tall. */
+const MINI_SHAPE = { width: 16, height: 10 };
 
 /** A text to read: its name and lines. */
 interface OpenText {
@@ -394,27 +438,66 @@ export function ReadTab() {
   );
 }
 
-/** A + and − pair around a value, for the reader's own controls. */
+/**
+ * A + and − pair around a value, for the reader's own controls. Tap the value
+ * to type an exact one (Enter or tapping away sets it; it is checked like the
+ * buttons are).
+ */
 function Stepper({
   label,
   value,
+  raw,
   onLess,
   onMore,
+  onType,
 }: {
   label: string;
   value: string;
+  /** The number to start typing from. */
+  raw: number;
   onLess: () => void;
   onMore: () => void;
+  onType: (v: number) => void;
 }) {
+  const [typing, setTyping] = useState<string | null>(null);
+  const commit = () => {
+    if (typing === null) return;
+    const v = Number(typing.replace(",", ".").trim());
+    if (typing.trim() !== "" && Number.isFinite(v)) onType(v);
+    setTyping(null);
+  };
   return (
     <div className="flex items-center justify-between gap-1 rounded-md border border-cyan/20 px-1 py-0.5">
       <button type="button" className="btn stepper" onClick={onLess} aria-label={`Less: ${label}`}>
         <Minus className="size-4" aria-hidden />
       </button>
-      <span className="min-w-0 text-center text-[0.65rem] leading-tight text-muted">
-        <span className="block text-fg tabular-nums">{value}</span>
-        {label}
-      </span>
+      {typing !== null ? (
+        <input
+          type="text"
+          inputMode="decimal"
+          className="w-16 min-w-0 rounded border border-cyan/50 bg-black px-1 py-1 text-center text-sm text-fg tabular-nums"
+          value={typing}
+          onChange={(e) => setTyping(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setTyping(null);
+          }}
+          onFocus={(e) => e.currentTarget.select()}
+          autoFocus
+          aria-label={`Type: ${label}`}
+        />
+      ) : (
+        <button
+          type="button"
+          className="min-w-0 rounded px-1 text-center text-[0.65rem] leading-tight text-muted underline decoration-cyan/30 decoration-dotted underline-offset-2"
+          onClick={() => setTyping(String(raw))}
+          aria-label={`Type a value: ${label}`}
+        >
+          <span className="block text-fg tabular-nums">{value}</span>
+          {label}
+        </button>
+      )}
       <button type="button" className="btn stepper" onClick={onMore} aria-label={`More: ${label}`}>
         <Plus className="size-4" aria-hidden />
       </button>
@@ -497,28 +580,42 @@ function BytesBackground({
 /**
  * The whole text flashed: every `every` seconds, a screen of it for `ms`
  * milliseconds (at least one frame), tiny and faint. Each screen holds as many
- * whole phrases as fit; the next flash shows the next screen, through the whole
- * text and round again. The flash is drawn straight into the page, not by React.
+ * whole phrases as fit in the room it has (between `top` and `bottom`, in a
+ * column of `chars` characters if set); the next flash shows the next screen,
+ * through the whole text, then (if set) through it reversed, and round again.
+ * The flash is drawn straight into the page, not by React.
  */
 function SubliminalFlash({
   phrases,
+  reversed,
   every,
   ms,
   size,
   opacity,
+  color,
+  chars,
+  top,
+  bottom,
   font,
   running,
   onScreens,
   test,
 }: {
   phrases: string[];
+  /** The reversed round's phrases (none: no reversed round). */
+  reversed: string[];
   every: number;
   ms: number;
   size: number;
   opacity: number;
+  color: string;
+  chars: number;
+  /** Room left free at the top and the bottom (px). */
+  top: number;
+  bottom: number;
   font: string;
   running: boolean;
-  onScreens: (n: number) => void;
+  onScreens: (forward: number, back: number) => void;
   /** Set here: a flash now, for ms at an opacity (the Test buttons). */
   test: MutableRefObject<((ms: number, opacity: number) => void) | null>;
 }) {
@@ -577,20 +674,23 @@ function SubliminalFlash({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // The screens: as many whole phrases as fit at this size, measured for real.
+  // The screens: as many whole phrases as fit in the room there is, measured for real.
   useLayoutEffect(() => {
     const p = probe.current;
     if (!p) return;
     p.style.display = "block";
-    pages.current = flashPages(phrases, (t) => {
+    const fits = (t: string) => {
       p.textContent = t;
       return p.scrollHeight <= p.clientHeight + 1;
-    });
+    };
+    const forward = flashPages(phrases, fits);
+    const back = reversed.length ? flashPages(reversed, fits) : [];
+    pages.current = flashRounds(forward, back);
     p.textContent = "";
     p.style.display = "none";
     if (next.current >= pages.current.length) next.current = 0;
-    onScreens(pages.current.length);
-  }, [phrases, size, font, view, onScreens]);
+    onScreens(forward.length, back.length);
+  }, [phrases, reversed, size, font, chars, top, bottom, view, onScreens]);
 
   useEffect(() => {
     if (!running) return;
@@ -601,23 +701,51 @@ function SubliminalFlash({
     return () => window.clearInterval(id);
   }, [running, every, show]);
 
-  const style: CSSProperties = { fontSize: `${size}px`, lineHeight: 1.15, display: "none" };
+  const style: CSSProperties = {
+    fontSize: `${size}px`,
+    lineHeight: 1.15,
+    display: "none",
+    color,
+    top: `${Math.max(0, top)}px`,
+    bottom: `${Math.max(0, bottom)}px`,
+    left: 0,
+    right: 0,
+    ...(chars > 0
+      ? {
+          width: `min(100%, ${chars}ch)`,
+          marginLeft: "auto",
+          marginRight: "auto",
+          textAlign: "center",
+        }
+      : {}),
+  };
   return (
     <>
       <div
         ref={probe}
         aria-hidden
-        className={`${font} pointer-events-none fixed inset-0 overflow-hidden p-2 break-words`}
+        className={`${font} pointer-events-none fixed overflow-hidden p-2 break-words`}
         style={{ ...style, visibility: "hidden" }}
       />
       <div
         ref={box}
         aria-hidden
         data-flash
-        className={`${font} pointer-events-none fixed inset-0 z-[90] overflow-hidden p-2 break-words text-fg`}
+        className={`${font} pointer-events-none fixed z-[90] overflow-hidden p-2 break-words`}
         style={style}
       />
     </>
+  );
+}
+
+/** The app's toasts, shown on the reader too (the page under it is hidden while you read). */
+function ReaderToast() {
+  const toast = useGame((s) => s.toast);
+  if (!toast) return null;
+  return (
+    <div className="toast z-[95]" role="status">
+      {toast}
+    </div>
   );
 }
 
@@ -657,7 +785,84 @@ function Reader({
   const [editing, setEditing] = useState<string | null>(null);
   const heldByEdit = useRef(false);
   const session = useRef({ began: Date.now(), phrases: 0, logged: false });
-  const [screens, setScreens] = useState(0);
+  const [screens, setScreens] = useState({ forward: 0, back: 0 });
+  const onScreens = useCallback(
+    (forward: number, back: number) => setScreens({ forward, back }),
+    [],
+  );
+  /** Everything but the words hidden (the corner button brings it back). */
+  const [bare, setBare] = useState(false);
+  const [vp, setVp] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  useEffect(() => {
+    const on = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  /** A small window (the mini window, or a small split screen): only the words. */
+  const small = vp.h < 360 || vp.w < 280;
+  const plain = bare || small;
+  /** Sizes follow the window when it is smaller than a phone. */
+  const scale = Math.max(0.3, Math.min(1, vp.w / 360, vp.h / 640));
+  const [hasMini, setHasMini] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void miniWindow().then(async (m) => {
+      const ok = m
+        ? (await m.api.available().catch(() => ({ available: false }))).available
+        : false;
+      if (live) setHasMini(ok);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  // "Mini window when leaving": on while this text is open, off when it closes.
+  useEffect(() => {
+    if (!hasMini) return;
+    void miniWindow().then((m) => m?.api.setAuto({ on: reader.miniAuto, ...MINI_SHAPE }));
+    return () => {
+      void miniWindow().then((m) => m?.api.setAuto({ on: false, ...MINI_SHAPE }));
+    };
+  }, [hasMini, reader.miniAuto]);
+  const openMini = () => {
+    void miniWindow().then((m) => {
+      if (!m) {
+        flashToast("The mini window is in the Android app");
+        return;
+      }
+      m.api.enter(MINI_SHAPE).catch((e: unknown) => flashToast(String((e as Error)?.message ?? e)));
+    });
+  };
+  // The room the flash has: clear of the header and the panel while they show.
+  const headerRef = useRef<HTMLElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState({ top: 0, bottom: 0 });
+  useLayoutEffect(() => {
+    if (plain) {
+      setRoom((r) => (r.top || r.bottom ? { top: 0, bottom: 0 } : r));
+      return;
+    }
+    const measure = () => {
+      const h = headerRef.current?.getBoundingClientRect();
+      const p = panelRef.current?.getBoundingClientRect();
+      const top = Math.round(h ? h.bottom : 0);
+      const bottom = Math.round(p ? window.innerHeight - p.top : 0);
+      setRoom((r) => (r.top === top && r.bottom === bottom ? r : { top, bottom }));
+    };
+    measure();
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    if (headerRef.current) ro?.observe(headerRef.current);
+    if (panelRef.current) ro?.observe(panelRef.current);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [plain, finished]);
+  const reversed = useMemo(
+    () => reversedPhrases(phrases, reader.flashReverse),
+    [phrases, reader.flashReverse],
+  );
   const testFlash = useRef<((ms: number, opacity: number) => void) | null>(null);
   /** The word or phrase being dragged (unlocked), and where. */
   const [drag, setDrag] = useState<{ spot: Spot; x: number; y: number } | null>(null);
@@ -745,15 +950,17 @@ function Reader({
     save(setPlace(reader, key, index + 1));
   };
 
-  // Auto: on by itself, a moment after the words finish (once per pass).
+  // Auto: on by itself after a silence once the words finish (once per pass): silence after
+  // a pass, phraseSilence after a phrase's last pass. The words stay on the screen meanwhile.
   const completeRef = useRef(complete);
   completeRef.current = complete;
   const over = at.over;
+  const silenceMs = (pass + 1 >= reader.passes ? reader.phraseSilence : reader.silence) * 1000;
   useEffect(() => {
     if (!reader.auto || !over || heldAt !== null || finished || editing !== null) return;
-    const id = window.setTimeout(() => completeRef.current(), Math.max(0, R.autoPauseMs));
+    const id = window.setTimeout(() => completeRef.current(), Math.max(0, silenceMs));
     return () => window.clearTimeout(id);
-  }, [reader.auto, over, heldAt, finished, editing, index, pass]);
+  }, [reader.auto, over, heldAt, finished, editing, index, pass, silenceMs]);
 
   /** Seconds a word, or the playback speed: the lit word stays where it is. */
   const setPace = (next: ReaderState) => {
@@ -815,19 +1022,24 @@ function Reader({
 
   // ---- Where the big word and the phrase are, and dragging them (unlocked) ----
 
-  const spotAt = (spot: Spot) =>
-    drag?.spot === spot
-      ? drag
-      : spot === "word"
-        ? { x: reader.wordX, y: reader.wordY }
-        : { x: reader.phraseX, y: reader.phraseY };
+  const spotAt = (spot: Spot) => {
+    const p =
+      drag?.spot === spot
+        ? drag
+        : spot === "word"
+          ? { x: reader.wordX, y: reader.wordY }
+          : { x: reader.phraseX, y: reader.phraseY };
+    // Kept centred: always in the middle across (dragging moves it up and down only).
+    return reader.centered ? { x: 0.5, y: p.y } : p;
+  };
 
   const spotProps = (spot: Spot) => {
     const p = spotAt(spot);
+    // In the room between the header and the panel: the word stands on its line, the phrase hangs from its.
     const style: CSSProperties = {
       left: `${p.x * 100}%`,
-      top: `${p.y * 100}%`,
-      transform: "translate(-50%, -50%)",
+      top: `calc(${room.top}px + (100% - ${room.top + room.bottom}px) * ${p.y})`,
+      transform: spot === "word" ? "translate(-50%, -100%)" : "translate(-50%, 0)",
     };
     if (reader.locked) return { style: { ...style, pointerEvents: "none" as const } };
     const end = () => {
@@ -860,8 +1072,12 @@ function Reader({
         if (!f) return;
         setDrag({
           spot,
-          x: clampPlace(f.x + (e.clientX - f.px) / Math.max(1, window.innerWidth)),
-          y: clampPlace(f.y + (e.clientY - f.py) / Math.max(1, window.innerHeight)),
+          x: reader.centered
+            ? 0.5
+            : clampPlace(f.x + (e.clientX - f.px) / Math.max(1, window.innerWidth)),
+          y: clampPlace(
+            f.y + (e.clientY - f.py) / Math.max(1, window.innerHeight - room.top - room.bottom),
+          ),
         });
       },
       onPointerUp: end,
@@ -880,6 +1096,8 @@ function Reader({
   const pct = (v: number) => v.toFixed(2);
   const lit = heldAt !== null ? "text-muted" : "text-fg";
 
+  const cycle = <T,>(list: readonly T[], now: T): T => list[(list.indexOf(now) + 1) % list.length]!;
+
   const tabBody: Record<PanelTab, ReactNode> = {
     play: (
       <>
@@ -887,26 +1105,54 @@ function Reader({
           <Stepper
             label="s a word"
             value={(reader.wordMs / 1000).toFixed(2)}
+            raw={reader.wordMs / 1000}
             onLess={() => setPace({ ...reader, wordMs: clampWordMs(reader.wordMs - 100) })}
             onMore={() => setPace({ ...reader, wordMs: clampWordMs(reader.wordMs + 100) })}
+            onType={(v) => setPace({ ...reader, wordMs: clampWordMs(v * 1000) })}
           />
           <Stepper
             label="speed"
             value={`${reader.speed.toFixed(2)}×`}
+            raw={reader.speed}
             onLess={() => setPace({ ...reader, speed: clampSpeed(reader.speed - 0.05) })}
             onMore={() => setPace({ ...reader, speed: clampSpeed(reader.speed + 0.05) })}
+            onType={(v) => setPace({ ...reader, speed: clampSpeed(v) })}
           />
           <Stepper
             label="passes"
             value={`${reader.passes}×`}
+            raw={reader.passes}
             onLess={() => set({ passes: clampPasses(reader.passes - 1) })}
             onMore={() => set({ passes: clampPasses(reader.passes + 1) })}
+            onType={(v) => set({ passes: clampPasses(v) })}
           />
           <Stepper
             label="fps (most)"
             value={String(reader.fps)}
+            raw={reader.fps}
             onLess={() => set({ fps: clampFps(reader.fps - (reader.fps > 10 ? 5 : 1)) })}
             onMore={() => set({ fps: clampFps(reader.fps + (reader.fps >= 10 ? 5 : 1)) })}
+            onType={(v) => set({ fps: clampFps(v) })}
+          />
+          <Stepper
+            label="silence after a pass (s)"
+            value={reader.silence.toFixed(3)}
+            raw={reader.silence}
+            onLess={() => set({ silence: clampSilence(nudge(reader.silence, -1, SILENCE_STEPS)) })}
+            onMore={() => set({ silence: clampSilence(nudge(reader.silence, 1, SILENCE_STEPS)) })}
+            onType={(v) => set({ silence: clampSilence(v) })}
+          />
+          <Stepper
+            label="silence after a phrase (s)"
+            value={reader.phraseSilence.toFixed(3)}
+            raw={reader.phraseSilence}
+            onLess={() =>
+              set({ phraseSilence: clampSilence(nudge(reader.phraseSilence, -1, SILENCE_STEPS)) })
+            }
+            onMore={() =>
+              set({ phraseSilence: clampSilence(nudge(reader.phraseSilence, 1, SILENCE_STEPS)) })
+            }
+            onType={(v) => set({ phraseSilence: clampSilence(v) })}
           />
         </div>
         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
@@ -930,19 +1176,36 @@ function Reader({
         <div className="grid grid-cols-2 gap-1.5">
           <Stepper
             label="big word size"
-            value={reader.wordSize.toFixed(1)}
+            value={reader.wordSize.toFixed(2)}
+            raw={reader.wordSize}
             onLess={() => set({ wordSize: clampWordSize(reader.wordSize - 0.2) })}
             onMore={() => set({ wordSize: clampWordSize(reader.wordSize + 0.2) })}
+            onType={(v) => set({ wordSize: clampWordSize(v) })}
           />
           <Stepper
             label="phrase size"
             value={reader.phraseSize.toFixed(2)}
+            raw={reader.phraseSize}
             onLess={() => set({ phraseSize: clampPhraseSize(reader.phraseSize - 0.05) })}
             onMore={() => set({ phraseSize: clampPhraseSize(reader.phraseSize + 0.05) })}
+            onType={(v) => set({ phraseSize: clampPhraseSize(v) })}
+          />
+          <Stepper
+            label="chars a line"
+            value={String(reader.phraseChars)}
+            raw={reader.phraseChars}
+            onLess={() =>
+              set({ phraseChars: clampPhraseChars(nudge(reader.phraseChars, -1, CHARS_STEPS)) })
+            }
+            onMore={() =>
+              set({ phraseChars: clampPhraseChars(nudge(reader.phraseChars, 1, CHARS_STEPS)) })
+            }
+            onType={(v) => set({ phraseChars: clampPhraseChars(v) })}
           />
           <Stepper
             label="panel opacity"
             value={pct(reader.panelOpacity)}
+            raw={reader.panelOpacity}
             onLess={() =>
               set({
                 panelOpacity: clampPanelOpacity(nudge(reader.panelOpacity, -1, OPACITY_STEPS)),
@@ -951,17 +1214,11 @@ function Reader({
             onMore={() =>
               set({ panelOpacity: clampPanelOpacity(nudge(reader.panelOpacity, 1, OPACITY_STEPS)) })
             }
+            onType={(v) => set({ panelOpacity: clampPanelOpacity(v) })}
           />
-          <Stepper
-            label="chars a line"
-            value={String(reader.phraseChars)}
-            onLess={() =>
-              set({ phraseChars: clampPhraseChars(nudge(reader.phraseChars, -1, CHARS_STEPS)) })
-            }
-            onMore={() =>
-              set({ phraseChars: clampPhraseChars(nudge(reader.phraseChars, 1, CHARS_STEPS)) })
-            }
-          />
+          <Toggle on={reader.centered} onClick={() => set({ centered: !reader.centered })}>
+            Keep centred: {reader.centered ? "on" : "off"}
+          </Toggle>
           <button
             type="button"
             className="btn min-h-10 px-1"
@@ -970,15 +1227,12 @@ function Reader({
           >
             ↔ Center
           </button>
+        </div>
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
           <button
             type="button"
             className="btn min-h-10 px-1"
-            onClick={() =>
-              set({
-                accent:
-                  ACCENT_NAMES[(ACCENT_NAMES.indexOf(reader.accent) + 1) % ACCENT_NAMES.length]!,
-              })
-            }
+            onClick={() => set({ accent: cycle(ACCENT_NAMES, reader.accent) })}
             aria-label={`Colour: ${reader.accent}. Change it`}
           >
             <span
@@ -988,12 +1242,10 @@ function Reader({
             />
             Colour: {reader.accent}
           </button>
-        </div>
-        <div className="mt-1.5 grid grid-cols-3 gap-1.5">
           <button
             type="button"
             className="btn min-h-10 px-1"
-            onClick={() => set({ font: FONTS[(FONTS.indexOf(reader.font) + 1) % FONTS.length]! })}
+            onClick={() => set({ font: cycle(FONTS, reader.font) })}
             aria-label={`Font: ${FONT_NAME[reader.font]}. Change it`}
           >
             Font: {FONT_NAME[reader.font]}
@@ -1019,6 +1271,17 @@ function Reader({
           >
             Reset places
           </button>
+          {hasMini && (
+            <>
+              <button type="button" className="btn min-h-10 px-1" onClick={openMini}>
+                <PictureInPicture2 className="size-4" aria-hidden />
+                Mini window now
+              </button>
+              <Toggle on={reader.miniAuto} onClick={() => set({ miniAuto: !reader.miniAuto })}>
+                Mini on leaving: {reader.miniAuto ? "on" : "off"}
+              </Toggle>
+            </>
+          )}
         </div>
       </>
     ),
@@ -1031,31 +1294,26 @@ function Reader({
           <Stepper
             label="all bytes (over all)"
             value={pct(reader.bytesOpacity)}
+            raw={reader.bytesOpacity}
             onLess={() =>
               set({ bytesOpacity: clampOpacity(nudge(reader.bytesOpacity, -1, OPACITY_STEPS)) })
             }
             onMore={() =>
               set({ bytesOpacity: clampOpacity(nudge(reader.bytesOpacity, 1, OPACITY_STEPS)) })
             }
+            onType={(v) => set({ bytesOpacity: clampOpacity(v) })}
           />
-          <Stepper
-            label="RGB layer"
-            value={pct(reader.layers.rgb)}
-            onLess={() => setLayer("rgb", -1)}
-            onMore={() => setLayer("rgb", 1)}
-          />
-          <Stepper
-            label="Gray layer"
-            value={pct(reader.layers.gray)}
-            onLess={() => setLayer("gray", -1)}
-            onMore={() => setLayer("gray", 1)}
-          />
-          <Stepper
-            label="Bits layer"
-            value={pct(reader.layers.bits)}
-            onLess={() => setLayer("bits", -1)}
-            onMore={() => setLayer("bits", 1)}
-          />
+          {BYTES_MODES.map((m) => (
+            <Stepper
+              key={m}
+              label={`${{ rgb: "RGB", gray: "Gray", bits: "Bits" }[m]} layer`}
+              value={pct(reader.layers[m])}
+              raw={reader.layers[m]}
+              onLess={() => setLayer(m, -1)}
+              onMore={() => setLayer(m, 1)}
+              onType={(v) => set({ layers: { ...reader.layers, [m]: clampOpacity(v) } })}
+            />
+          ))}
           <p className="self-center text-center text-[0.65rem] leading-tight text-muted">
             The three blend (light adds up), so none hides another; 0 leaves one out
           </p>
@@ -1088,39 +1346,95 @@ function Reader({
           </Toggle>
           <Stepper
             label="every (s)"
-            value={reader.flashEvery.toFixed(1)}
+            value={reader.flashEvery.toFixed(2)}
+            raw={reader.flashEvery}
             onLess={() =>
               set({ flashEvery: clampFlashEvery(nudge(reader.flashEvery, -1, EVERY_STEPS)) })
             }
             onMore={() =>
               set({ flashEvery: clampFlashEvery(nudge(reader.flashEvery, 1, EVERY_STEPS)) })
             }
+            onType={(v) => set({ flashEvery: clampFlashEvery(v) })}
           />
           <Stepper
             label="for (ms)"
             value={reader.flashMs.toFixed(1)}
+            raw={reader.flashMs}
             onLess={() => set({ flashMs: clampFlashMs(nudge(reader.flashMs, -1, MS_STEPS)) })}
             onMore={() => set({ flashMs: clampFlashMs(nudge(reader.flashMs, 1, MS_STEPS)) })}
+            onType={(v) => set({ flashMs: clampFlashMs(v) })}
           />
           <Stepper
             label="size (px)"
             value={String(reader.flashSize)}
+            raw={reader.flashSize}
             onLess={() => set({ flashSize: clampFlashSize(nudge(reader.flashSize, -1, PX_STEPS)) })}
             onMore={() => set({ flashSize: clampFlashSize(nudge(reader.flashSize, 1, PX_STEPS)) })}
+            onType={(v) => set({ flashSize: clampFlashSize(v) })}
           />
           <Stepper
             label="flash opacity"
             value={pct(reader.flashOpacity)}
+            raw={reader.flashOpacity}
             onLess={() =>
               set({ flashOpacity: clampOpacity(nudge(reader.flashOpacity, -1, OPACITY_STEPS)) })
             }
             onMore={() =>
               set({ flashOpacity: clampOpacity(nudge(reader.flashOpacity, 1, OPACITY_STEPS)) })
             }
+            onType={(v) => set({ flashOpacity: clampOpacity(v) })}
           />
-          <p className="self-center text-center text-[0.65rem] leading-tight text-muted">
-            The whole text, {screens.toLocaleString()} screen{screens === 1 ? "" : "s"} of whole
-            phrases, then round again
+          <Stepper
+            label="chars a line (0: all)"
+            value={reader.flashChars ? String(reader.flashChars) : "all"}
+            raw={reader.flashChars}
+            onLess={() =>
+              set({
+                flashChars: clampFlashChars(
+                  reader.flashChars <= 10 ? 0 : nudge(reader.flashChars, -1, FLASH_CHARS_STEPS),
+                ),
+              })
+            }
+            onMore={() =>
+              set({
+                flashChars: clampFlashChars(
+                  reader.flashChars ? nudge(reader.flashChars, 1, FLASH_CHARS_STEPS) : 10,
+                ),
+              })
+            }
+            onType={(v) => set({ flashChars: clampFlashChars(v) })}
+          />
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => set({ flashColor: cycle(ACCENT_NAMES, reader.flashColor) })}
+            aria-label={`Flash colour: ${reader.flashColor}. Change it`}
+          >
+            <span
+              className="inline-block size-3 rounded-full"
+              style={{ background: ACCENTS[reader.flashColor] }}
+              aria-hidden
+            />
+            Colour: {reader.flashColor}
+          </button>
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => set({ flashReverse: cycle(FLASH_REVERSE, reader.flashReverse) })}
+            aria-label={`Reversed round: ${REVERSE_NAME[reader.flashReverse]}. Change it`}
+          >
+            Reverse: {REVERSE_NAME[reader.flashReverse]}
+          </button>
+          <Toggle on={reader.flashAvoid} onClick={() => set({ flashAvoid: !reader.flashAvoid })}>
+            Clear of the panel: {reader.flashAvoid ? "on" : "off"}
+          </Toggle>
+          <p className="col-span-2 text-center text-[0.65rem] leading-tight text-muted">
+            The whole text: {screens.forward.toLocaleString()} screen
+            {screens.forward === 1 ? "" : "s"} of whole phrases
+            {screens.back
+              ? `, then ${screens.back.toLocaleString()} reversed (${REVERSE_NAME[reader.flashReverse]})`
+              : ""}
+            , then round again
           </p>
         </div>
         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
@@ -1201,7 +1515,7 @@ function Reader({
             className={`${font} absolute z-10 leading-none whitespace-nowrap select-none ${lit}`}
             style={{
               ...wordSpot.style,
-              fontSize: `min(${reader.wordSize}rem, ${(92 / Math.max(1, (words[at.word] ?? "").length * 0.6)).toFixed(2)}vw)`,
+              fontSize: `min(${(reader.wordSize * scale).toFixed(3)}rem, ${(92 / Math.max(1, (words[at.word] ?? "").length * 0.6)).toFixed(2)}vw)`,
             }}
             aria-live="off"
           >
@@ -1210,7 +1524,10 @@ function Reader({
           <p
             {...phraseSpot}
             className={`${font} absolute z-10 w-max max-w-[94vw] text-center leading-relaxed select-none`}
-            style={{ ...phraseSpot.style, fontSize: `${reader.phraseSize}rem` }}
+            style={{
+              ...phraseSpot.style,
+              fontSize: `${(reader.phraseSize * scale).toFixed(3)}rem`,
+            }}
             aria-label="The whole phrase"
           >
             {wrapWords(words, reader.phraseChars).map((row, r) => (
@@ -1236,27 +1553,66 @@ function Reader({
         </>
       )}
 
-      <header className="absolute inset-x-0 top-0 z-20 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <div className="flex items-center justify-between gap-2 rounded-[var(--radius)] border border-cyan/40 bg-black px-3 py-2">
-          <div className="min-w-0">
-            <p className="truncate font-display text-xs tracking-[0.12em] text-cyan">
-              {text.name.toUpperCase()}
-            </p>
-            <p className="text-xs text-muted tabular-nums">
-              Phrase {(index + 1).toLocaleString()} / {total.toLocaleString()} · pass {pass + 1} /{" "}
-              {reader.passes} ·{" "}
-              <span className="text-gold">{percentDone(finished ? total : index, total)}%</span>
-            </p>
-          </div>
-          <button type="button" className="btn shrink-0 px-2" onClick={leave}>
-            <LogOut className="size-4" aria-hidden />
-            Leave
+      {plain ? (
+        !small && (
+          <button
+            type="button"
+            className="absolute top-[max(0.5rem,env(safe-area-inset-top))] right-2 z-30 rounded-full border border-cyan/40 bg-black/60 p-2 text-cyan opacity-30"
+            onClick={() => setBare(false)}
+            aria-label="Show the panel again"
+          >
+            <Eye className="size-4" aria-hidden />
           </button>
-        </div>
-      </header>
+        )
+      ) : (
+        <header
+          ref={headerRef}
+          className="absolute inset-x-0 top-0 z-20 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]"
+        >
+          <div className="flex items-center justify-between gap-2 rounded-[var(--radius)] border border-cyan/40 bg-black px-3 py-2">
+            <div className="min-w-0">
+              <p className="truncate font-display text-xs tracking-[0.12em] text-cyan">
+                {text.name.toUpperCase()}
+              </p>
+              <p className="text-xs text-muted tabular-nums">
+                Phrase {(index + 1).toLocaleString()} / {total.toLocaleString()} · pass {pass + 1} /{" "}
+                {reader.passes} ·{" "}
+                <span className="text-gold">{percentDone(finished ? total : index, total)}%</span>
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-1.5">
+              <button
+                type="button"
+                className="btn px-2"
+                onClick={openMini}
+                aria-label="Mini window, over other apps"
+                title="Mini window"
+              >
+                <PictureInPicture2 className="size-4" aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="btn px-2"
+                onClick={() => setBare(true)}
+                aria-label="Hide everything but the words"
+                title="Hide all"
+              >
+                <EyeOff className="size-4" aria-hidden />
+              </button>
+              <button type="button" className="btn px-2" onClick={leave}>
+                <LogOut className="size-4" aria-hidden />
+                Leave
+              </button>
+            </div>
+          </div>
+        </header>
+      )}
 
-      {!finished && (
-        <div className="absolute inset-x-0 bottom-0 z-20 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      {!finished && !plain && (
+        <div
+          ref={panelRef}
+          className="absolute inset-x-0 bottom-0 z-20 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        >
           <div
             className="rounded-[var(--radius)] border border-cyan/40 bg-black p-3"
             style={{ opacity: reader.panelOpacity }}
@@ -1390,15 +1746,21 @@ function Reader({
 
       <SubliminalFlash
         phrases={phrases}
+        reversed={reversed}
         every={reader.flashEvery}
         ms={reader.flashMs}
         size={reader.flashSize}
         opacity={reader.flashOpacity}
+        color={ACCENTS[reader.flashColor]}
+        chars={reader.flashChars}
+        top={reader.flashAvoid ? room.top : 0}
+        bottom={reader.flashAvoid ? room.bottom : 0}
         font={font}
         running={reader.flash && !finished && heldAt === null && editing === null}
-        onScreens={setScreens}
+        onScreens={onScreens}
         test={testFlash}
       />
+      <ReaderToast />
     </div>,
     document.body,
   );

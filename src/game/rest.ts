@@ -23,16 +23,36 @@ export function resting(): boolean {
   return holds > 0;
 }
 
-/** Keys reach the set's screen's own buttons, and nothing listening on the page. */
+/** On the set's screen (a .rest-screen): its own inputs and buttons take the key. */
+function onRestScreen(e: KeyboardEvent): boolean {
+  const t = e.target;
+  return typeof Element !== "undefined" && t instanceof Element && !!t.closest(".rest-screen");
+}
+
+/**
+ * Keys reach the set's screen and nothing else listening on the page: a key
+ * aimed elsewhere stops at once; a key on the set's screen goes to it (its
+ * inputs see Enter and Esc), then stops at the document, before the game's own
+ * listeners on the window.
+ */
 function swallow(e: KeyboardEvent) {
+  if (!onRestScreen(e)) e.stopPropagation();
+}
+
+function stopAtDocument(e: KeyboardEvent) {
   e.stopPropagation();
 }
 
 function mark(on: boolean) {
   try {
     document.documentElement.classList.toggle("resting", on);
-    if (on) window.addEventListener("keydown", swallow, true);
-    else window.removeEventListener("keydown", swallow, true);
+    if (on) {
+      window.addEventListener("keydown", swallow, true);
+      document.addEventListener("keydown", stopAtDocument);
+    } else {
+      window.removeEventListener("keydown", swallow, true);
+      document.removeEventListener("keydown", stopAtDocument);
+    }
   } catch {
     /* no page (tests, server) */
   }

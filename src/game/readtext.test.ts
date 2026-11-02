@@ -28,7 +28,7 @@ describe("read tab", () => {
     assert.equal(s.passes, R.passes);
     assert.equal(clampWordMs(10), R.wordMsMin);
     assert.equal(clampWordMs(1e9), R.wordMsMax);
-    assert.equal(clampWordMs(933), 950, "in steps of 50 ms");
+    assert.equal(clampWordMs(933), 930, "to 10 ms (a typed value stays)");
     assert.equal(clampPasses(0), 1);
     const back = loadReader({
       wordMs: 700,

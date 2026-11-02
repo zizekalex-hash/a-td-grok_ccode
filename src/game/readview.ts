@@ -3,7 +3,7 @@
  * raw bytes (the background), and the whole text cut into screens of whole
  * phrases (the flash). Pure, with relative imports, so the tests can load it.
  */
-import type { BytesMode } from "./readtext.ts";
+import type { BytesMode, FlashReverse } from "./readtext.ts";
 
 /** The most pixels a picture gets (a longer text shows from its start). */
 export const MAX_PIXELS = 2_000_000;
@@ -123,4 +123,22 @@ export function wrapWords(words: string[], perLine: number): number[][] {
   });
   if (line.length) lines.push(line);
   return lines;
+}
+
+/**
+ * The text for the flash's reversed round: the phrases in reverse order
+ * ("phrases"), the whole text word by word backwards ("words"), or letter by
+ * letter backwards ("letters": "abc" becomes "cba"). Nothing when off.
+ */
+export function reversedPhrases(phrases: string[], mode: FlashReverse): string[] {
+  if (mode === "off") return [];
+  const back = [...phrases].reverse();
+  if (mode === "phrases") return back;
+  if (mode === "words") return back.map((p) => p.split(/\s+/).filter(Boolean).reverse().join(" "));
+  return back.map((p) => [...p].reverse().join(""));
+}
+
+/** The flash's screens in turn: the forward round, then (if any) the reversed one, then round again. */
+export function flashRounds(forward: string[], reversed: string[]): string[] {
+  return [...forward, ...reversed];
 }

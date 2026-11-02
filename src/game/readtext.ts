@@ -32,6 +32,10 @@ export const ACCENT_NAMES = Object.keys(ACCENTS) as Accent[];
 export type BytesMode = "rgb" | "gray" | "bits";
 export const BYTES_MODES: BytesMode[] = ["rgb", "gray", "bits"];
 
+/** The flash's reversed round after each forward one: none, phrases backwards, words backwards, letters backwards. */
+export type FlashReverse = "off" | "phrases" | "words" | "letters";
+export const FLASH_REVERSE: FlashReverse[] = ["off", "phrases", "words", "letters"];
+
 /** The settings panel's tabs. */
 export type PanelTab = "play" | "look" | "bytes" | "flash";
 export const PANEL_TABS: PanelTab[] = ["play", "look", "bytes", "flash"];
@@ -39,6 +43,9 @@ export const PANEL_TABS: PanelTab[] = ["play", "look", "bytes", "flash"];
 export interface ReaderState {
   wordMs: number;
   passes: number;
+  /** Seconds of silence (Auto) after a pass, and after a phrase's last pass. */
+  silence: number;
+  phraseSilence: number;
   wordSize: number;
   phraseSize: number;
   /** Overall playback speed, on top of wordMs (2 = twice as fast), and the most redraws a second. */
@@ -54,13 +61,22 @@ export interface ReaderState {
   panelOpacity: number;
   /** The big word and the whole phrase stay where they are (unlock to drag them). */
   locked: boolean;
-  /** Their centres, as fractions of the screen. */
+  /**
+   * Where they are, as fractions of the room between the header and the panel:
+   * across, their middles; down, the word's foot and the phrase's top.
+   */
   wordX: number;
   wordY: number;
   phraseX: number;
   phraseY: number;
+  /** Which way places are kept (2: in the room, as above); older places are left behind. */
+  placesV: number;
   /** The most characters on a line of the whole phrase. */
   phraseChars: number;
+  /** The word and the phrase stay in the middle across (dragging moves them up and down). */
+  centered: boolean;
+  /** Android: into the mini window (picture in picture) when you leave the app while reading. */
+  miniAuto: boolean;
   /** The whole text's bytes as a picture behind it all: three layers, each at its own opacity, and one over all. */
   bytes: boolean;
   bytesOpacity: number;
@@ -72,6 +88,12 @@ export interface ReaderState {
   flashMs: number;
   flashSize: number;
   flashOpacity: number;
+  flashColor: Accent;
+  /** The most characters on a flash's line (0: the whole width). */
+  flashChars: number;
+  /** Clear of the header and the panel while they show. */
+  flashAvoid: boolean;
+  flashReverse: FlashReverse;
   /** Where you are in each text: the phrase to read next, by the text's key. */
   at: Record<string, number>;
 }
@@ -84,6 +106,8 @@ export function newReader(): ReaderState {
   return {
     wordMs: clampWordMs(R.wordMs),
     passes: clampPasses(R.passes),
+    silence: clampSilence(R.silence),
+    phraseSilence: clampSilence(R.phraseSilence),
     wordSize: clampWordSize(R.wordSize),
     phraseSize: clampPhraseSize(R.phraseSize),
     speed: clampSpeed(R.speed),
@@ -99,7 +123,10 @@ export function newReader(): ReaderState {
     wordY: clampPlace(R.wordY),
     phraseX: clampPlace(R.phraseX),
     phraseY: clampPlace(R.phraseY),
+    placesV: 2,
     phraseChars: clampPhraseChars(R.phraseChars),
+    centered: R.centered !== false,
+    miniAuto: R.miniAuto === true,
     bytes: R.bytes !== false,
     bytesOpacity: clampOpacity(R.bytesOpacity),
     layers: {
@@ -113,6 +140,12 @@ export function newReader(): ReaderState {
     flashMs: clampFlashMs(R.flashMs),
     flashSize: clampFlashSize(R.flashSize),
     flashOpacity: clampOpacity(R.flashOpacity),
+    flashColor: R.flashColor in ACCENTS ? (R.flashColor as Accent) : "white",
+    flashChars: clampFlashChars(R.flashChars),
+    flashAvoid: R.flashAvoid !== false,
+    flashReverse: FLASH_REVERSE.includes(R.flashReverse as FlashReverse)
+      ? (R.flashReverse as FlashReverse)
+      : "off",
     at: {},
   };
 }
@@ -132,14 +165,25 @@ export function clampPlace(v: number): number {
   return clamp(Math.round(v * 1000) / 1000, 0.02, 0.98);
 }
 
+/** Seconds of silence, to the millisecond, up to a minute. */
+export function clampSilence(s: number): number {
+  return clamp(Math.round(s * 1000) / 1000, 0, 60);
+}
+
+/** Characters on a flash's line: 0 (the whole width), or 10 to 400. */
+export function clampFlashChars(n: number): number {
+  const v = Math.round(n);
+  return v < 10 ? 0 : Math.min(400, v);
+}
+
 /** Characters on a line of the whole phrase: from 10 to 200. */
 export function clampPhraseChars(n: number): number {
   return clamp(Math.round(n), 10, 200);
 }
 
-/** Seconds between flashes, a tenth at a time, from half a second to ten minutes. */
+/** Seconds between flashes, to a hundredth, from half a second to ten minutes. */
 export function clampFlashEvery(s: number): number {
-  return clamp(Math.round(s * 10) / 10, 0.5, 600);
+  return clamp(Math.round(s * 100) / 100, 0.5, 600);
 }
 
 /** How long a flash shows, in ms, a tenth at a time (at least one frame is drawn). */
@@ -163,23 +207,23 @@ export function nudge(v: number, dir: 1 | -1, bands: [number, number][]): number
   return Math.round((v + dir * step) * 1e6) / 1e6;
 }
 
-/** Time a word is lit, in whole steps of 50 ms. */
+/** Time a word is lit, to 10 ms. */
 export function clampWordMs(ms: number): number {
-  return clamp(Math.round(ms / 50) * 50, R.wordMsMin, R.wordMsMax);
+  return clamp(Math.round(ms / 10) * 10, R.wordMsMin, R.wordMsMax);
 }
 
 export function clampPasses(n: number): number {
   return clamp(Math.round(n), 1, Math.max(1, R.maxPasses));
 }
 
-/** The lit word's size, in rem, a tenth at a time. */
+/** The lit word's size, in rem, to a twentieth. */
 export function clampWordSize(rem: number): number {
-  return clamp(Math.round(rem * 10) / 10, 0.8, 12);
+  return clamp(Math.round(rem * 20) / 20, 0.8, 12);
 }
 
-/** Playback speed, a twentieth at a time, from a quarter to four times. */
+/** Playback speed, to a hundredth, from a quarter to four times. */
 export function clampSpeed(x: number): number {
-  return clamp(Math.round(x * 20) / 20, 0.25, 4);
+  return clamp(Math.round(x * 100) / 100, 0.25, 4);
 }
 
 /** Most redraws a second, from 1 to 60. */
@@ -203,6 +247,8 @@ export function loadReader(data: unknown): ReaderState {
   const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
   s.wordMs = clampWordMs(num(d.wordMs, s.wordMs));
   s.passes = clampPasses(num(d.passes, s.passes));
+  s.silence = clampSilence(num(d.silence, s.silence));
+  s.phraseSilence = clampSilence(num(d.phraseSilence, s.phraseSilence));
   s.wordSize = clampWordSize(num(d.wordSize, s.wordSize));
   s.phraseSize = clampPhraseSize(num(d.phraseSize, s.phraseSize));
   s.speed = clampSpeed(num(d.speed, s.speed));
@@ -214,12 +260,17 @@ export function loadReader(data: unknown): ReaderState {
   if (typeof d.accent === "string" && d.accent in ACCENTS) s.accent = d.accent as Accent;
   s.panelOpacity = clampPanelOpacity(num(d.panelOpacity, s.panelOpacity));
   if (typeof d.locked === "boolean") s.locked = d.locked;
-  s.wordX = clampPlace(num(d.wordX, s.wordX));
-  s.wordY = clampPlace(num(d.wordY, s.wordY));
-  s.phraseX = clampPlace(num(d.phraseX, s.phraseX));
-  s.phraseY = clampPlace(num(d.phraseY, s.phraseY));
+  // Places kept the old way (centres on the whole screen) start again from the defaults.
+  if (d.placesV === 2) {
+    s.wordX = clampPlace(num(d.wordX, s.wordX));
+    s.wordY = clampPlace(num(d.wordY, s.wordY));
+    s.phraseX = clampPlace(num(d.phraseX, s.phraseX));
+    s.phraseY = clampPlace(num(d.phraseY, s.phraseY));
+  }
   if (typeof d.bytes === "boolean") s.bytes = d.bytes;
   s.phraseChars = clampPhraseChars(num(d.phraseChars, s.phraseChars));
+  if (typeof d.centered === "boolean") s.centered = d.centered;
+  if (typeof d.miniAuto === "boolean") s.miniAuto = d.miniAuto;
   s.bytesOpacity = clampOpacity(num(d.bytesOpacity, s.bytesOpacity));
   const layers = (d.layers && typeof d.layers === "object" ? d.layers : {}) as Record<
     string,
@@ -232,6 +283,12 @@ export function loadReader(data: unknown): ReaderState {
   s.flashMs = clampFlashMs(num(d.flashMs, s.flashMs));
   s.flashSize = clampFlashSize(num(d.flashSize, s.flashSize));
   s.flashOpacity = clampOpacity(num(d.flashOpacity, s.flashOpacity));
+  if (typeof d.flashColor === "string" && d.flashColor in ACCENTS)
+    s.flashColor = d.flashColor as Accent;
+  s.flashChars = clampFlashChars(num(d.flashChars, s.flashChars));
+  if (typeof d.flashAvoid === "boolean") s.flashAvoid = d.flashAvoid;
+  if (FLASH_REVERSE.includes(d.flashReverse as FlashReverse))
+    s.flashReverse = d.flashReverse as FlashReverse;
   const at = d.at && typeof d.at === "object" ? (d.at as Record<string, unknown>) : {};
   for (const [k, v] of Object.entries(at))
     if (typeof v === "number" && Number.isFinite(v) && v >= 0) s.at[k] = Math.floor(v);

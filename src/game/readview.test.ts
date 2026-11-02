@@ -6,13 +6,22 @@ import {
   clampFlashMs,
   clampFlashSize,
   clampPanelOpacity,
+  clampFlashChars,
   clampPhraseChars,
   clampPlace,
+  clampSilence,
   loadReader,
   newReader,
   nudge,
 } from "./readtext.ts";
-import { bytesPicture, flashPages, pixelCount, wrapWords } from "./readview.ts";
+import {
+  bytesPicture,
+  flashPages,
+  flashRounds,
+  pixelCount,
+  reversedPhrases,
+  wrapWords,
+} from "./readview.ts";
 
 const R = CONFIG.reader;
 
@@ -32,6 +41,7 @@ describe("read tab: look, background and flash", () => {
       panelOpacity: 0,
       wordX: -3,
       phraseY: 0.61234,
+      placesV: 2,
       layers: { rgb: 0.3, gray: -1, bits: "x" },
       phraseChars: 3,
       bytesOpacity: 7,
@@ -46,6 +56,11 @@ describe("read tab: look, background and flash", () => {
     assert.equal(back.panelOpacity, 0.1, "the panel never quite goes");
     assert.equal(back.wordX, 0.02);
     assert.equal(back.phraseY, 0.612);
+    assert.equal(
+      loadReader({ wordY: 0.9, phraseY: 0.1 }).wordY,
+      s.wordY,
+      "places kept the old way start from the defaults",
+    );
     assert.deepEqual(back.layers, { rgb: 0.3, gray: 0, bits: s.layers.bits });
     assert.equal(back.phraseChars, 10);
     assert.equal(clampPhraseChars(45.4), 45);
@@ -56,7 +71,7 @@ describe("read tab: look, background and flash", () => {
     assert.equal(back.flashSize, 48);
     assert.equal(back.tab, "flash");
     assert.equal(back.locked, false);
-    assert.equal(clampFlashEvery(9.94), 9.9);
+    assert.equal(clampFlashEvery(9.994), 9.99);
     assert.equal(clampFlashMs(0), 1);
     assert.equal(clampFlashSize(9.3), 9.5);
     assert.equal(clampPanelOpacity(0.364), 0.36);
@@ -106,6 +121,51 @@ describe("read tab: look, background and flash", () => {
 
     const capped = bytesPicture(new Uint8Array(1000), "bits", 1, 100);
     assert.ok(capped.width * capped.height < 120, "never more than the pixel cap (and a row)");
+  });
+
+  it("keeps silences, flash colour, column and reverse from a save, checked", () => {
+    const s = newReader();
+    assert.equal(s.silence, R.silence);
+    assert.equal(s.phraseSilence, R.phraseSilence);
+    assert.equal(s.flashColor, R.flashColor);
+    assert.equal(s.flashReverse, R.flashReverse);
+    assert.equal(s.centered, R.centered);
+    const back = loadReader({
+      silence: 0.3694,
+      phraseSilence: -2,
+      flashColor: "gold",
+      flashChars: 5,
+      flashReverse: "letters",
+      flashAvoid: false,
+      centered: false,
+      miniAuto: true,
+    });
+    assert.equal(back.silence, 0.369, "to the millisecond");
+    assert.equal(back.phraseSilence, 0);
+    assert.equal(back.flashColor, "gold");
+    assert.equal(back.flashChars, 0, "under 10 is the whole width");
+    assert.equal(back.flashReverse, "letters");
+    assert.equal(back.flashAvoid, false);
+    assert.equal(back.centered, false);
+    assert.equal(back.miniAuto, true);
+    assert.equal(
+      loadReader({ flashColor: "plaid", flashReverse: "sideways" }).flashColor,
+      s.flashColor,
+    );
+    assert.equal(clampSilence(0.999), 0.999);
+    assert.equal(clampFlashChars(45), 45);
+    assert.equal(clampFlashChars(9999), 400);
+  });
+
+  it("reverses the text for the flash's second round, then goes round again", () => {
+    const phrases = ["abc def.", "ghi jkl."];
+    assert.deepEqual(reversedPhrases(phrases, "off"), []);
+    assert.deepEqual(reversedPhrases(phrases, "phrases"), ["ghi jkl.", "abc def."]);
+    assert.deepEqual(reversedPhrases(phrases, "words"), ["jkl. ghi", "def. abc"]);
+    assert.deepEqual(reversedPhrases(phrases, "letters"), [".lkj ihg", ".fed cba"]);
+    assert.deepEqual(reversedPhrases(["héllo"], "letters"), ["olléh"]);
+    assert.deepEqual(flashRounds(["A", "B"], ["b", "a"]), ["A", "B", "b", "a"]);
+    assert.deepEqual(flashRounds(["A"], []), ["A"]);
   });
 
   it("wraps a phrase between words, at most so many characters a line", () => {
