@@ -764,11 +764,17 @@ export interface GameConfig {
     streamMs: number;
     streamPerHit: number;
     streamCopies: number;
-    streamPlace: string;
+    streamAbove: boolean;
+    streamBelow: boolean;
+    streamSides: boolean;
+    streamGap: number;
+    streamOrder: string;
+    flashOrder: string;
     streamFlow: string;
     streamSize: number;
     streamOpacity: number;
     streamColor: string;
+    confirmedFolder: string;
   };
   /** The Reps tab of the Recitation drill (see reps._about). */
   reps: {

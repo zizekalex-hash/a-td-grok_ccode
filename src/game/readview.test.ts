@@ -13,6 +13,10 @@ import {
   clampStreamMs,
   clampPlace,
   clampSilence,
+  checkState,
+  markChecked,
+  textSum,
+  unmarkChecked,
   loadReader,
   newReader,
   nudge,
@@ -25,6 +29,8 @@ import {
   hitWords,
   pixelCount,
   reversedPhrases,
+  roundOf,
+  shuffled,
   sideCounts,
   streamHit,
   streamStart,
@@ -170,16 +176,31 @@ describe("read tab: look, background and flash", () => {
     const st = loadReader({
       stream: false,
       streamPlace: "sides",
+      streamOrder: "random",
+      flashOrder: "random",
+      streamGap: 99,
       streamFlow: "row",
       perHit: 3,
       streamColor: "pink",
     });
     assert.equal(st.stream, false);
-    assert.equal(st.streamPlace, "sides");
+    assert.deepEqual(
+      st.streamPlaces,
+      { above: false, below: false, sides: true },
+      "an old single place",
+    );
+    assert.equal(st.streamOrder, "random");
+    assert.equal(st.flashOrder, "random");
+    assert.equal(st.streamGap, 6);
+    assert.deepEqual(
+      loadReader({ streamPlaces: { above: true, sides: true } }).streamPlaces,
+      { above: true, below: newReader().streamPlaces.below, sides: true },
+      "above and the sides together",
+    );
     assert.equal(st.streamFlow, "row");
     assert.equal(st.perHit, 3);
     assert.equal(st.streamColor, "pink");
-    assert.equal(loadReader({ streamPlace: "nowhere" }).streamPlace, newReader().streamPlace);
+    assert.deepEqual(loadReader({ streamPlace: "nowhere" }).streamPlaces, newReader().streamPlaces);
   });
 
   it("reverses the text for the flash's second round, then goes round again", () => {
@@ -214,6 +235,20 @@ describe("read tab: look, background and flash", () => {
     assert.deepEqual(sideCounts(3), { left: 2, right: 1 });
     assert.deepEqual(sideCounts(2), { left: 1, right: 1 });
     assert.deepEqual(sideCounts(1), { left: 1, right: 0 });
+  });
+
+  it("shuffles the phrases for a random round, each once", () => {
+    let seed = 7;
+    const rand = () => {
+      seed = (seed * 16807) % 2147483647;
+      return (seed - 1) / 2147483646;
+    };
+    const list = ["a", "b", "c", "d", "e", "f"];
+    const r = roundOf(list, "random", rand);
+    assert.deepEqual([...r].sort(), list, "every phrase once");
+    assert.notDeepEqual(r, list, "not in order");
+    assert.deepEqual(roundOf(list, "order", rand), list);
+    assert.deepEqual(shuffled([], rand), []);
   });
 
   it("wraps a phrase between words, at most so many characters a line", () => {
@@ -259,5 +294,23 @@ describe("read tab: look, background and flash", () => {
     assert.ok(all.every((p) => p.length <= 400));
     assert.ok(calls < 120, `few measurements (${calls})`);
     assert.deepEqual(flashPages([], fits), []);
+  });
+});
+
+describe("read tab: checked texts", () => {
+  it("marks a text checked, and knows when it changed since", () => {
+    const lines = ["One line.", "Two lines."];
+    let s = newReader();
+    assert.equal(checkState(s, "notes", lines), "unchecked");
+    s = markChecked(s, "notes", lines, 1000);
+    assert.equal(checkState(s, "notes", lines), "checked");
+    assert.equal(checkState(s, "notes", ["One line.", "Two lines!"]), "changed");
+    assert.equal(checkState(s, "other", lines), "unchecked");
+    assert.notEqual(textSum(["a", "b"]), textSum(["ab"]), "line breaks count");
+    const back = loadReader(JSON.parse(JSON.stringify(s)));
+    assert.deepEqual(back.checked, s.checked, "kept in the save");
+    assert.deepEqual(loadReader({ checked: { x: { at: "no", sum: 1 }, y: 5 } }).checked, {});
+    assert.equal(checkState(unmarkChecked(s, "notes"), "notes", lines), "unchecked");
+    assert.equal(CONFIG.reader.confirmedFolder, "confirmed_txt");
   });
 });

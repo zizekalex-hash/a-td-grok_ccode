@@ -40,6 +40,8 @@ export const FLASH_REVERSE: FlashReverse[] = ["off", "phrases", "words", "letter
 export type StreamPlace = "above" | "below" | "sides";
 export const STREAM_PLACES: StreamPlace[] = ["above", "below", "sides"];
 export type StreamFlow = "stacked" | "row";
+/** Phrases in the text's order, or shuffled (each once, then shuffled again). */
+export type Order = "order" | "random";
 export const STREAM_FLOWS: StreamFlow[] = ["stacked", "row"];
 
 /** The settings panel's tabs. */
@@ -107,13 +109,20 @@ export interface ReaderState {
   streamMs: number;
   streamPerHit: number;
   streamCopies: number;
-  streamPlace: StreamPlace;
+  /** Where the copies stand: any of above the word, below the phrase, at both sides. */
+  streamPlaces: Record<StreamPlace, boolean>;
+  /** Space between copies (em of the stream's size). */
+  streamGap: number;
+  streamOrder: Order;
+  flashOrder: Order;
   streamFlow: StreamFlow;
   streamSize: number;
   streamOpacity: number;
   streamColor: Accent;
   /** Where you are in each text: the phrase to read next, by the text's key. */
   at: Record<string, number>;
+  /** Texts read through and confirmed as written right: when, and the text's fingerprint then. */
+  checked: Record<string, { at: number; sum: string }>;
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -169,14 +178,20 @@ export function newReader(): ReaderState {
     streamMs: clampStreamMs(R.streamMs),
     streamPerHit: clampPerHit(R.streamPerHit),
     streamCopies: clampCopies(R.streamCopies),
-    streamPlace: STREAM_PLACES.includes(R.streamPlace as StreamPlace)
-      ? (R.streamPlace as StreamPlace)
-      : "above",
+    streamPlaces: {
+      above: R.streamAbove !== false,
+      below: R.streamBelow === true,
+      sides: R.streamSides === true,
+    },
+    streamGap: clampGap(R.streamGap),
+    streamOrder: R.streamOrder === "random" ? "random" : "order",
+    flashOrder: R.flashOrder === "random" ? "random" : "order",
     streamFlow: R.streamFlow === "row" ? "row" : "stacked",
     streamSize: clampStreamSize(R.streamSize),
     streamOpacity: clampOpacity(R.streamOpacity),
     streamColor: R.streamColor in ACCENTS ? (R.streamColor as Accent) : "white",
     at: {},
+    checked: {},
   };
 }
 
@@ -208,6 +223,11 @@ export function clampStreamMs(ms: number): number {
 /** The stream's copies: 1 to 12. */
 export function clampCopies(n: number): number {
   return clamp(Math.round(n), 1, 12);
+}
+
+/** Space between the stream's copies, in em, to a twentieth: 0 to 6. */
+export function clampGap(em: number): number {
+  return clamp(Math.round(em * 20) / 20, 0, 6);
 }
 
 /** The stream's size, in rem, to a twentieth. */
@@ -344,8 +364,20 @@ export function loadReader(data: unknown): ReaderState {
   s.streamMs = clampStreamMs(num(d.streamMs, s.streamMs));
   s.streamPerHit = clampPerHit(num(d.streamPerHit, s.streamPerHit));
   s.streamCopies = clampCopies(num(d.streamCopies, s.streamCopies));
-  if (STREAM_PLACES.includes(d.streamPlace as StreamPlace))
-    s.streamPlace = d.streamPlace as StreamPlace;
+  const places =
+    d.streamPlaces && typeof d.streamPlaces === "object"
+      ? (d.streamPlaces as Record<string, unknown>)
+      : null;
+  if (places) {
+    for (const p of STREAM_PLACES)
+      if (typeof places[p] === "boolean") s.streamPlaces[p] = places[p] as boolean;
+  } else if (STREAM_PLACES.includes(d.streamPlace as StreamPlace)) {
+    // A save from before places could be mixed: just the one it had.
+    for (const p of STREAM_PLACES) s.streamPlaces[p] = p === d.streamPlace;
+  }
+  s.streamGap = clampGap(num(d.streamGap, s.streamGap));
+  if (d.streamOrder === "order" || d.streamOrder === "random") s.streamOrder = d.streamOrder;
+  if (d.flashOrder === "order" || d.flashOrder === "random") s.flashOrder = d.flashOrder;
   if (STREAM_FLOWS.includes(d.streamFlow as StreamFlow)) s.streamFlow = d.streamFlow as StreamFlow;
   s.streamSize = clampStreamSize(num(d.streamSize, s.streamSize));
   s.streamOpacity = clampOpacity(num(d.streamOpacity, s.streamOpacity));
@@ -354,7 +386,54 @@ export function loadReader(data: unknown): ReaderState {
   const at = d.at && typeof d.at === "object" ? (d.at as Record<string, unknown>) : {};
   for (const [k, v] of Object.entries(at))
     if (typeof v === "number" && Number.isFinite(v) && v >= 0) s.at[k] = Math.floor(v);
+  const checked =
+    d.checked && typeof d.checked === "object" ? (d.checked as Record<string, unknown>) : {};
+  for (const [k, v] of Object.entries(checked)) {
+    const c = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+    if (typeof c.sum === "string" && typeof c.at === "number" && Number.isFinite(c.at))
+      s.checked[k] = { at: c.at, sum: c.sum };
+  }
   return s;
+}
+
+/**
+ * A text's fingerprint (FNV-1a over its lines, and its length), so a text
+ * edited after it was checked shows as changed.
+ */
+export function textSum(lines: string[]): string {
+  const t = lines.join("\n");
+  let h = 0x811c9dc5;
+  for (let i = 0; i < t.length; i++) {
+    h ^= t.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return `${(h >>> 0).toString(16).padStart(8, "0")}:${t.length.toString(36)}`;
+}
+
+/** A text checked (and not changed since), changed since it was checked, or not checked. */
+export type CheckState = "checked" | "changed" | "unchecked";
+
+export function checkState(s: ReaderState, name: string, lines: string[]): CheckState {
+  const c = s.checked[textKey(name)];
+  if (!c) return "unchecked";
+  return c.sum === textSum(lines) ? "checked" : "changed";
+}
+
+/** Marks a text checked, as it is now. */
+export function markChecked(
+  s: ReaderState,
+  name: string,
+  lines: string[],
+  now: number,
+): ReaderState {
+  return { ...s, checked: { ...s.checked, [textKey(name)]: { at: now, sum: textSum(lines) } } };
+}
+
+/** Takes the check off a text. */
+export function unmarkChecked(s: ReaderState, name: string): ReaderState {
+  const checked = { ...s.checked };
+  delete checked[textKey(name)];
+  return { ...s, checked };
 }
 
 export function readReader(): ReaderState {

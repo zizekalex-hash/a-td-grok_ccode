@@ -180,3 +180,22 @@ export function sideCounts(copies: number): { left: number; right: number } {
   const n = Math.max(1, Math.floor(copies));
   return { left: Math.ceil(n / 2), right: Math.floor(n / 2) };
 }
+
+/** A shuffled copy of a list (Fisher–Yates, with the given random numbers). */
+export function shuffled<T>(list: readonly T[], rand: () => number): T[] {
+  const out = [...list];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.min(i, Math.floor(rand() * (i + 1)));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
+/** The phrases for a round: in the text's order, or shuffled (each once). */
+export function roundOf(
+  phrases: readonly string[],
+  order: "order" | "random",
+  rand: () => number,
+): string[] {
+  return order === "random" ? shuffled(phrases, rand) : [...phrases];
+}

@@ -13,6 +13,7 @@ import {
 import { createPortal } from "react-dom";
 import {
   BookOpen,
+  CircleCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -33,6 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { Confirm } from "@/components/game/Confirm";
+import { CONFIG } from "@/game/config";
 import { flashToast, grantSkillXp, loadCodexTexts, removeText, updateText } from "@/game/engine";
 import { levelForXp, repXp } from "@/game/recite";
 import { clock, logRead, readReps, writeReps } from "@/game/reps";
@@ -46,6 +48,7 @@ import {
   clampFlashMs,
   clampFlashSize,
   clampFps,
+  clampGap,
   clampOpacity,
   clampPanelOpacity,
   clampPasses,
@@ -58,10 +61,12 @@ import {
   clampStreamMs,
   clampStreamSize,
   clampWordMs,
+  checkState,
   clampWordSize,
   editPhrase,
   FLASH_REVERSE,
   FONTS,
+  markChecked,
   newReader,
   nudge,
   PANEL_TABS,
@@ -74,10 +79,12 @@ import {
   readUnits,
   setPlace,
   textKey,
+  unmarkChecked,
   wordTime,
   writeReader,
   type BytesMode,
   type FlashReverse,
+  type Order,
   type PanelTab,
   type ReaderFont,
   type ReaderState,
@@ -91,7 +98,8 @@ import {
   hitCount,
   hitWords,
   reversedPhrases,
-  sideCounts,
+  roundOf,
+  shuffled,
   streamHit,
   streamStart,
   streamWords,
@@ -244,6 +252,46 @@ async function exportText(name: string, lines: string[]) {
   await saveFile(fileName(name), blob, "Save or send the text");
 }
 
+/**
+ * A text read through and confirmed: saved once into the phone's
+ * Documents/confirmed_txt (the folder is made if it is not there). If the phone
+ * will not take it there, the share sheet; in a browser, a download.
+ */
+async function saveConfirmed(name: string, lines: string[]) {
+  const folder = (CONFIG.reader.confirmedFolder || "confirmed_txt").replace(/[\\/:*?"<>|]+/g, "-");
+  const file = fileName(name);
+  const body = `${lines.join("\n")}\n`;
+  const blob = () => new Blob([body], { type: "text/plain;charset=utf-8" });
+  let native = false;
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    native = Capacitor.isNativePlatform();
+    if (native) {
+      const { Filesystem, Directory, Encoding } = await import("@capacitor/filesystem");
+      await Filesystem.writeFile({
+        path: `${folder}/${file}`,
+        data: body,
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8,
+        recursive: true,
+      });
+      flashToast(`Checked ✓ saved: Documents/${folder}/${file}`);
+      return;
+    }
+  } catch {
+    if (native) {
+      await saveFile(file, blob(), "Save the checked text");
+      return;
+    }
+  }
+  await saveFile(`${folder}_${file}`, blob(), "Save the checked text");
+}
+
+/** "3 Nov", for when a text was checked. */
+function dayOf(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
 /** The whole text's bytes, as the background draws them. */
 function textBytes(lines: string[]): Uint8Array {
   return new TextEncoder().encode(lines.join("\n"));
@@ -329,6 +377,7 @@ export function ReadTab() {
   const [reader, setReader] = useState<ReaderState>(() => readReader());
   const [open, setOpen] = useState<OpenText | null>(null);
   const [asking, setAsking] = useState<number | null>(null);
+  const [checking, setChecking] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const library = useMemo(
@@ -394,11 +443,19 @@ export function ReadTab() {
       </div>
 
       <h3 className="mt-4 text-xs tracking-wider text-muted uppercase">
-        Your texts ({library.length})
+        Your texts ({library.length}) ·{" "}
+        <span className="text-green-400">
+          checked{" "}
+          {library
+            .filter((t) => checkState(reader, t.name, t.lines) === "checked")
+            .length.toLocaleString()}
+        </span>
       </h3>
       <ul className="mt-1 space-y-2" aria-label="Your texts">
         {library.map((t, i) => {
           const at = placeOf(reader, textKey(t.name), Number.MAX_SAFE_INTEGER);
+          const state = checkState(reader, t.name, t.lines);
+          const when = reader.checked[textKey(t.name)]?.at ?? 0;
           return (
             <li key={`${i}-${t.name}`} className="rounded-md border border-cyan/25 p-2">
               <div className="flex items-center gap-1.5">
@@ -416,6 +473,28 @@ export function ReadTab() {
                     {t.lines.length.toLocaleString()} line{t.lines.length === 1 ? "" : "s"}
                     {at > 0 ? ` · go on from phrase ${(at + 1).toLocaleString()}` : ""}
                   </span>
+                  <span
+                    className={`block text-xs ${state === "checked" ? "text-green-400" : state === "changed" ? "text-gold" : "text-muted"}`}
+                  >
+                    {state === "checked"
+                      ? `✓ Checked ${dayOf(when)}`
+                      : state === "changed"
+                        ? `Changed since checked (${dayOf(when)}): read it again`
+                        : "Not checked yet"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="btn shrink-0 px-2"
+                  data-on={state === "checked"}
+                  onClick={() => setChecking(checking === i ? null : i)}
+                  aria-label={
+                    state === "checked"
+                      ? `${t.name} is checked. Uncheck it`
+                      : `Mark ${t.name} as checked`
+                  }
+                >
+                  <CircleCheck className="size-4" aria-hidden />
                 </button>
                 <button
                   type="button"
@@ -445,6 +524,26 @@ export function ReadTab() {
                   </button>
                 )}
               </div>
+              {checking === i && (
+                <Confirm
+                  text={
+                    state === "checked"
+                      ? `Mark “${t.name}” as not checked? (The saved copy in ${CONFIG.reader.confirmedFolder} stays.)`
+                      : `Mark “${t.name}” as checked (read through, written right) and save it to Documents/${CONFIG.reader.confirmedFolder}?`
+                  }
+                  yes={state === "checked" ? "Yes, uncheck it" : "Yes, checked: save it"}
+                  no="No"
+                  onYes={() => {
+                    if (state === "checked") save(unmarkChecked(reader, t.name));
+                    else {
+                      save(markChecked(reader, t.name, t.lines, Date.now()));
+                      void saveConfirmed(t.name, t.lines);
+                    }
+                    setChecking(null);
+                  }}
+                  onNo={() => setChecking(null)}
+                />
+              )}
               {asking === i && (
                 <Confirm
                   text={`Take “${t.name}” out of your texts?`}
@@ -614,7 +713,8 @@ function BytesBackground({
  */
 function SubliminalFlash({
   phrases,
-  reversed,
+  reverse,
+  order,
   every,
   ms,
   size,
@@ -629,8 +729,10 @@ function SubliminalFlash({
   test,
 }: {
   phrases: string[];
-  /** The reversed round's phrases (none: no reversed round). */
-  reversed: string[];
+  /** A reversed round after each forward one (off: none). */
+  reverse: FlashReverse;
+  /** The phrases in order, or shuffled each round. */
+  order: Order;
   every: number;
   ms: number;
   size: number;
@@ -653,6 +755,10 @@ function SubliminalFlash({
   const frame = useRef(0);
   const hide = useRef(0);
   const latest = useRef({ ms, opacity });
+  /** Rounds so far: a random order shuffles again for each. */
+  const [round, setRound] = useState(0);
+  const shuffleEach = useRef(order === "random");
+  shuffleEach.current = order === "random";
 
   useEffect(() => {
     latest.current = { ms, opacity };
@@ -665,6 +771,8 @@ function SubliminalFlash({
     if (!el || !list.length) return;
     const k = next.current % list.length;
     next.current = (k + 1) % list.length;
+    // A round done: at random, the next round is shuffled again.
+    if (next.current === 0 && shuffleEach.current) setRound((r) => r + 1);
     cancelAnimationFrame(frame.current);
     window.clearTimeout(hide.current);
     frame.current = requestAnimationFrame(() => {
@@ -710,14 +818,16 @@ function SubliminalFlash({
       p.textContent = t;
       return p.scrollHeight <= p.clientHeight + 1;
     };
-    const forward = flashPages(phrases, fits);
+    const ordered = roundOf(phrases, order, Math.random);
+    const forward = flashPages(ordered, fits);
+    const reversed = reversedPhrases(ordered, reverse);
     const back = reversed.length ? flashPages(reversed, fits) : [];
     pages.current = flashRounds(forward, back);
     p.textContent = "";
     p.style.display = "none";
     if (next.current >= pages.current.length) next.current = 0;
     onScreens(forward.length, back.length);
-  }, [phrases, reversed, size, font, chars, top, bottom, view, onScreens]);
+  }, [phrases, reverse, order, round, size, font, chars, top, bottom, view, onScreens]);
 
   useEffect(() => {
     if (!running) return;
@@ -767,34 +877,41 @@ function SubliminalFlash({
 
 /**
  * The stream: a second, fast word looper over the whole text (subliminal), next
- * to the big word, in `copies` copies placed above the word, below the phrase
- * or at the sides, stacked or in a row. It starts at the phrase being read and
- * goes round the whole text on its own; each hit is written straight into the
- * page (no React redraw), so a fast stream stays light.
+ * to the big word, in `copies` copies in each place switched on: above the word,
+ * below the phrase, and at both sides (a column on the left and one on the
+ * right), stacked or in a row, `gap` em apart. In order it starts at the phrase
+ * being read and goes round the text; at random it shuffles the phrases, shows
+ * each once, and shuffles again. Each hit is written straight into the page (no
+ * React redraw), so a fast stream stays light.
  */
 function StreamLayer({
-  words,
+  phrases,
   start,
+  order,
   ms,
   perHit,
   copies,
-  place,
+  places,
   flow,
   size,
+  gap,
   opacity,
   color,
   font,
   running,
   anchor,
 }: {
-  words: string[];
+  phrases: string[];
+  /** The phrase being read: in order, the stream starts there. */
   start: number;
+  order: Order;
   ms: number;
   perHit: number;
   copies: number;
-  place: StreamPlace;
+  places: Record<StreamPlace, boolean>;
   flow: StreamFlow;
   size: number;
+  gap: number;
   opacity: number;
   color: string;
   font: string;
@@ -803,77 +920,113 @@ function StreamLayer({
   anchor: { x: number; wordTop: number; wordMid: number; below: number };
 }) {
   const spans = useRef<(HTMLSpanElement | null)[]>([]);
-  const at = useRef(start);
+  const seq = useRef<string[]>([]);
+  const at = useRef(0);
   const startRef = useRef(start);
   startRef.current = start;
-  // A new text starts again at the phrase being read; otherwise it goes on round on its own.
+  // A new text or order starts again: in order at the phrase being read, at random from a new shuffle.
   useEffect(() => {
-    at.current = startRef.current;
-  }, [words]);
+    if (order === "random") {
+      seq.current = streamWords(shuffled(phrases, Math.random));
+      at.current = 0;
+    } else {
+      seq.current = streamWords(phrases);
+      at.current = streamStart(phrases, startRef.current);
+    }
+  }, [phrases, order]);
   useEffect(() => {
-    if (!running || !words.length) return;
+    if (!running || !phrases.length) return;
     const tick = () => {
+      const words = seq.current;
+      if (!words.length) return;
       const text = streamHit(words, at.current, perHit);
-      at.current = (at.current + perHit) % words.length;
+      at.current += perHit;
+      if (at.current >= words.length) {
+        // Round done: at random, a new shuffle; in order, round again.
+        if (order === "random") seq.current = streamWords(shuffled(phrases, Math.random));
+        at.current = order === "random" ? 0 : at.current % words.length;
+      }
       for (const el of spans.current) if (el) el.textContent = text;
     };
     tick();
     const id = window.setInterval(tick, Math.max(16, ms));
     return () => window.clearInterval(id);
-  }, [running, words, ms, perHit, copies]);
+  }, [running, phrases, order, ms, perHit, copies, places.above, places.below, places.sides]);
 
-  const span = (i: number) => (
-    <span
-      key={i}
-      ref={(el) => {
-        spans.current[i] = el;
-      }}
-      className="whitespace-nowrap"
-    />
-  );
+  let n = 0;
+  spans.current.length = 0;
+  const many = () =>
+    Array.from({ length: copies }, () => {
+      const i = n++;
+      return (
+        <span
+          key={i}
+          ref={(el) => {
+            spans.current[i] = el;
+          }}
+          className="whitespace-nowrap"
+        />
+      );
+    });
   const base: CSSProperties = {
     fontSize: `${size}rem`,
     lineHeight: 1.15,
     opacity,
     color,
-    gap: `${(size * 0.4).toFixed(2)}rem`,
+    gap: `${gap}em`,
   };
   const dir = flow === "row" ? "flex-row" : "flex-col";
-  if (place === "sides") {
-    const { left, right } = sideCounts(copies);
-    const side = (which: "left" | "right", n: number, from: number) => (
-      <div
-        className={`${font} pointer-events-none absolute z-[9] flex w-max ${dir} ${which === "left" ? "items-start" : "items-end"}`}
-        style={{ ...base, [which]: "0.5rem", top: anchor.wordMid, transform: "translateY(-50%)" }}
-        data-stream={which}
-        aria-hidden
-      >
-        {Array.from({ length: n }, (_, k) => span(from + k))}
-      </div>
-    );
-    return (
-      <>
-        {side("left", left, 0)}
-        {right > 0 && side("right", right, left)}
-      </>
-    );
-  }
+  const cls = `${font} pointer-events-none absolute z-[9] flex w-max`;
   return (
-    <div
-      className={`${font} pointer-events-none absolute z-[9] flex w-max items-center ${flow === "row" ? "flex-row" : place === "above" ? "flex-col-reverse" : "flex-col"}`}
-      style={{
-        ...base,
-        left: anchor.x,
-        transform: "translateX(-50%)",
-        ...(place === "above"
-          ? { bottom: `calc(100% - ${Math.round(anchor.wordTop)}px)` }
-          : { top: Math.round(anchor.below) }),
-      }}
-      data-stream={place}
-      aria-hidden
-    >
-      {Array.from({ length: copies }, (_, k) => span(k))}
-    </div>
+    <>
+      {places.above && (
+        <div
+          className={`${cls} items-center ${flow === "row" ? "flex-row" : "flex-col-reverse"}`}
+          style={{
+            ...base,
+            left: anchor.x,
+            transform: "translateX(-50%)",
+            bottom: `calc(100% - ${Math.round(anchor.wordTop)}px)`,
+          }}
+          data-stream="above"
+          aria-hidden
+        >
+          {many()}
+        </div>
+      )}
+      {places.below && (
+        <div
+          className={`${cls} items-center ${dir}`}
+          style={{
+            ...base,
+            left: anchor.x,
+            transform: "translateX(-50%)",
+            top: Math.round(anchor.below),
+          }}
+          data-stream="below"
+          aria-hidden
+        >
+          {many()}
+        </div>
+      )}
+      {places.sides &&
+        (["left", "right"] as const).map((side) => (
+          <div
+            key={side}
+            className={`${cls} ${dir} ${side === "left" ? "items-start" : "items-end"}`}
+            style={{
+              ...base,
+              [side]: "0.5rem",
+              top: anchor.wordMid,
+              transform: "translateY(-50%)",
+            }}
+            data-stream={side}
+            aria-hidden
+          >
+            {many()}
+          </div>
+        ))}
+    </>
   );
 }
 
@@ -998,10 +1151,6 @@ function Reader({
       window.removeEventListener("resize", measure);
     };
   }, [plain, finished]);
-  const reversed = useMemo(
-    () => reversedPhrases(phrases, reader.flashReverse),
-    [phrases, reader.flashReverse],
-  );
   const testFlash = useRef<((ms: number, opacity: number) => void) | null>(null);
   /** The word or phrase being dragged (unlocked), and where. */
   const [drag, setDrag] = useState<{ spot: Spot; x: number; y: number } | null>(null);
@@ -1315,15 +1464,39 @@ function Reader({
             }
             onType={(v) => set({ streamOpacity: clampOpacity(v) })}
           />
+          <Stepper
+            label="spacing (em)"
+            value={reader.streamGap.toFixed(2)}
+            raw={reader.streamGap}
+            onLess={() => set({ streamGap: clampGap(reader.streamGap - 0.1) })}
+            onMore={() => set({ streamGap: clampGap(reader.streamGap + 0.1) })}
+            onType={(v) => set({ streamGap: clampGap(v) })}
+          />
+        </div>
+        <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+          {STREAM_PLACES.map((p) => (
+            <Toggle
+              key={p}
+              on={reader.streamPlaces[p]}
+              onClick={() =>
+                set({ streamPlaces: { ...reader.streamPlaces, [p]: !reader.streamPlaces[p] } })
+              }
+            >
+              {{ above: "Above", below: "Below", sides: "Sides" }[p]}:{" "}
+              {reader.streamPlaces[p] ? "on" : "off"}
+            </Toggle>
+          ))}
         </div>
         <div className="mt-1.5 grid grid-cols-3 gap-1.5">
           <button
             type="button"
             className="btn min-h-10 px-1"
-            onClick={() => set({ streamPlace: cycle(STREAM_PLACES, reader.streamPlace) })}
-            aria-label={`Stream place: ${reader.streamPlace}. Change it`}
+            onClick={() =>
+              set({ streamOrder: reader.streamOrder === "random" ? "order" : "random" })
+            }
+            aria-label={`Stream order: ${reader.streamOrder === "random" ? "random" : "in order"}. Change it`}
           >
-            Place: {reader.streamPlace}
+            {reader.streamOrder === "random" ? "Random" : "In order"}
           </button>
           <button
             type="button"
@@ -1353,8 +1526,10 @@ function Reader({
           {Math.round(
             ((allWords.length / reader.streamPerHit) * reader.streamMs) / 1000,
           ).toLocaleString()}{" "}
-          s a round), in {COPIES_NAME(reader.streamCopies)}, from the phrase you read on, round and
-          round
+          s a round), in {COPIES_NAME(reader.streamCopies)} in each place,{" "}
+          {reader.streamOrder === "random"
+            ? "the phrases at random (each once, then shuffled again)"
+            : "from the phrase you read on, round and round"}
         </p>
       </>
     ),
@@ -1692,6 +1867,14 @@ function Reader({
           >
             Reverse: {REVERSE_NAME[reader.flashReverse]}
           </button>
+          <button
+            type="button"
+            className="btn min-h-10 px-1"
+            onClick={() => set({ flashOrder: reader.flashOrder === "random" ? "order" : "random" })}
+            aria-label={`Flash order: ${reader.flashOrder === "random" ? "random" : "in order"}. Change it`}
+          >
+            Order: {reader.flashOrder === "random" ? "random" : "in order"}
+          </button>
           <Toggle on={reader.flashAvoid} onClick={() => set({ flashAvoid: !reader.flashAvoid })}>
             Clear of the panel: {reader.flashAvoid ? "on" : "off"}
           </Toggle>
@@ -1750,6 +1933,26 @@ function Reader({
             “{text.name}”: {total.toLocaleString()} phrases, in{" "}
             {clock(Date.now() - session.current.began)}. It is in your History.
           </p>
+          {checkState(reader, text.name, lines) === "checked" ? (
+            <p className="mt-3 text-sm text-green-400">
+              ✓ Checked: saved in Documents/{CONFIG.reader.confirmedFolder}
+            </p>
+          ) : (
+            <button
+              type="button"
+              className="btn mt-4 min-h-12 w-full max-w-sm"
+              style={{ color: "#4ade80", borderColor: "#4ade80" }}
+              onClick={() => {
+                save(markChecked(reader, text.name, lines, Date.now()));
+                void saveConfirmed(text.name, lines);
+              }}
+            >
+              <CircleCheck className="size-4" aria-hidden />
+              {checkState(reader, text.name, lines) === "changed"
+                ? "Checked again: save the new version"
+                : "Checked, all written right: save to confirmed_txt"}
+            </button>
+          )}
           <div className="mt-4 grid w-full max-w-sm grid-cols-2 gap-2">
             <button
               type="button"
@@ -2015,7 +2218,8 @@ function Reader({
 
       <SubliminalFlash
         phrases={phrases}
-        reversed={reversed}
+        reverse={reader.flashReverse}
+        order={reader.flashOrder}
         every={reader.flashEvery}
         ms={reader.flashMs}
         size={reader.flashSize}
@@ -2031,12 +2235,14 @@ function Reader({
       />
       {reader.stream && !finished && (
         <StreamLayer
-          words={allWords}
-          start={streamStart(phrases, index)}
+          phrases={phrases}
+          start={index}
+          order={reader.streamOrder}
           ms={reader.streamMs}
           perHit={reader.streamPerHit}
           copies={reader.streamCopies}
-          place={reader.streamPlace}
+          places={reader.streamPlaces}
+          gap={reader.streamGap}
           flow={reader.streamFlow}
           size={reader.streamSize * scale}
           opacity={reader.streamOpacity}
