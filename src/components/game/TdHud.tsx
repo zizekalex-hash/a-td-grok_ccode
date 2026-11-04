@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
   Atom,
@@ -38,6 +38,7 @@ import {
   clampOpacity,
   clampScale,
   clampSpot,
+  clampLabelSize,
   clampTapSize,
   readRepUi,
   writeRepUi,
@@ -834,6 +835,15 @@ function RepWindow({
                 down={() => setTap({ opacity: clampOpacity(ui.tap.opacity - 0.05) })}
                 up={() => setTap({ opacity: clampOpacity(ui.tap.opacity + 0.05) })}
               />
+              <Toggle label="The phrase under the button" on={ui.tap.label} flip={() => setTap({ label: !ui.tap.label })} />
+              {ui.tap.label && (
+                <Tune
+                  label="Phrase size"
+                  value={`${ui.tap.labelSize}px`}
+                  down={() => setTap({ labelSize: clampLabelSize(ui.tap.labelSize - 1) })}
+                  up={() => setTap({ labelSize: clampLabelSize(ui.tap.labelSize + 1) })}
+                />
+              )}
             </>
           )}
           <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">ON THE BOARD</p>
@@ -852,7 +862,11 @@ function RepWindow({
   );
 }
 
-/** The round tap button: the batch for the picked phrase, in game with the window closed. */
+/**
+ * The round tap button: the batch for the picked phrase, in game with the window
+ * closed, and the phrase under it (its own font size). The phrase keeps to the
+ * button's side, so the button stays where it was put.
+ */
 function RepTapButton({
   ui,
   change,
@@ -867,58 +881,75 @@ function RepTapButton({
   const reps = useGame((s) => s.tdView.reps);
   const clock = useRepClock(ui.batch);
   const tap = ui.tap;
-  const place = usePlacement<HTMLButtonElement>(tap.x, tap.y, tap.size);
+  const phrase = useMemo(() => {
+    const items = readReps().items;
+    return (items.find((i) => i.id === ui.phraseId) ?? items[0])?.text ?? "";
+  }, [ui.phraseId]);
+  const label = tap.label && phrase ? phrase : "";
+  const place = usePlacement<HTMLDivElement>(tap.x, tap.y, tap.size);
   const drag = useDragPlace(place.room, tap, (x, y, done) => change({ ...ui, tap: { ...tap, x, y } }, done), {
     on: arranging,
     buttons: true,
   });
   const pays = batchFlux(voidPerks, fluxBoost, reps, ui.batch);
+  const side = tap.x < 0.34 ? "items-start text-left" : tap.x > 0.66 ? "items-end text-right" : "items-center text-center";
   return (
-    <button
+    <div
       ref={place.ref}
-      type="button"
-      className={`pointer-events-auto absolute z-20 grid place-items-center rounded-full font-display ${clock.ready ? "text-gold" : "text-violet"} ${arranging ? "cursor-move outline-2 outline-offset-4 outline-cyan outline-dashed" : ""}`}
-      style={{
-        left: place.left,
-        top: place.top,
-        width: tap.size,
-        height: tap.size,
-        opacity: tap.opacity,
-        touchAction: arranging ? "none" : "manipulation",
-      }}
-      onClick={() => {
-        if (!arranging) game()?.tdRepBatch();
-      }}
-      {...drag}
-      aria-label={
-        arranging
-          ? "Drag to move the tap button"
-          : `Rep ×${ui.batch}, ${clock.ready ? "ready" : "not yet"}: pays ${pays} flux`
-      }
+      className={`pointer-events-none absolute z-20 flex flex-col ${side}`}
+      style={{ left: place.left, top: place.top, opacity: tap.opacity }}
     >
-      <svg viewBox="0 0 100 100" className="absolute inset-0 size-full" aria-hidden>
-        <circle cx="50" cy="50" r="45" fill="rgba(8, 6, 16, 0.78)" stroke="rgba(168, 85, 247, 0.28)" strokeWidth="7" />
-        {clock.ready ? (
-          <circle cx="50" cy="50" r="45" fill="none" stroke="var(--color-gold)" strokeWidth="7" />
-        ) : (
-          <RepRing key={clock.readyAt} readyAt={clock.readyAt} ms={clock.ms} />
-        )}
-      </svg>
-      <span className="relative text-center leading-none">
-        {arranging ? (
-          <Move style={{ width: tap.size * 0.36, height: tap.size * 0.36 }} aria-hidden />
-        ) : (
-          <>
-            <span className="block" style={{ fontSize: tap.size * 0.26 }}>
-              ×{ui.batch}
-            </span>
-            <span className="mt-0.5 block" style={{ fontSize: Math.max(9, tap.size * 0.14) }}>
-              {clock.ready ? `+${short(pays)}` : "…"}
-            </span>
-          </>
-        )}
-      </span>
-    </button>
+      <button
+        type="button"
+        className={`pointer-events-auto relative grid shrink-0 place-items-center rounded-full font-display ${clock.ready ? "text-gold" : "text-violet"} ${arranging ? "cursor-move outline-2 outline-offset-4 outline-cyan outline-dashed" : ""}`}
+        style={{ width: tap.size, height: tap.size, touchAction: arranging ? "none" : "manipulation" }}
+        onClick={() => {
+          if (!arranging) game()?.tdRepBatch();
+        }}
+        {...drag}
+        aria-label={
+          arranging
+            ? "Drag to move the tap button"
+            : `Rep ×${ui.batch}, ${clock.ready ? "ready" : "not yet"}: pays ${pays} flux${phrase ? `. ${phrase}` : ""}`
+        }
+      >
+        <svg viewBox="0 0 100 100" className="absolute inset-0 size-full" aria-hidden>
+          <circle cx="50" cy="50" r="45" fill="rgba(8, 6, 16, 0.78)" stroke="rgba(168, 85, 247, 0.28)" strokeWidth="7" />
+          {clock.ready ? (
+            <circle cx="50" cy="50" r="45" fill="none" stroke="var(--color-gold)" strokeWidth="7" />
+          ) : (
+            <RepRing key={clock.readyAt} readyAt={clock.readyAt} ms={clock.ms} />
+          )}
+        </svg>
+        <span className="relative text-center leading-none">
+          {arranging ? (
+            <Move style={{ width: tap.size * 0.36, height: tap.size * 0.36 }} aria-hidden />
+          ) : (
+            <>
+              <span className="block" style={{ fontSize: tap.size * 0.26 }}>
+                ×{ui.batch}
+              </span>
+              <span className="mt-0.5 block" style={{ fontSize: Math.max(9, tap.size * 0.14) }}>
+                {clock.ready ? `+${short(pays)}` : "…"}
+              </span>
+            </>
+          )}
+        </span>
+      </button>
+      {label && (
+        <p
+          className="mt-1 line-clamp-4 rounded bg-bg/55 px-1 leading-snug text-fg"
+          style={{
+            fontSize: tap.labelSize,
+            maxWidth: "min(16em, calc(100vw - 1rem))",
+            textShadow: "0 0 3px rgba(0, 0, 0, 0.9)",
+          }}
+          aria-hidden
+        >
+          {label}
+        </p>
+      )}
+    </div>
   );
 }
 

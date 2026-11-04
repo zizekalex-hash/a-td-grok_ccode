@@ -343,7 +343,7 @@ describe("the rep controls' setup", () => {
     const back = loadRepUi({
       batch: 17,
       win: { x: 2, y: -1, scale: 9, opacity: 0 },
-      tap: { on: false, size: 5, opacity: 0.5, x: 0.05 },
+      tap: { on: false, size: 5, opacity: 0.5, x: 0.05, labelSize: 99 },
       coreTap: true,
       offTap: "yes",
       phraseId: "a",
@@ -353,6 +353,9 @@ describe("the rep controls' setup", () => {
     assert.equal(back.tap.on, false);
     assert.equal(back.tap.size, 44);
     assert.equal(back.tap.x, 0.05);
+    assert.equal(back.tap.label, true, "the phrase shows under the button to start");
+    assert.equal(back.tap.labelSize, 24);
+    assert.equal(u.tap.labelSize, 9);
     assert.equal(back.coreTap, true);
     assert.equal(back.offTap, false, "only true or false");
     assert.equal(back.phraseId, "a");

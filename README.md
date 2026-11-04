@@ -188,7 +188,7 @@ A second currency, **flux** (◆, next to the O/I at the top), comes only from r
 The rep controls are yours to arrange, and stay as set on the device:
 
 - **The window** drags anywhere by its top bar, folds to that bar (−, which keeps a small Rep button), and has its own **size** and **opacity** (⚙), so the board shows through it.
-- **The round tap button** stays in game even with the window closed, at the right side to start: drag it where your thumb rests (⚙ → Move it, or Left side / Right side), with its own size and opacity. Its ring fills as the batch's time passes and turns gold when it is ready.
+- **The round tap button** stays in game even with the window closed, at the right side to start: drag it where your thumb rests (⚙ → Move it, or Left side / Right side), with its own size and opacity. Its ring fills as the batch's time passes and turns gold when it is ready. The phrase being repped shows under it (9 px to start; ⚙ → Phrase size, or turn it off), kept to the button's side of the screen.
 - **On the board** (⚙, off to start): tapping the **core** counts the batch, and so can tapping **beside the board** (off its cells). The key **R** does too. Every way taps the same batch for the same phrase, under the same clock.
 
 Flux buys the **void set**, ten more towers, one for each (built, upgraded, specialized and refunded in flux, never O/I; the build menu's Void tab), drawn as black orbs in a glowing ring:

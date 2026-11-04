@@ -17,8 +17,16 @@ export interface RepUi {
   batch: number;
   /** The window: its place (fractions), size (scale), opacity, and folded to its top bar. */
   win: { x: number; y: number; scale: number; opacity: number; min: boolean };
-  /** The tap button: shown, its place (fractions), size (px) and opacity. */
-  tap: { on: boolean; x: number; y: number; size: number; opacity: number };
+  /** The tap button: shown, its place (fractions), size (px), opacity, and the phrase under it (shown, font px). */
+  tap: {
+    on: boolean;
+    x: number;
+    y: number;
+    size: number;
+    opacity: number;
+    label: boolean;
+    labelSize: number;
+  };
   /** Tapping the core on the board counts the batch too. */
   coreTap: boolean;
   /** Tapping beside the board (off its cells) counts the batch too. */
@@ -43,6 +51,7 @@ export function clampBatch(n: number): number {
 export const clampOpacity = (v: number) => clamp(Math.round(v * 100) / 100, 0.15, 1);
 export const clampScale = (v: number) => clamp(Math.round(v * 20) / 20, 0.6, 1.6);
 export const clampTapSize = (v: number) => clamp(Math.round(v), 44, 160);
+export const clampLabelSize = (v: number) => clamp(Math.round(v), 6, 24);
 export const clampSpot = (v: number) => clamp(Math.round(v * 1000) / 1000, 0, 1);
 
 export function defaultRepUi(): RepUi {
@@ -51,7 +60,7 @@ export function defaultRepUi(): RepUi {
     phraseId: "",
     batch: list.includes(10) ? 10 : list[0]!,
     win: { x: 0.5, y: 0.26, scale: 1, opacity: 0.92, min: false },
-    tap: { on: true, x: 1, y: 0.4, size: 72, opacity: 0.85 },
+    tap: { on: true, x: 1, y: 0.4, size: 72, opacity: 0.85, label: true, labelSize: 9 },
     coreTap: false,
     offTap: false,
   };
@@ -78,6 +87,8 @@ export function loadRepUi(data: unknown): RepUi {
     y: clampSpot(num(t.y, u.tap.y)),
     size: clampTapSize(num(t.size, u.tap.size)),
     opacity: clampOpacity(num(t.opacity, u.tap.opacity)),
+    label: typeof t.label === "boolean" ? t.label : u.tap.label,
+    labelSize: clampLabelSize(num(t.labelSize, u.tap.labelSize)),
   };
   if (typeof d.coreTap === "boolean") u.coreTap = d.coreTap;
   if (typeof d.offTap === "boolean") u.offTap = d.offTap;
