@@ -13,8 +13,11 @@ import { getGame, setActiveGame, type GameBase } from "@/game/registry";
 import { readPhrase, type Cursor } from "@/game/reader";
 import { setSpeech, useGame, type TdView } from "@/game/store";
 import {
+  addRep,
   build,
   buyPerk,
+  buyVoidPerk,
+  summonRift,
   castSpell,
   chooseAscension,
   choosePath,
@@ -52,6 +55,12 @@ import {
   ascensionsOf,
   pathCost,
   pathsOf,
+  currencyOf,
+  fluxPerRep,
+  isVoid,
+  repGold,
+  summonCost,
+  summonReward,
   TOWER_KEYS,
   TOWERS,
   upgradeCost,
@@ -61,9 +70,11 @@ import {
   type PerkKey,
   type SpellKey,
   type TowerKey,
+  type VoidPerkKey,
 } from "./economy.ts";
 import { restore, serialize, summarize } from "./save.ts";
 import { cancelSleep, resting, sleepFrames } from "@/game/rest";
+import { readReps, recordReps, writeReps } from "@/game/reps";
 
 const BEST_KEY = "azshara-td-v1";
 /** The run in progress, saved so it survives the app closing. */
@@ -244,6 +255,7 @@ export class TdGame implements GameBase {
 
   stop() {
     cancelSleep(this.wake);
+    this.tdFlushReps();
     this.saveRun();
     document.removeEventListener("visibilitychange", this.onHide);
     window.removeEventListener("pagehide", this.onPageHide);
@@ -325,6 +337,7 @@ export class TdGame implements GameBase {
   }
 
   toTitle() {
+    this.tdFlushReps();
     this.saveRun();
     const { tdMap, tdDifficulty } = useGame.getState();
     this.sim = createGame(mapFor(tdMap), tdDifficulty);
@@ -485,6 +498,57 @@ export class TdGame implements GameBase {
     this.note(r.ok ? `${CONFIG.td.perks[key].name} to level ${this.sim.perks[key]}.` : r.reason);
   }
 
+  /** Reps done in the rep window, not yet written into the Recitation drill: per phrase, count and time. */
+  private repTally = new Map<string, { count: number; ms: number; last: number }>();
+
+  /**
+   * A rep from the rep window, for a phrase in Reps: it counts only when
+   * td.void.repSeconds have passed since the last (the simulation checks, by the
+   * clock), pays flux, and goes into the Recitation drill too (every 25, and when
+   * the window closes or the run ends). True when it counted.
+   */
+  tdRep(phraseId: string): boolean {
+    const now = Date.now();
+    const r = addRep(this.sim, now);
+    if (!r.ok) {
+      this.note(r.reason);
+      return false;
+    }
+    const t = this.repTally.get(phraseId) ?? { count: 0, ms: 0, last: 0 };
+    // Time between reps counts as the set's time (a long pause counts as one rep's time).
+    const step = Math.max(0, Math.min(10_000, now - (t.last || now)));
+    t.ms += step || CONFIG.td.void.repSeconds * 1000;
+    t.count += 1;
+    t.last = now;
+    this.repTally.set(phraseId, t);
+    if (t.count >= 25) this.tdFlushReps();
+    this.saveRun();
+    this.pushView(true);
+    return true;
+  }
+
+  /** Writes the reps done here into the Recitation drill: totals and History, one set per phrase. */
+  tdFlushReps() {
+    if (!this.repTally.size) return;
+    let reps = readReps();
+    const now = Date.now();
+    for (const [id, t] of this.repTally) reps = recordReps(reps, id, t.count, t.ms, now);
+    writeReps(reps);
+    this.repTally.clear();
+  }
+
+  tdSummon() {
+    const r = summonRift(this.sim);
+    this.note(r.ok ? "A Rift Titan tears through. Slay it for flux." : r.reason);
+    this.saveRun();
+  }
+
+  tdBuyVoidPerk(key: VoidPerkKey) {
+    const r = buyVoidPerk(this.sim, key);
+    this.note(r.ok ? `${CONFIG.td.void.perks[key].name}: level ${this.sim.voidPerks[key]}.` : r.reason);
+    this.saveRun();
+  }
+
   private note(message: string) {
     this.message = message;
     this.pushView(true);
@@ -627,6 +691,18 @@ export class TdGame implements GameBase {
         this.bannerLife = 1.8;
         if (e.key === "storm") sfx.kill(true);
         else sfx.bless();
+      } else if (e.type === "rep") {
+        this.float(core.x, core.y - 0.9, `+${e.flux} flux${e.gold ? ` +${e.gold}` : ""}`, PAL.violet);
+      } else if (e.type === "riftSummoned") {
+        this.banner = "RIFT TITAN SUMMONED";
+        this.bannerLife = 2.4;
+        sfx.bless();
+      } else if (e.type === "riftKilled") {
+        sfx.kill(true);
+        this.float(core.x, core.y + 0.9, `Rift slain · +${e.flux} flux`, PAL.violet);
+        this.banner = `+${e.flux} FLUX · +${Math.round(e.boost * 100)}% A REP`;
+        this.bannerLife = 2.4;
+        this.saveRun();
       } else if (e.type === "over") {
         this.finish();
       }
@@ -634,6 +710,7 @@ export class TdGame implements GameBase {
   }
 
   private finish() {
+    this.tdFlushReps();
     this.recordBest();
     this.clearRun();
     sfx.over();
@@ -695,6 +772,7 @@ export class TdGame implements GameBase {
             ascendCost: ascendCost(tower.key, sim.perks),
             dealt: tower.dealt,
             kills: tower.kills,
+            currency: currencyOf(tower.key),
           }
         : null,
       perks: { ...sim.perks },
@@ -703,6 +781,14 @@ export class TdGame implements GameBase {
       next: wavePreview(sim.wave + 1),
       boss: boss ? { kind: boss.kind, pct: Math.max(0, boss.hp / boss.maxHp) } : null,
       report: damageReport(sim),
+      flux: sim.flux,
+      reps: sim.reps,
+      fluxPerRep: fluxPerRep(sim.voidPerks, sim.fluxBoost),
+      repGold: repGold(sim.voidPerks),
+      fluxBoost: sim.fluxBoost,
+      voidPerks: { ...sim.voidPerks },
+      summonCost: summonCost(sim.wave),
+      summonReward: summonReward(sim.wave),
       message: this.message,
     };
     useGame.setState({ tdView: view });
@@ -787,14 +873,16 @@ export class TdGame implements GameBase {
             g.strokeRect(c * s + 0.5, r * s + 0.5, s - 1, s - 1);
           }
         }
-        // The lane's centre line, with a soft glow, from the gate to the core.
+        // Each lane's centre line, with a soft glow, from its gate to the core.
         g.beginPath();
-        map.waypoints.forEach(([c, r], i) => {
-          const x = (c + 0.5) * s;
-          const y = (r + 0.5) * s;
-          if (i === 0) g.moveTo(x, y);
-          else g.lineTo(x, y);
-        });
+        for (const lane of map.lanes) {
+          lane.waypoints.forEach(([c, r], i) => {
+            const x = (c + 0.5) * s;
+            const y = (r + 0.5) * s;
+            if (i === 0) g.moveTo(x, y);
+            else g.lineTo(x, y);
+          });
+        }
         g.lineJoin = "round";
         g.strokeStyle = "rgba(168, 85, 247, 0.28)";
         g.lineWidth = s * 0.34;
@@ -808,7 +896,8 @@ export class TdGame implements GameBase {
         g.textAlign = "center";
         g.textBaseline = "middle";
         g.fillStyle = PAL.violet;
-        g.fillText("GATE", (map.gate[0] + 0.5) * s, (map.gate[1] + 0.5) * s);
+        for (const lane of map.lanes)
+          g.fillText("GATE", (lane.gate[0] + 0.5) * s, (lane.gate[1] + 0.5) * s);
       }
     }
     ctx.drawImage(this.board, this.ox, this.oy, this.board.width / dpr, this.board.height / dpr);
@@ -891,11 +980,30 @@ export class TdGame implements GameBase {
         ctx.fillStyle = spec.vuln ? "rgba(255, 107, 214, 0.08)" : "rgba(134, 239, 172, 0.08)";
         ctx.fill();
       }
-      ctx.fillStyle = "rgba(2, 0, 5, 0.86)";
-      ctx.fillRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = t.level >= MAX_TOWER_LEVEL ? 2.2 : 1.5;
-      ctx.strokeRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
+      if (isVoid(t.key)) {
+        // The void set: a black round body, a glowing ring, and a small orbit.
+        const cx = x + s / 2;
+        const cy = y + s / 2;
+        const rad = s / 2 - pad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.94)";
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = t.level >= MAX_TOWER_LEVEL ? 2.4 : 1.6;
+        ctx.stroke();
+        const a = this.time * 1.6 + t.id;
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad, Math.max(1.5, s * 0.05), 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      } else {
+        ctx.fillStyle = "rgba(2, 0, 5, 0.86)";
+        ctx.fillRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = t.level >= MAX_TOWER_LEVEL ? 2.2 : 1.5;
+        ctx.strokeRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
+      }
       ctx.fillStyle = color;
       this.font(ctx, `${Math.max(8, s * 0.24)}px ${FONT}`);
       ctx.fillText(spec.label, x + s / 2, y + s * 0.44);

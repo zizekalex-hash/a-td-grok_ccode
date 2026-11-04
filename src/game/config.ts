@@ -47,7 +47,17 @@ export type TdTowerKey =
   | "focus"
   | "muse"
   | "archive"
-  | "eraser";
+  | "eraser"
+  | "tachyon"
+  | "railgun"
+  | "antimatter"
+  | "graviton"
+  | "entangler"
+  | "plasma"
+  | "quasar"
+  | "wormhole"
+  | "reactor"
+  | "singularity";
 
 export type TdCreepKind =
   | "adenosine"
@@ -61,9 +71,12 @@ export type TdCreepKind =
   | "glycine"
   | "pressure"
   | "circadian"
-  | "somnus";
+  | "somnus"
+  | "rift";
 
 export type TdPerkKey = "damage" | "rate" | "range" | "interest" | "lives" | "thrift";
+/** Upgrades bought with flux. */
+export type TdVoidPerkKey = "yield" | "power" | "reach" | "tithe";
 
 export interface TdTowerSpec {
   name: string;
@@ -95,6 +108,14 @@ export interface TdTowerSpec {
   aura?: number;
   /** O/I paid when a wave clears. */
   income?: number;
+  /** A void tower: built, upgraded and specialized with flux (td.void), not O/I. */
+  void?: boolean;
+  /** Fire-rate bonus for towers in its circle. */
+  haste?: number;
+  /** Flux paid when a wave clears. */
+  fluxIncome?: number;
+  /** Creeps (not bosses) at this share of life or less, in its circle or hit by it, collapse. */
+  execute?: number;
   /** Extra damage creeps in range take (0.15 = +15%), and the share of their armor they lose. */
   vuln?: number;
   shred?: number;
@@ -123,7 +144,9 @@ export type TdPathAdd =
   | "haste"
   | "bounty"
   | "vuln"
-  | "shred";
+  | "shred"
+  | "execute"
+  | "fluxIncome";
 
 /** A tower specialization: multipliers and additions on its stats. */
 export interface TdPathSpec {
@@ -172,6 +195,8 @@ export interface TdMapSpec {
   waypoints: number[][];
   /** Replaces td.startGold on this map. */
   startGold?: number;
+  /** Two or more lanes, each from its own gate to the same core (waypoints is then the first). */
+  lanes?: number[][][];
 }
 
 export interface TdPerkSpec {
@@ -495,6 +520,7 @@ export interface GameConfig {
       aura: number;
       income: number;
       vuln: number;
+      fluxIncome: number;
     };
     upgradeCostFactor: number;
     masteryCostGrowth: number;
@@ -550,6 +576,19 @@ export interface GameConfig {
     towers: Record<TdTowerKey, TdTowerSpec>;
     creeps: Record<TdCreepKind, TdCreepSpec>;
     perks: Record<TdPerkKey, TdPerkSpec>;
+    /** Flux, the rep currency, and what it buys (see td.void._about). */
+    void: {
+      fluxPerRep: number;
+      repSeconds: number;
+      startFlux: number;
+      summonGold: number;
+      summonGoldPerWave: number;
+      summonFlux: number;
+      summonFluxPerWave: number;
+      summonBoost: number;
+      summonBoostMax: number;
+      perks: Record<TdVoidPerkKey, TdPerkSpec>;
+    };
   };
   chess: {
     startHp: number;

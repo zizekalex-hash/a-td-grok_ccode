@@ -25,6 +25,7 @@ import {
   loadReps,
   newReps,
   removeItem,
+  recordReps,
   resetAll,
   setMs,
   setTime,
@@ -349,5 +350,24 @@ describe("reps", () => {
     });
     assert.equal(back.log[0]!.timed, true);
     assert.equal(loadReps({ mode: "nonsense" }).mode, "count");
+  });
+});
+
+describe("reps done elsewhere", () => {
+  it("count into the phrase's total and the History, as one set", () => {
+    const { state, id } = addItem(newReps(), "name the signal", 1);
+    const s = recordReps(state, id, 12, 11_000, 5_000);
+    assert.equal(s.items[0]!.total, 12);
+    assert.equal(s.items[0]!.sets, 1);
+    assert.equal(s.items[0]!.ms, 11_000);
+    assert.deepEqual(s.log[0], {
+      kind: "set",
+      at: 5_000,
+      text: "name the signal",
+      reps: 12,
+      ms: 11_000,
+    });
+    assert.equal(recordReps(s, "nope", 3, 1, 1), s, "an unknown phrase changes nothing");
+    assert.equal(recordReps(s, id, 0, 1, 1), s);
   });
 });

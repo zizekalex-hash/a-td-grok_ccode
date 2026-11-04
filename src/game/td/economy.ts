@@ -14,6 +14,7 @@ import {
   type TdPerkSpec,
   type TdTowerKey,
   type TdTowerSpec,
+  type TdVoidPerkKey,
 } from "../config.ts";
 
 export type TowerKey = TdTowerKey;
@@ -42,6 +43,31 @@ const TD = CONFIG.td;
 export const TOWERS: Record<TowerKey, TowerSpec> = TD.towers;
 export const CREEPS: Record<CreepKind, CreepSpec> = TD.creeps;
 export const PERKS: Record<PerkKey, PerkSpec> = TD.perks;
+
+/** Build-menu order of the void set (paid in flux), one for each tower above. */
+export const VOID_TOWER_KEYS: TowerKey[] = [
+  "tachyon",
+  "railgun",
+  "antimatter",
+  "graviton",
+  "entangler",
+  "plasma",
+  "quasar",
+  "wormhole",
+  "reactor",
+  "singularity",
+];
+
+/** A void tower: built, upgraded and specialized with flux, not O/I. */
+export function isVoid(key: TowerKey): boolean {
+  return TOWERS[key]?.void === true;
+}
+
+/** What a tower is paid in. */
+export type Currency = "gold" | "flux";
+export function currencyOf(key: TowerKey): Currency {
+  return isVoid(key) ? "flux" : "gold";
+}
 
 /** Build-menu order. */
 export const TOWER_KEYS: TowerKey[] = [
@@ -73,6 +99,44 @@ export function noPerks(): Perks {
   return { damage: 0, rate: 0, range: 0, interest: 0, lives: 0, thrift: 0 };
 }
 
+// ---- The void: flux, the rep currency ----
+
+const V = TD.void;
+export type VoidPerkKey = TdVoidPerkKey;
+export type VoidPerks = Record<VoidPerkKey, number>;
+export const VOID_PERK_KEYS: VoidPerkKey[] = ["yield", "power", "reach", "tithe"];
+export const VOID_PERKS: Record<VoidPerkKey, PerkSpec> = V.perks;
+
+export function noVoidPerks(): VoidPerks {
+  return { yield: 0, power: 0, reach: 0, tithe: 0 };
+}
+
+/** Price of the next level of a void perk, in flux. */
+export function voidPerkCost(key: VoidPerkKey, level: number): number {
+  const spec = VOID_PERKS[key];
+  return spec.baseCost + spec.costPerLevel * level;
+}
+
+/** Flux one rep pays: fluxPerRep, raised by Resonance and by every Rift Titan slain (boost). */
+export function fluxPerRep(vp: VoidPerks, boost = 0): number {
+  return Math.round(V.fluxPerRep * (1 + VOID_PERKS.yield.amount * vp.yield + Math.max(0, boost)));
+}
+
+/** O/I one rep also pays, with Rep tithe. */
+export function repGold(vp: VoidPerks): number {
+  return Math.round(VOID_PERKS.tithe.amount * vp.tithe);
+}
+
+/** O/I to summon a Rift Titan now (it grows with the waves called). */
+export function summonCost(wave: number): number {
+  return Math.round(V.summonGold + V.summonGoldPerWave * Math.max(0, wave));
+}
+
+/** Flux for slaying a summoned Rift Titan at a wave. */
+export function summonReward(wave: number): number {
+  return Math.round(V.summonFlux + V.summonFluxPerWave * Math.max(0, wave));
+}
+
 /** What a tower does at a level, with the global perks applied. */
 export interface TowerStats {
   damage: number;
@@ -98,6 +162,10 @@ export interface TowerStats {
   /** Extra damage creeps in range take, and the share of armor they lose. */
   vuln: number;
   shred: number;
+  /** Creeps (not bosses) at this share of life or less in its circle, or hit by it, collapse. */
+  execute: number;
+  /** Flux paid when a wave clears. */
+  fluxIncome: number;
 }
 
 /** A tower that does not fire but affects everything in its circle (Muse, Eraser). */
@@ -135,8 +203,22 @@ function applyMods(out: TowerStats, p: PathSpec) {
  * What a tower does at a level, with the global perks, its path and its
  * Ascension (-1 for none) applied: each multiplies some stats and adds to others.
  */
-export function towerStats(key: TowerKey, level: number, perks: Perks = noPerks(), path = -1, ascend = -1): TowerStats {
+export function towerStats(
+  key: TowerKey,
+  level: number,
+  perks: Perks = noPerks(),
+  path = -1,
+  ascend = -1,
+  voidPerks: VoidPerks = noVoidPerks(),
+): TowerStats {
   const base = baseStats(key, level, perks);
+  // Void towers also take the void perks: Dark energy (damage) and Event horizon (range).
+  if (isVoid(key)) {
+    const power = 1 + VOID_PERKS.power.amount * voidPerks.power;
+    base.damage *= power;
+    base.burn *= power;
+    if (base.range > 0 && base.rate > 0) base.range += VOID_PERKS.reach.amount * voidPerks.reach;
+  }
   const p = path >= 0 ? pathsOf(key)[path] : undefined;
   const a = ascend >= 0 ? ascensionsOf(key)[ascend] : undefined;
   if (!p && !a) return base;
@@ -147,6 +229,7 @@ export function towerStats(key: TowerKey, level: number, perks: Perks = noPerks(
   out.shred = Math.min(1, out.shred);
   if (isSupport(key)) out.range = Math.min(TD.maxSupportRange, out.range);
   out.pierce = Math.min(1, out.pierce);
+  out.execute = Math.min(0.35, out.execute);
   out.chain = Math.round(out.chain);
   out.maxRamp = Math.round(out.maxRamp);
   return out;
@@ -182,10 +265,12 @@ function baseStats(key: TowerKey, level: number, perks: Perks): TowerStats {
     maxRamp: spec.maxRamp ?? 0,
     aura: spec.aura ? spec.aura + g.aura * up : 0,
     income: spec.income ? spec.income + g.income * up : 0,
-    haste: 0,
+    haste: spec.haste ?? 0,
     bounty: 0,
     vuln: spec.vuln ? spec.vuln + (g.vuln ?? 0) * up : 0,
     shred: spec.shred ?? 0,
+    execute: spec.execute ?? 0,
+    fluxIncome: spec.fluxIncome ? spec.fluxIncome + (g.fluxIncome ?? 0) * up : 0,
   };
 }
 

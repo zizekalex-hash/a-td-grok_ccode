@@ -4,7 +4,8 @@
  * plain JSON. A save that does not check out is ignored rather than trusted.
  */
 
-import { MAPS, buildable, type TdMap } from "./map.ts";
+import { CONFIG } from "../config.ts";
+import { MAPS, buildable, laneCount, type TdMap } from "./map.ts";
 import {
   CREEPS,
   isCreepKind,
@@ -16,6 +17,8 @@ import {
   SPELL_KEYS,
   TOWERS,
   towerStats,
+  VOID_PERK_KEYS,
+  VOID_PERKS,
   waveSpec,
   type DifficultyKey,
   type TowerKey,
@@ -91,6 +94,15 @@ export function restore(raw: string | null): TdState | null {
   }
   const spells = obj(st.spells);
   for (const key of SPELL_KEYS) s.spells[key] = num(spells[key]) ? Math.max(0, spells[key]) : 0;
+  // Flux, the reps done this run, and what the flux bought.
+  s.flux = num(st.flux) ? Math.max(0, st.flux) : 0;
+  s.reps = num(st.reps) ? Math.max(0, Math.floor(st.reps)) : 0;
+  s.fluxBoost = num(st.fluxBoost)
+    ? Math.max(0, Math.min(CONFIG.td.void.summonBoostMax, st.fluxBoost))
+    : 0;
+  const vp = obj(st.voidPerks);
+  for (const key of VOID_PERK_KEYS)
+    if (num(vp[key])) s.voidPerks[key] = Math.max(0, Math.min(VOID_PERKS[key].max, Math.floor(vp[key])));
 
   let maxId = 0;
   const seen = new Set<string>();
@@ -113,7 +125,7 @@ export function restore(raw: string | null): TdState | null {
       cooldown: num(t.cooldown) ? t.cooldown : 0,
       targeting: TARGETING.includes(t.targeting as Targeting) ? (t.targeting as Targeting) : "first",
       // Stats are worked out again, never read from the save.
-      stats: towerStats(t.key, level, s.perks, path, ascend),
+      stats: towerStats(t.key, level, s.perks, path, ascend, s.voidPerks),
       focusId: -1,
       focusStacks: 0,
       phrase: "",
@@ -159,6 +171,10 @@ export function restore(raw: string | null): TdState | null {
       burnBy: n("burnBy"),
       vuln: 0,
       shred: 0,
+      lane: Math.max(0, Math.min(laneCount(map) - 1, Math.floor(n("lane")))),
+      exec: 0,
+      execBy: 0,
+      summoned: c.summoned === true && kind === "rift",
     });
     maxId = Math.max(maxId, c.id);
   }
@@ -168,7 +184,13 @@ export function restore(raw: string | null): TdState | null {
     if (!num(sp.wave)) continue;
     const queue = list(sp.queue).filter((k): k is keyof typeof CREEPS => isCreepKind(k as string));
     // The wave's numbers come from the rules, so a save cannot make one easier.
-    s.spawners.push({ wave: sp.wave, spec: waveSpec(sp.wave), queue, acc: num(sp.acc) ? sp.acc : 0 });
+    s.spawners.push({
+      wave: sp.wave,
+      spec: waveSpec(sp.wave),
+      queue,
+      acc: num(sp.acc) ? sp.acc : 0,
+      lane: num(sp.lane) ? Math.max(0, Math.floor(sp.lane)) : 0,
+    });
   }
 
   s.nextId = Math.max(num(st.nextId) ? st.nextId : 1, maxId + 1);

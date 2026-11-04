@@ -264,6 +264,24 @@ export function addReps(s: RepsState, id: string, count: number, ms = 0): RepsSt
   };
 }
 
+/**
+ * Reps done somewhere else (the Tower Defense rep window) counted in: added to
+ * the phrase's total and time as one set, and written in the History.
+ */
+export function recordReps(
+  s: RepsState,
+  id: string,
+  count: number,
+  ms: number,
+  now: number,
+): RepsState {
+  const n = Math.max(0, Math.floor(count));
+  const item = s.items.find((i) => i.id === id);
+  if (!n || !item) return s;
+  const t = Math.max(0, Math.round(ms));
+  return logged(addReps(s, id, n, t), { kind: "set", at: now, text: item.text, reps: n, ms: t });
+}
+
 /** How long the set in progress has taken so far (ms): a stopwatch by the clock. */
 export function setTime(a: ActiveSet, now: number): number {
   return Math.max(0, now - a.since);

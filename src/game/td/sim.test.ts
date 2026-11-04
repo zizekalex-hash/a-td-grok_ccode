@@ -102,6 +102,10 @@ function put(s: TdState, kind: CreepKind, dist: number, hp?: number): TdCreep {
     burnBy: 0,
     vuln: 0,
     shred: 0,
+    lane: 0,
+    exec: 0,
+    execBy: 0,
+    summoned: false,
   };
   s.creeps.push(c);
   return c;

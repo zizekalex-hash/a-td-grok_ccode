@@ -4,7 +4,15 @@ import { CONFIG } from "@/game/config";
 import { QUEEN } from "@/game/council";
 import type { PotionKey, UpgradeKey } from "@/game/upgrades";
 import type { SkillKey } from "@/game/recite";
-import type { CreepKind, DifficultyKey, PerkKey, SpellKey, TowerKey } from "@/game/td/economy";
+import type {
+  CreepKind,
+  Currency,
+  DifficultyKey,
+  PerkKey,
+  SpellKey,
+  TowerKey,
+  VoidPerkKey,
+} from "@/game/td/economy";
 import type { RunSummary } from "@/game/td/save";
 import type { CourtSave, PlaceKey, QueenKey, SkillKey as CourtSkillKey } from "@/game/court/rules";
 import type { CourtArcKey } from "@/game/config";
@@ -149,6 +157,8 @@ export type TdView = {
     /** Damage dealt and creeps finished so far. */
     dealt: number;
     kills: number;
+    /** What it is paid in: O/I, or flux for a void tower. */
+    currency: Currency;
   } | null;
   difficulty: DifficultyKey;
   /** Seconds until each spell is ready. */
@@ -160,6 +170,16 @@ export type TdView = {
   /** Damage and kills by tower kind this run, the most damage first. */
   report: { key: TowerKey; dealt: number; kills: number }[];
   perks: Record<PerkKey, number>;
+  /** Flux (the rep currency), reps done this run, what a rep pays now (flux and O/I), and the void perks. */
+  flux: number;
+  reps: number;
+  fluxPerRep: number;
+  repGold: number;
+  fluxBoost: number;
+  voidPerks: Record<VoidPerkKey, number>;
+  /** O/I to summon a Rift Titan now, and the flux slaying it pays. */
+  summonCost: number;
+  summonReward: number;
   message: string;
 };
 
@@ -418,6 +438,14 @@ export const useGame = create<State>(() => ({
     next: [],
     boss: null,
     report: [],
+    flux: 0,
+    reps: 0,
+    fluxPerRep: CONFIG.td.void.fluxPerRep,
+    repGold: 0,
+    fluxBoost: 0,
+    voidPerks: { yield: 0, power: 0, reach: 0, tithe: 0 },
+    summonCost: CONFIG.td.void.summonGold,
+    summonReward: CONFIG.td.void.summonFlux,
     message: "Tap a free cell to raise a tower.",
   },
   courtView: null,

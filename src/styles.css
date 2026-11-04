@@ -429,3 +429,13 @@ html.resting body > :not(.rest-screen) {
 html.resting body > :not(.rest-screen) * {
   animation-play-state: paused !important;
 }
+
+/* The TD rep window: a rep's time filling up before the next can count. */
+@keyframes rep-fill {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}

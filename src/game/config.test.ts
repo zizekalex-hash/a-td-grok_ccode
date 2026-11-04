@@ -77,7 +77,10 @@ describe("config.json", () => {
         positive(`td.towers.${key}.damage`, t.damage);
         positive(`td.towers.${key}.range`, t.range);
       } else {
-        assert.ok(t.aura || t.income || t.vuln || t.shred, `td.towers.${key} neither fires nor helps`);
+        assert.ok(
+          t.aura || t.income || t.vuln || t.shred || t.fluxIncome || t.haste || t.execute,
+          `td.towers.${key} neither fires nor helps`,
+        );
         if (t.aura || t.vuln || t.shred) positive(`td.towers.${key}.range`, t.range);
       }
     }
@@ -111,7 +114,7 @@ describe("config.json", () => {
   it("has tower paths, spells and difficulties that can be played", () => {
     const td = CONFIG.td;
     const mults = ["damage", "rate", "burn"];
-    const adds = ["range", "splash", "slow", "slowTime", "chain", "burn", "burnTime", "pierce", "ramp", "maxRamp", "aura", "income", "haste", "bounty", "vuln", "shred"];
+    const adds = ["range", "splash", "slow", "slowTime", "chain", "burn", "burnTime", "pierce", "ramp", "maxRamp", "aura", "income", "haste", "bounty", "vuln", "shred", "execute", "fluxIncome"];
     for (const [key, tower] of Object.entries(td.towers)) {
       assert.equal(tower.paths?.length, 2, `td.towers.${key}.paths needs two paths`);
       for (const [i, p] of (tower.paths ?? []).entries()) {

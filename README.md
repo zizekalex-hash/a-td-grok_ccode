@@ -165,7 +165,7 @@ Waves never end. Each one is bigger and tougher: hit points grow faster than lin
 
 Ten towers (Ink, Verse, Sigil, Comma, Echo, Cipher, Focus, Muse, Archive, Eraser) each have five levels, then mastery levels whose price grows by half each time, so there is always something to spend on. Each firing tower can aim at the first, last, toughest or closest creep. The Library sells upgrades for every tower. Creeps include swarms (melatonin), armor (galanin), splitters (theta into sleep spindles), self-healing (REM) and healers (glycine).
 
-Seven maps, picked on the title screen once Tower defense is chosen: Coil, Spiral (longest lane, easiest), Zigzag (core on the bottom edge), Crossing (the lane crosses itself twice), Sprint (short lane, hard, starts with more O/I), Columns (lanes up and down the columns) and Arrow (one straight row, the hardest, starts with the most O/I). The board behind the title switches as you pick, and the game remembers the pick and the best wave on each map. Maps live in `td.maps` in `config.json`: each is a list of waypoints on the 9 by 9 grid, from the gate to the core, so new ones need no code.
+Nine maps, picked on the title screen once Tower defense is chosen: Coil, Spiral (longest lane, easiest), Zigzag (core on the bottom edge), Crossing (the lane crosses itself twice), Sprint (short lane, hard, starts with more O/I), Columns (lanes up and down the columns), Arrow (one straight row, the hardest, starts with the most O/I), and two with **two lanes**: Two Gates (from opposite corners into the core in the middle) and Pincer (down both sides). On a two-lane map each gate is marked, and the creeps of a wave take the lanes in turn (splits and summons stay on their parent's lane); a map's `lanes` in `td.maps` lists them. The board behind the title switches as you pick, and the game remembers the pick and the best wave on each map. Maps live in `td.maps` in `config.json`: each is a list of waypoints on the 9 by 9 grid, from the gate to the core, so new ones need no code.
 
 Tower phrases (settings, Flash & pace) sets which shots carry a phrase: each tower's first shot, then every Nth. It starts at every 3rd; the other shots fly as plain sparks, which is calmer at 3× and lighter on the battery.
 
@@ -180,6 +180,18 @@ Two spells sit in the button row: Ink Storm strikes every creep on the board thr
 The header shows what the next wave brings, kind by kind, and its boss. Easy, Normal and Hard (picked under the maps) change creep life, starting O/I and lives; best waves are kept per map and difficulty.
 
 The run saves itself on the device whenever a wave is called or cleared, when the app goes to the background, and when you quit to the title. The title screen then offers Continue (with the wave and map), so closing the app on a tablet no longer loses a long run; a new defense asks for a second tap before it replaces the save.
+
+### The void: reps into flux
+
+A second currency, **flux** (◆, next to the O/I at the top), comes only from reps. Tap ◆ to open the **rep window** beside the board: pick one of your Reps phrases (‹ ›), say it, tap **Rep ✓**. A rep counts only once its time has passed (0.9 s, the bar filling under the button; a tap sooner does nothing, and the game checks by the clock, so no fast-tapping or fast-forward makes more), and each pays **10 flux** (10 reps = 100), more with upgrades. The reps go into the Recitation drill too: the phrase's total and a set in the History (written every 25 reps, when the window closes, and when the run ends). If Reps has no phrase yet, the window offers the loaded text's first line. A natural time for it: once the defense is built and waves are still coming.
+
+Flux buys the **void set**, ten more towers, one for each (built, upgraded, specialized and refunded in flux, never O/I; the build menu's Void tab), drawn as black orbs in a glowing ring:
+
+- **Tachyon** (rapid, pierces), **Railgun** (sniper across the board, through all armor), **Antimatter** (wide blast; its Cascade Ascension makes what it hits collapse at 8% life), **Graviton** (gravity well: slows everything near the impact), **Entangler** (quantum strike jumping to four more), **Plasma** (splash that burns through armor), **Quasar** (a beam that ramps faster and higher than Focus).
+- **Wormhole** (does not fire: towers in its circle deal 25% more damage and fire 10% faster), **Reactor** (does not fire: pays 30 flux every time a wave clears, +15 a level), **Singularity** (a black hole: creeps in its circle take 25% more damage, lose half their armor, and any but bosses at 10% life or less collapse into it).
+- Each has two paths and two Ascensions, like the others.
+
+The Library's **void** section, flux only: **Resonance** (+20% flux a rep), **Dark energy** (+12% damage for void towers), **Event horizon** (+0.15 range for void towers), **Rep tithe** (+6 O/I a rep too). And **Summon a Rift Titan** for O/I (250, +25 a wave called): a void boss walks the lane; slay it for flux (60, +12 a wave) and +5% flux a rep for the rest of the run (up to +100%); if it reaches the core it costs 3 lives. All of it is tuned in `td.void`.
 
 Keys on a keyboard: 1 to 9 and 0 build on the selected cell, N calls a wave, A toggles auto, F changes speed, U upgrades, M upgrades as far as the O/I goes, S sells, T changes targeting, Q casts Ink Storm, E casts Stillness, Space holds.
 

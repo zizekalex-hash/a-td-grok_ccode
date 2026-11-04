@@ -7,10 +7,18 @@
  * others are still on the board, and gets a bonus for calling it early.
  */
 import { CONFIG } from "../config.ts";
-import { buildable, DEFAULT_MAP, pointAt, type TdMap } from "./map.ts";
+import { buildable, DEFAULT_MAP, laneCount, laneLength, pointAt, type TdMap } from "./map.ts";
 import {
   buildCost,
   CREEPS,
+  currencyOf,
+  fluxPerRep,
+  noVoidPerks,
+  repGold,
+  summonCost,
+  summonReward,
+  voidPerkCost,
+  VOID_PERKS,
   difficulty,
   earlyBonus,
   isCreepKind,
@@ -35,6 +43,8 @@ import {
   type SpellKey,
   type TowerKey,
   type TowerStats,
+  type VoidPerkKey,
+  type VoidPerks,
   type WaveSpec,
 } from "./economy.ts";
 
@@ -101,6 +111,13 @@ export interface TdCreep {
   /** From an Eraser it walks through: extra damage taken, and the share of armor lost. */
   vuln: number;
   shred: number;
+  /** The lane it walks (0 on a map with one). */
+  lane: number;
+  /** From a Singularity it walks through: the share of life it collapses at, and which one. */
+  exec: number;
+  execBy: number;
+  /** A Rift Titan the player summoned (pays flux when slain). */
+  summoned: boolean;
 }
 
 export interface TdShot {
@@ -142,6 +159,8 @@ export interface Spawner {
   spec: WaveSpec;
   queue: CreepKind[];
   acc: number;
+  /** The lane the next creep takes (they take turns). */
+  lane: number;
 }
 
 export type TdEvent =
@@ -151,6 +170,9 @@ export type TdEvent =
   | { type: "bossSpawned"; kind: CreepKind; wave: number }
   | { type: "bossKilled"; kind: CreepKind; gold: number }
   | { type: "spell"; key: SpellKey; hit: number; text: string }
+  | { type: "rep"; flux: number; gold: number }
+  | { type: "riftSummoned"; cost: number }
+  | { type: "riftKilled"; flux: number; boost: number }
   | { type: "over" };
 
 export interface TdState {
@@ -178,6 +200,14 @@ export interface TdState {
   spells: Record<SpellKey, number>;
   /** Damage and kills of towers already sold, by kind, for the run's report. */
   retired: Partial<Record<TowerKey, { dealt: number; kills: number }>>;
+  /** Flux, the rep currency: what there is, reps counted this run, and the upgrades it bought. */
+  flux: number;
+  reps: number;
+  voidPerks: VoidPerks;
+  /** Extra flux per rep from Rift Titans slain (0.05 = +5%). */
+  fluxBoost: number;
+  /** When the last rep counted (ms, by the clock), so a rep takes repSeconds. */
+  lastRepAt: number;
   nextId: number;
   /** Things that happened since the game last read this list. */
   events: TdEvent[];
@@ -220,6 +250,11 @@ export function createGame(map: TdMap = DEFAULT_MAP, level: DifficultyKey = "nor
     difficulty: level,
     spells: { storm: 0, still: 0 },
     retired: {},
+    flux: Math.max(0, CONFIG.td.void.startFlux),
+    reps: 0,
+    voidPerks: noVoidPerks(),
+    fluxBoost: 0,
+    lastRepAt: 0,
     nextId: 1,
     events: [],
   };
@@ -229,13 +264,33 @@ export function towerAt(s: TdState, col: number, row: number): TdTower | undefin
   return s.towers.find((t) => t.col === col && t.row === row);
 }
 
+/** A tower's stats now, with every perk (the void ones too). */
+export function statsOf(s: TdState, t: TdTower): TowerStats {
+  return towerStats(t.key, t.level, s.perks, t.path, t.ascend, s.voidPerks);
+}
+
+/** What the player has of a tower's currency: O/I, or flux for a void tower. */
+export function purse(s: TdState, key: TowerKey): number {
+  return currencyOf(key) === "flux" ? s.flux : s.gold;
+}
+
+/** The currency's short name, for messages. */
+export function unit(key: TowerKey): string {
+  return currencyOf(key) === "flux" ? "flux" : "O/I";
+}
+
+function pay(s: TdState, key: TowerKey, amount: number) {
+  if (currencyOf(key) === "flux") s.flux -= amount;
+  else s.gold -= amount;
+}
+
 export function build(s: TdState, key: TowerKey, col: number, row: number): Result {
   if (s.phase === "over") return fail("The rite is over");
   if (!buildable(s.map, col, row)) return fail("Build on a free cell off the lane");
   if (towerAt(s, col, row)) return fail("A tower already stands here");
   const cost = buildCost(key, s.perks);
-  if (s.gold < cost) return fail(`Needs ${cost} O/I`);
-  s.gold -= cost;
+  if (purse(s, key) < cost) return fail(`Needs ${cost} ${unit(key)}`);
+  pay(s, key, cost);
   s.towers.push({
     id: s.nextId++,
     key,
@@ -245,7 +300,7 @@ export function build(s: TdState, key: TowerKey, col: number, row: number): Resu
     invested: cost,
     cooldown: 0,
     targeting: "first",
-    stats: towerStats(key, 1, s.perks),
+    stats: towerStats(key, 1, s.perks, -1, -1, s.voidPerks),
     focusId: -1,
     focusStacks: 0,
     phrase: "",
@@ -264,11 +319,11 @@ export function upgrade(s: TdState, col: number, row: number): Result {
   const t = towerAt(s, col, row);
   if (!t) return fail("No tower here");
   const cost = upgradeCost(t.key, t.level, s.perks);
-  if (s.gold < cost) return fail(`Needs ${cost} O/I`);
-  s.gold -= cost;
+  if (purse(s, t.key) < cost) return fail(`Needs ${cost} ${unit(t.key)}`);
+  pay(s, t.key, cost);
   t.invested += cost;
   t.level += 1;
-  t.stats = towerStats(t.key, t.level, s.perks, t.path, t.ascend);
+  t.stats = statsOf(s, t);
   return OK;
 }
 
@@ -287,11 +342,11 @@ export function chooseAscension(s: TdState, col: number, row: number, index: num
   const need = CONFIG.td.ascendLevel;
   if (t.level < need) return fail(`Ascensions open at level ${need}`);
   const cost = ascendCost(t.key, s.perks);
-  if (s.gold < cost) return fail(`Needs ${cost} O/I`);
-  s.gold -= cost;
+  if (purse(s, t.key) < cost) return fail(`Needs ${cost} ${unit(t.key)}`);
+  pay(s, t.key, cost);
   t.invested += cost;
   t.ascend = index;
-  t.stats = towerStats(t.key, t.level, s.perks, t.path, t.ascend);
+  t.stats = statsOf(s, t);
   return OK;
 }
 
@@ -305,11 +360,11 @@ export function choosePath(s: TdState, col: number, row: number, path: number): 
   if (t.path >= 0) return fail("This tower already took its path");
   if (t.level < MAX_TOWER_LEVEL) return fail(`Paths open at level ${MAX_TOWER_LEVEL}`);
   const cost = pathCost(t.key, s.perks);
-  if (s.gold < cost) return fail(`Needs ${cost} O/I`);
-  s.gold -= cost;
+  if (purse(s, t.key) < cost) return fail(`Needs ${cost} ${unit(t.key)}`);
+  pay(s, t.key, cost);
   t.invested += cost;
   t.path = path;
-  t.stats = towerStats(t.key, t.level, s.perks, t.path, t.ascend);
+  t.stats = statsOf(s, t);
   return OK;
 }
 
@@ -330,7 +385,7 @@ export function upgradeMax(s: TdState, col: number, row: number): Result & { lev
 
 /** How many levels the O/I would buy for a tower right now, and their total price. */
 export function maxUpgrades(s: TdState, t: TdTower): { levels: number; cost: number } {
-  let gold = s.gold;
+  let gold = purse(s, t.key);
   let level = t.level;
   let cost = 0;
   let levels = 0;
@@ -361,7 +416,7 @@ export function refundFor(s: TdState, t: TdTower): number {
 export function sell(s: TdState, col: number, row: number): Result {
   const t = towerAt(s, col, row);
   if (!t) return fail("No tower here");
-  s.gold += refundFor(s, t);
+  pay(s, t.key, -refundFor(s, t));
   const rec = s.retired[t.key] ?? { dealt: 0, kills: 0 };
   s.retired[t.key] = { dealt: rec.dealt + t.dealt, kills: rec.kills + t.kills };
   s.towers = s.towers.filter((x) => x.id !== t.id);
@@ -415,7 +470,57 @@ export function buyPerk(s: TdState, key: PerkKey): Result {
     s.lives += spec.amount;
     s.maxLives += spec.amount;
   }
-  for (const t of s.towers) t.stats = towerStats(t.key, t.level, s.perks, t.path, t.ascend);
+  for (const t of s.towers) t.stats = statsOf(s, t);
+  return OK;
+}
+
+/** Buys the next level of a void perk, with flux. */
+export function buyVoidPerk(s: TdState, key: VoidPerkKey): Result {
+  if (s.phase === "over") return fail("The rite is over");
+  const level = s.voidPerks[key];
+  const spec = VOID_PERKS[key];
+  if (level >= spec.max) return fail(`${spec.name} is at its limit`);
+  const cost = voidPerkCost(key, level);
+  if (s.flux < cost) return fail(`Needs ${cost} flux`);
+  s.flux -= cost;
+  s.voidPerks[key] = level + 1;
+  for (const t of s.towers) t.stats = statsOf(s, t);
+  return OK;
+}
+
+/**
+ * A rep, done for real: it counts only if repSeconds have passed since the last
+ * one (by the clock, so neither fast-forward nor quick taps make more), and pays
+ * flux (and O/I with Rep tithe). Works while the game is held, too.
+ */
+export function addRep(s: TdState, now: number): Result & { flux?: number; gold?: number } {
+  if (s.phase === "over") return fail("The rite is over");
+  const gap = Math.max(0, CONFIG.td.void.repSeconds) * 1000;
+  if (s.lastRepAt > 0 && now - s.lastRepAt < gap)
+    return fail(`A rep takes ${CONFIG.td.void.repSeconds} s`);
+  s.lastRepAt = now;
+  const flux = fluxPerRep(s.voidPerks, s.fluxBoost);
+  const gold = repGold(s.voidPerks);
+  s.flux += flux;
+  s.gold += gold;
+  s.reps += 1;
+  s.events.push({ type: "rep", flux, gold });
+  return { ok: true, flux, gold };
+}
+
+/** Summons a Rift Titan, for O/I: slain, it pays flux and raises flux per rep for the run. */
+export function summonRift(s: TdState): Result {
+  if (s.phase === "over") return fail("The rite is over");
+  const cost = summonCost(s.wave);
+  if (s.gold < cost) return fail(`Needs ${cost} O/I`);
+  s.gold -= cost;
+  const lanes = laneCount(s.map);
+  const c = makeCreep(s, "rift", waveSpecOf(s), 0, s.nextId % lanes);
+  // Not part of any wave, so it never holds up a wave's clearing.
+  c.wave = 0;
+  c.summoned = true;
+  s.creeps.push(c);
+  s.events.push({ type: "riftSummoned", cost });
   return OK;
 }
 
@@ -440,7 +545,7 @@ export function sendWave(s: TdState, auto = false): Result {
   const spec = waveSpec(wave);
   const bonus = !auto && busy(s) ? earlyBonus(wave) : 0;
   s.gold += bonus;
-  s.spawners.push({ wave, spec, queue: [...spec.kinds], acc: spec.interval });
+  s.spawners.push({ wave, spec, queue: [...spec.kinds], acc: spec.interval, lane: 0 });
   s.wave = wave;
   s.phase = "wave";
   s.autoTimer = 0;
@@ -452,10 +557,10 @@ function specFor(s: TdState, wave: number): WaveSpec {
   return s.spawners.find((sp) => sp.wave === wave)?.spec ?? waveSpec(wave);
 }
 
-function makeCreep(s: TdState, kind: CreepKind, spec: WaveSpec, dist: number): TdCreep {
+function makeCreep(s: TdState, kind: CreepKind, spec: WaveSpec, dist: number, lane = 0): TdCreep {
   const c = CREEPS[kind];
   const hp = c.hp * spec.hpScale * (c.boss ? spec.bossScale : 1) * difficulty(s.difficulty).hp;
-  const p = pointAt(s.map, dist);
+  const p = pointAt(s.map, dist, lane);
   return {
     id: s.nextId++,
     kind,
@@ -481,6 +586,10 @@ function makeCreep(s: TdState, kind: CreepKind, spec: WaveSpec, dist: number): T
     burnBy: 0,
     vuln: 0,
     shred: 0,
+    lane,
+    exec: 0,
+    execBy: 0,
+    summoned: false,
   };
 }
 
@@ -489,9 +598,13 @@ function markCreeps(s: TdState) {
   for (const c of s.creeps) {
     c.vuln = 0;
     c.shred = 0;
+    c.exec = 0;
+    c.execBy = 0;
   }
   for (const e of s.towers) {
-    if (e.stats.vuln <= 0 && e.stats.shred <= 0) continue;
+    // A firing tower's collapse works on what it hits (see land); a Singularity's on its circle.
+    const field = e.stats.rate <= 0 && e.stats.execute > 0;
+    if (e.stats.vuln <= 0 && e.stats.shred <= 0 && !field) continue;
     const cx = e.col + 0.5;
     const cy = e.row + 0.5;
     const r2 = e.stats.range * e.stats.range;
@@ -499,7 +612,25 @@ function markCreeps(s: TdState) {
       if (!alive(c) || (c.x - cx) ** 2 + (c.y - cy) ** 2 > r2) continue;
       c.vuln = Math.max(c.vuln, e.stats.vuln);
       c.shred = Math.max(c.shred, e.stats.shred);
+      if (field && e.stats.execute > c.exec) {
+        c.exec = e.stats.execute;
+        c.execBy = e.id;
+      }
     }
+  }
+}
+
+/** Creeps (not bosses) at or under their collapse share of life fall in: the tower gets the kill. */
+function collapse(s: TdState, towers: Map<number, TdTower>) {
+  for (const c of s.creeps) {
+    if (!alive(c) || c.exec <= 0 || CREEPS[c.kind].boss) continue;
+    if (c.hp > c.maxHp * c.exec) continue;
+    const by = towers.get(c.execBy);
+    if (by) {
+      by.dealt += c.hp;
+      c.lastHit = by.id;
+    }
+    c.hp = 0;
   }
 }
 
@@ -701,6 +832,7 @@ function land(s: TdState, sh: TdShot, byId: Map<number, TdCreep>, towers: Map<nu
       hurt(c, sh.damage, sh.pierce, by);
       applySlow(c, sh.slow, sh.slowTime);
       applyBurn(c, sh.burn, sh.burnTime, sh.from);
+      if (by) strike(c, by);
     }
     return;
   }
@@ -708,6 +840,15 @@ function land(s: TdState, sh: TdShot, byId: Map<number, TdCreep>, towers: Map<nu
   hurt(target, sh.damage, sh.pierce, by);
   applySlow(target, sh.slow, sh.slowTime);
   applyBurn(target, sh.burn, sh.burnTime, sh.from);
+  if (by) strike(target, by);
+}
+
+/** A tower with collapse (execute) that hits a creep marks it to fall at that share of life. */
+function strike(c: TdCreep, by: TdTower) {
+  if (by.stats.execute > c.exec) {
+    c.exec = by.stats.execute;
+    c.execBy = by.id;
+  }
 }
 
 function tick(s: TdState, t: number, nextText: () => string, every: number) {
@@ -723,7 +864,8 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
       sp.acc -= sp.spec.interval;
       const kind = sp.queue.shift();
       if (!kind) continue;
-      born.push(makeCreep(s, kind, sp.spec, 0));
+      born.push(makeCreep(s, kind, sp.spec, 0, sp.lane % laneCount(s.map)));
+      sp.lane = (sp.lane + 1) % laneCount(s.map);
       if (CREEPS[kind].boss) s.events.push({ type: "bossSpawned", kind, wave: sp.wave });
     }
   }
@@ -751,7 +893,7 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
     const pace = c.slowTime > 0 ? 1 - c.slow : 1;
     if (c.slowTime > 0) c.slowTime -= t;
     c.dist += c.speed * pace * t;
-    const p = pointAt(s.map, c.dist);
+    const p = pointAt(s.map, c.dist, c.lane);
     c.x = p.x;
     c.y = p.y;
     if (spec.summon && spec.summonEvery && isCreepKind(spec.summon) && c.hp > 0) {
@@ -760,11 +902,13 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
         c.summonTimer += spec.summonEvery;
         const waveSpecOf = specFor(s, c.wave);
         for (let i = 0; i < (spec.summonCount ?? 1); i++) {
-          born.push(makeCreep(s, spec.summon, waveSpecOf, Math.max(0, c.dist - 0.25 - 0.15 * i)));
+          born.push(
+            makeCreep(s, spec.summon, waveSpecOf, Math.max(0, c.dist - 0.25 - 0.15 * i), c.lane),
+          );
         }
       }
     }
-    if (c.dist >= s.map.length && !c.leaked) {
+    if (c.dist >= laneLength(s.map, c.lane) && !c.leaked) {
       c.leaked = true;
       s.lives -= spec.leak;
       s.events.push({ type: "leak", kind: c.kind, lives: Math.max(0, s.lives) });
@@ -820,6 +964,7 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
   }
   for (const sh of s.shots) if (sh.travel <= 0) land(s, sh, byId, towerById);
   s.shots = s.shots.filter((sh) => sh.travel > 0);
+  collapse(s, towerById);
 
   // The dead pay out, and some break apart.
   for (const c of s.creeps) {
@@ -831,10 +976,18 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
     const killer = towerById.get(c.lastHit);
     if (killer) killer.kills += 1;
     if (spec.boss) s.events.push({ type: "bossKilled", kind: c.kind, gold: pay });
+    if (c.summoned) {
+      const V = CONFIG.td.void;
+      const flux = summonReward(s.wave);
+      const before = s.fluxBoost;
+      s.fluxBoost = Math.min(V.summonBoostMax, s.fluxBoost + V.summonBoost);
+      s.flux += flux;
+      s.events.push({ type: "riftKilled", flux, boost: s.fluxBoost - before });
+    }
     if (spec.split && isCreepKind(spec.split)) {
       const waveSpecOf = specFor(s, c.wave);
       for (let i = 0; i < (spec.splitCount ?? 2); i++) {
-        born.push(makeCreep(s, spec.split, waveSpecOf, Math.max(0, c.dist - 0.12 * i)));
+        born.push(makeCreep(s, spec.split, waveSpecOf, Math.max(0, c.dist - 0.12 * i), c.lane));
       }
     }
   }
@@ -857,6 +1010,7 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
         ? Math.min((perk.cap ?? Infinity) * level, Math.floor(s.gold * perk.amount * level))
         : 0;
     s.gold += bonus + income + interest;
+    s.flux += s.towers.reduce((sum, tw) => sum + tw.stats.fluxIncome, 0);
     s.cleared = Math.max(s.cleared, sp.wave);
     s.events.push({ type: "waveCleared", wave: sp.wave, bonus, income, interest });
   }

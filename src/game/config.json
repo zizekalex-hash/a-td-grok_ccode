@@ -182,7 +182,7 @@
     }
   },
   "td": {
-    "_about": "Tower defense. Waves never end: each one is bigger and tougher than the last, with a boss every bossEvery waves and an extra boss every extraBossEvery waves. Towers keep levelling past maxLevel as mastery, each mastery level costing masteryCostGrowth times the one before. Speeds are cells per second, ranges are cells, rates are shots per second. Armor is the share of damage a creep shrugs off; pierce is the share of armor a tower ignores. Maps are on a 9 by 9 grid, columns and rows 0 to 8: the lane runs straight between waypoints, from the gate (the first) to the core (the last), so each waypoint must share a column or a row with the one before. A map's startGold, if set, replaces the usual one. Towers that do not fire (Muse, Eraser) affect everything in their circle, which grows with level up to maxSupportRange. medals are the waves that earn bronze, silver and gold on a map. Each tower takes one of its two paths at maxLevel, then one of its two ascend options at ascendLevel, for pathCostFactor and ascendCostFactor times its price.",
+    "_about": "Tower defense. Waves never end: each one is bigger and tougher than the last, with a boss every bossEvery waves and an extra boss every extraBossEvery waves. Towers keep levelling past maxLevel as mastery, each mastery level costing masteryCostGrowth times the one before. Speeds are cells per second, ranges are cells, rates are shots per second. Armor is the share of damage a creep shrugs off; pierce is the share of armor a tower ignores. Maps are on a 9 by 9 grid, columns and rows 0 to 8: the lane runs straight between waypoints, from the gate (the first) to the core (the last), so each waypoint must share a column or a row with the one before. A map's startGold, if set, replaces the usual one. Towers that do not fire (Muse, Eraser) affect everything in their circle, which grows with level up to maxSupportRange. medals are the waves that earn bronze, silver and gold on a map. Each tower takes one of its two paths at maxLevel, then one of its two ascend options at ascendLevel, for pathCostFactor and ascendCostFactor times its price. A map with lanes has two (or more) lanes, each from its own gate to the shared core; the creeps of a wave take them in turn (waypoints is the first lane). Towers with void: true are paid in flux (see void). execute: creeps (not bosses) at that share of life or less in the tower's circle (or hit by it) collapse; fluxIncome: flux paid when a wave clears. haste: fire-rate bonus for towers in the circle.",
     "startGold": 150,
     "startLives": 20,
     "defaultMap": "coil",
@@ -223,6 +223,24 @@
         "blurb": "One straight row across the middle. Hardest: little time to shoot, so it starts with the most O/I.",
         "waypoints": [[0,4],[8,4]],
         "startGold": 450
+      },
+      "fork": {
+        "name": "Two Gates",
+        "blurb": "Two lanes, from opposite corners, meet at the core in the middle. Creeps take turns.",
+        "waypoints": [[0,0],[6,0],[6,2],[2,2],[2,4],[4,4]],
+        "lanes": [
+          [[0,0],[6,0],[6,2],[2,2],[2,4],[4,4]],
+          [[8,8],[2,8],[2,6],[6,6],[6,4],[4,4]]
+        ]
+      },
+      "pincer": {
+        "name": "Pincer",
+        "blurb": "Two long lanes down both sides close on the core like a pincer.",
+        "waypoints": [[0,0],[0,8],[3,8],[3,4],[4,4]],
+        "lanes": [
+          [[0,0],[0,8],[3,8],[3,4],[4,4]],
+          [[8,8],[8,0],[5,0],[5,4],[4,4]]
+        ]
       }
     },
     "maxLevel": 5,
@@ -233,7 +251,8 @@
       "slow": 0.05,
       "aura": 0.05,
       "income": 12,
-      "vuln": 0.04
+      "vuln": 0.04,
+      "fluxIncome": 15
     },
     "upgradeCostFactor": 0.6,
     "masteryCostGrowth": 1.5,
@@ -508,6 +527,229 @@
           { "name": "Oblivion", "copy": "Creeps in its circle take another 30% more damage.", "add": {"vuln": 0.3} },
           { "name": "Expunge", "copy": "Creeps in its circle lose half their armor more, and take 10% more damage.", "add": {"shred": 0.5, "vuln": 0.1} }
         ]
+      },
+      "tachyon": {
+        "name": "Tachyon",
+        "label": "TAC",
+        "role": "rapid",
+        "color": "#38bdf8",
+        "copy": "Void. Faster than light: a stream of shots that pierce some armor.",
+        "void": true,
+        "cost": 120,
+        "range": 2.4,
+        "rate": 3.2,
+        "damage": 11,
+        "pierce": 0.3,
+        "paths": [
+          { "name": "Overdrive", "copy": "Fires 80% faster, a little lighter.", "mult": {"rate":1.8,"damage":0.9} },
+          { "name": "Lance", "copy": "Hits 70% harder, further, through more armor.", "mult": {"damage":1.7}, "add": {"pierce":0.5,"range":0.5} }
+        ],
+        "ascend": [
+          { "name": "Light-speed", "copy": "Fires 60% faster and hits 40% harder.", "mult": {"rate":1.6,"damage":1.4} },
+          { "name": "Causality break", "copy": "Each shot hits 2.6 times as hard, through all armor, from further.", "mult": {"damage":2.6}, "add": {"pierce":1,"range":0.6} }
+        ]
+      },
+      "railgun": {
+        "name": "Railgun",
+        "label": "RLG",
+        "role": "sniper",
+        "color": "#c084fc",
+        "copy": "Void. A magnetic slug across the board: huge hits through all armor.",
+        "void": true,
+        "cost": 220,
+        "range": 4.6,
+        "rate": 0.4,
+        "damage": 130,
+        "pierce": 1,
+        "paths": [
+          { "name": "Coilgun", "copy": "Fires 80% faster.", "mult": {"rate":1.8} },
+          { "name": "Gauss", "copy": "Hits 80% harder, from further.", "mult": {"damage":1.8}, "add": {"range":0.8} }
+        ],
+        "ascend": [
+          { "name": "Mass driver", "copy": "Hits 2.2 times as hard.", "mult": {"damage":2.2} },
+          { "name": "Rapid rail", "copy": "Fires twice as fast and hits 20% harder.", "mult": {"rate":2,"damage":1.2} }
+        ]
+      },
+      "antimatter": {
+        "name": "Antimatter",
+        "label": "ANT",
+        "role": "splash",
+        "color": "#f472b6",
+        "copy": "Void. Matter meets its opposite: a wide blast that ignores some armor.",
+        "void": true,
+        "cost": 260,
+        "range": 2.2,
+        "rate": 0.55,
+        "damage": 46,
+        "splash": 1.3,
+        "pierce": 0.4,
+        "paths": [
+          { "name": "Pair burst", "copy": "Hits 50% harder, a wider blast.", "mult": {"damage":1.5}, "add": {"splash":0.4} },
+          { "name": "Positron rain", "copy": "Fires 80% faster.", "mult": {"rate":1.8} }
+        ],
+        "ascend": [
+          { "name": "Annihilation", "copy": "Hits 2.2 times as hard, wider, through more armor.", "mult": {"damage":2.2}, "add": {"splash":0.4,"pierce":0.6} },
+          { "name": "Cascade", "copy": "Fires 70% faster, hits 30% harder, and what it hits collapses at 8% life (not bosses).", "mult": {"rate":1.7,"damage":1.3}, "add": {"execute":0.08} }
+        ]
+      },
+      "graviton": {
+        "name": "Graviton",
+        "label": "GRV",
+        "role": "slow",
+        "color": "#818cf8",
+        "copy": "Void. A gravity well: slows everything near the impact, hard. Bosses resist half.",
+        "void": true,
+        "cost": 180,
+        "range": 2.3,
+        "rate": 1.0,
+        "damage": 10,
+        "splash": 0.6,
+        "slow": 0.5,
+        "slowTime": 2.2,
+        "paths": [
+          { "name": "Heavy well", "copy": "Slows 15% more, a second longer.", "add": {"slow":0.15,"slowTime":1} },
+          { "name": "Tidal", "copy": "Hits twice as hard, over a wider well.", "mult": {"damage":2}, "add": {"splash":0.4} }
+        ],
+        "ascend": [
+          { "name": "Crush depth", "copy": "Hits 2.5 times as hard and strips 30% of armor.", "mult": {"damage":2.5}, "add": {"shred":0.3} },
+          { "name": "Time dilation", "copy": "Slows 20% more, 1.5 seconds longer.", "add": {"slow":0.2,"slowTime":1.5} }
+        ]
+      },
+      "entangler": {
+        "name": "Entangler",
+        "label": "QNT",
+        "role": "chain",
+        "color": "#22d3ee",
+        "copy": "Void. Quantum strike: one hit, felt by four more entangled creeps.",
+        "void": true,
+        "cost": 240,
+        "range": 2.6,
+        "rate": 1.0,
+        "damage": 26,
+        "chain": 4,
+        "pierce": 0.5,
+        "paths": [
+          { "name": "Superposition", "copy": "Jumps to three more creeps.", "add": {"chain":3} },
+          { "name": "Collapse", "copy": "Hits 80% harder, through all armor.", "mult": {"damage":1.8}, "add": {"pierce":0.5} }
+        ],
+        "ascend": [
+          { "name": "Many worlds", "copy": "Jumps to four more, 20% harder.", "mult": {"damage":1.2}, "add": {"chain":4} },
+          { "name": "Observer", "copy": "Hits 2.4 times as hard, 20% faster.", "mult": {"damage":2.4,"rate":1.2} }
+        ]
+      },
+      "plasma": {
+        "name": "Plasma",
+        "label": "PLS",
+        "role": "burn",
+        "color": "#fb923c",
+        "copy": "Void. Star-hot plasma: splashes and burns through all armor.",
+        "void": true,
+        "cost": 220,
+        "range": 2.3,
+        "rate": 0.9,
+        "damage": 12,
+        "splash": 0.5,
+        "burn": 22,
+        "burnTime": 3.5,
+        "pierce": 1,
+        "paths": [
+          { "name": "Fusion", "copy": "Burns 80% hotter.", "mult": {"burn":1.8} },
+          { "name": "Arc", "copy": "Fires 60% faster, a wider splash.", "mult": {"rate":1.6}, "add": {"splash":0.4} }
+        ],
+        "ascend": [
+          { "name": "Stellar core", "copy": "Burns 2.4 times as hot, 2 seconds longer.", "mult": {"burn":2.4}, "add": {"burnTime":2} },
+          { "name": "Flare", "copy": "Hits 2.5 times as hard, 30% faster.", "mult": {"damage":2.5,"rate":1.3} }
+        ]
+      },
+      "quasar": {
+        "name": "Quasar",
+        "label": "QSR",
+        "role": "beam",
+        "color": "#facc15",
+        "copy": "Void. A galactic beam that ramps faster and higher than Focus. For bosses.",
+        "void": true,
+        "cost": 320,
+        "range": 2.9,
+        "rate": 6,
+        "damage": 5,
+        "pierce": 0.5,
+        "beam": true,
+        "ramp": 0.25,
+        "maxRamp": 30,
+        "paths": [
+          { "name": "Jet", "copy": "Ramps faster and 20 steps higher.", "add": {"ramp":0.1,"maxRamp":20} },
+          { "name": "Blazar", "copy": "80% stronger, from further.", "mult": {"damage":1.8}, "add": {"range":0.5} }
+        ],
+        "ascend": [
+          { "name": "Relativistic", "copy": "Twice as strong, ramping faster still.", "mult": {"damage":2}, "add": {"ramp":0.15} },
+          { "name": "Pulsar", "copy": "Pulses 60% faster, 40% stronger.", "mult": {"rate":1.6,"damage":1.4} }
+        ]
+      },
+      "wormhole": {
+        "name": "Wormhole",
+        "label": "WRM",
+        "role": "aura",
+        "color": "#2dd4bf",
+        "copy": "Void. Does not fire. Towers in its circle deal 25% more damage and fire 10% faster.",
+        "void": true,
+        "cost": 300,
+        "range": 1.6,
+        "rate": 0,
+        "damage": 0,
+        "aura": 0.25,
+        "haste": 0.1,
+        "paths": [
+          { "name": "Einstein-Rosen", "copy": "Towers in its circle fire another 15% faster.", "add": {"haste":0.15} },
+          { "name": "Lensing", "copy": "Another 20% more damage, over a wider circle.", "add": {"aura":0.2,"range":0.4} }
+        ],
+        "ascend": [
+          { "name": "Bridge", "copy": "Another 25% more damage and 15% faster fire.", "add": {"aura":0.25,"haste":0.15} },
+          { "name": "Spacetime fold", "copy": "A much wider circle, and 10% more damage.", "add": {"range":0.8,"aura":0.1} }
+        ]
+      },
+      "reactor": {
+        "name": "Reactor",
+        "label": "ZPR",
+        "role": "flux",
+        "color": "#a3e635",
+        "copy": "Void. Does not fire. A zero-point reactor: pays 30 flux every time a wave clears, plus 15 per level.",
+        "void": true,
+        "cost": 200,
+        "range": 0,
+        "rate": 0,
+        "damage": 0,
+        "fluxIncome": 30,
+        "paths": [
+          { "name": "Breeder", "copy": "Pays another 40 flux a wave.", "add": {"fluxIncome":40} },
+          { "name": "Siphon", "copy": "Every kill pays 15% more O/I.", "add": {"bounty":0.15} }
+        ],
+        "ascend": [
+          { "name": "Vacuum tap", "copy": "Pays another 80 flux a wave.", "add": {"fluxIncome":80} },
+          { "name": "Dark dividend", "copy": "Also pays 120 O/I a wave.", "add": {"income":120} }
+        ]
+      },
+      "singularity": {
+        "name": "Singularity",
+        "label": "SNG",
+        "role": "collapse",
+        "color": "#a855f7",
+        "copy": "Void. Does not fire. A black hole: creeps in its circle take 25% more damage, lose half their armor, and any but bosses at 10% life or less collapse into it.",
+        "void": true,
+        "cost": 400,
+        "range": 1.6,
+        "rate": 0,
+        "damage": 0,
+        "vuln": 0.25,
+        "shred": 0.5,
+        "execute": 0.1,
+        "paths": [
+          { "name": "Accretion", "copy": "Collapses creeps at 6% more life, over a wider circle.", "add": {"execute":0.06,"range":0.3} },
+          { "name": "Spaghettify", "copy": "Another 15% more damage taken, and 30% more armor lost.", "add": {"vuln":0.15,"shred":0.3} }
+        ],
+        "ascend": [
+          { "name": "Event horizon", "copy": "Collapses creeps at 8% more life, over a wider circle.", "add": {"execute":0.08,"range":0.4} },
+          { "name": "Hawking", "copy": "Another 20% more damage taken, and 20% more armor lost.", "add": {"vuln":0.2,"shred":0.2} }
+        ]
       }
     },
     "creeps": {
@@ -658,6 +900,19 @@
         "armor": 0.35,
         "regen": 8,
         "boss": true
+      },
+      "rift": {
+        "name": "Rift Titan",
+        "label": "RFT",
+        "color": "#7c3aed",
+        "hp": 900,
+        "speed": 0.5,
+        "gold": 40,
+        "leak": 3,
+        "size": 0.5,
+        "sides": 7,
+        "armor": 0.15,
+        "boss": true
       }
     },
     "perks": {
@@ -709,6 +964,52 @@
         "baseCost": 130,
         "costPerLevel": 110,
         "amount": 0.05
+      }
+    },
+    "void": {
+      "_about": "The void: a second currency, flux, earned only by reps. In a run, the rep window counts a rep at most once every repSeconds (a tap sooner does not count); each pays fluxPerRep flux (more with Resonance and every Rift Titan slain). Void towers (the ten with void: true) are built, upgraded and specialized with flux, never O/I; the void perks below are bought with flux too. A Rift Titan (creep rift) can be summoned for summonGold plus summonGoldPerWave a wave of O/I: slaying it pays summonFlux plus summonFluxPerWave a wave of flux and raises flux per rep by summonBoost for the rest of the run (to summonBoostMax). Reps done here also count in the Recitation drill (its Reps totals and History).",
+      "fluxPerRep": 10,
+      "repSeconds": 0.9,
+      "startFlux": 0,
+      "summonGold": 250,
+      "summonGoldPerWave": 25,
+      "summonFlux": 60,
+      "summonFluxPerWave": 12,
+      "summonBoost": 0.05,
+      "summonBoostMax": 1,
+      "perks": {
+        "yield": {
+          "name": "Resonance",
+          "copy": "+20% flux for every rep.",
+          "max": 10,
+          "baseCost": 150,
+          "costPerLevel": 100,
+          "amount": 0.2
+        },
+        "power": {
+          "name": "Dark energy",
+          "copy": "+12% damage for every void tower.",
+          "max": 10,
+          "baseCost": 200,
+          "costPerLevel": 120,
+          "amount": 0.12
+        },
+        "reach": {
+          "name": "Event horizon",
+          "copy": "+0.15 cells of range for every void tower.",
+          "max": 5,
+          "baseCost": 220,
+          "costPerLevel": 140,
+          "amount": 0.15
+        },
+        "tithe": {
+          "name": "Rep tithe",
+          "copy": "Every rep also pays 6 O/I.",
+          "max": 5,
+          "baseCost": 120,
+          "costPerLevel": 90,
+          "amount": 6
+        }
       }
     }
   },

@@ -1,6 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
+  Atom,
+  ChevronLeft,
+  ChevronRight,
   ChevronsUp,
   Coins,
   Crosshair,
@@ -23,6 +26,7 @@ import { useChromeInsets } from "@/components/game/useChromeInsets";
 import { getGame } from "@/game/registry";
 import { CONFIG } from "@/game/config";
 import { useGame } from "@/game/store";
+import { addItem, readReps, writeReps, type RepItem } from "@/game/reps";
 import {
   buildCost,
   CREEPS,
@@ -34,6 +38,10 @@ import {
   PERKS,
   perkCost,
   TOWER_KEYS,
+  VOID_PERK_KEYS,
+  VOID_PERKS,
+  VOID_TOWER_KEYS,
+  voidPerkCost,
   ascensionsOf,
   pathsOf,
   TOWERS,
@@ -58,13 +66,41 @@ function short(n: number): string {
   return String(v);
 }
 
-/** Every tower, one tap to raise on the selected cell. */
+/** Every tower, one tap to raise on the selected cell: the towers (O/I), or the void set (flux). */
 function BuildGrid() {
   const gold = useGame((s) => s.tdView.gold);
+  const flux = useGame((s) => s.tdView.flux);
   const perks = useGame((s) => s.tdView.perks);
+  const [tab, setTab] = useState<"towers" | "void">("towers");
+  const keys = tab === "void" ? VOID_TOWER_KEYS : TOWER_KEYS;
+  const money = tab === "void" ? flux : gold;
+  const unit = tab === "void" ? "flux" : "O/I";
   return (
-    <div className={`grid gap-1.5 ${TOWER_KEYS.length > 9 ? "grid-cols-5" : "grid-cols-3"}`}>
-      {TOWER_KEYS.map((key, i) => {
+    <div>
+    <div className="mb-1.5 grid grid-cols-2 gap-1.5" role="tablist" aria-label="Tower sets">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={tab === "towers"}
+        data-on={tab === "towers"}
+        className="btn min-h-8 py-0.5"
+        onClick={() => setTab("towers")}
+      >
+        Towers · O/I
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={tab === "void"}
+        data-on={tab === "void"}
+        className="btn min-h-8 py-0.5"
+        onClick={() => setTab("void")}
+      >
+        <Atom className="size-3.5" aria-hidden /> Void · flux {short(flux)}
+      </button>
+    </div>
+    <div className={`grid gap-1.5 ${keys.length > 9 ? "grid-cols-5" : "grid-cols-3"}`}>
+      {keys.map((key, i) => {
         const spec = TOWERS[key];
         const cost = buildCost(key, perks);
         return (
@@ -72,9 +108,9 @@ function BuildGrid() {
             key={key}
             type="button"
             className="btn flex-col gap-0 px-1 py-1"
-            disabled={gold < cost}
-            title={`${spec.name}: ${spec.copy} (key ${(i + 1) % 10})`}
-            aria-label={`Build ${spec.name}, ${spec.role}, ${cost} O/I`}
+            disabled={money < cost}
+            title={`${spec.name}: ${spec.copy}${tab === "towers" ? ` (key ${(i + 1) % 10})` : ""}`}
+            aria-label={`Build ${spec.name}, ${spec.role}, ${cost} ${unit}`}
             onClick={() => game()?.tdBuild(key)}
           >
             <span
@@ -85,10 +121,12 @@ function BuildGrid() {
             </span>
             <span className="text-[0.6rem] tracking-normal normal-case opacity-80">
               {spec.role} · {cost}
+              {tab === "void" ? " ◆" : ""}
             </span>
           </button>
         );
       })}
+    </div>
     </div>
   );
 }
@@ -97,10 +135,15 @@ function BuildGrid() {
 function TowerPanel() {
   const tower = useGame((s) => s.tdView.tower);
   const gold = useGame((s) => s.tdView.gold);
+  const flux = useGame((s) => s.tdView.flux);
   const perks = useGame((s) => s.tdView.perks);
+  const voidPerks = useGame((s) => s.tdView.voidPerks);
   if (!tower) return null;
+  // A void tower is paid in flux: every price below is in its currency.
+  const money = tower.currency === "flux" ? flux : gold;
+  const unit = tower.currency === "flux" ? "flux" : "O/I";
   const spec = TOWERS[tower.key];
-  const stats = towerStats(tower.key, tower.level, perks, tower.path, tower.ascend);
+  const stats = towerStats(tower.key, tower.level, perks, tower.path, tower.ascend, voidPerks);
   const paths = pathsOf(tower.key);
   const path = paths[tower.path];
   const ascensions = ascensionsOf(tower.key);
@@ -110,12 +153,14 @@ function TowerPanel() {
   const effect = fires
     ? `Damage ${tower.damage.toFixed(0)}${tower.aura > 0 ? ` (+${Math.round(tower.aura * 100)}% Muse)` : ""} · ${(tower.rate * (1 + tower.haste)).toFixed(2)}/s${tower.haste > 0 ? ` (+${Math.round(tower.haste * 100)}% Tempo)` : ""} · range ${tower.range.toFixed(1)}${
         stats.splash ? ` · blast ${stats.splash.toFixed(1)}` : ""
-      }${stats.slow ? ` · slows ${Math.round(stats.slow * 100)}%` : ""}${stats.chain ? ` · jumps ${stats.chain}` : ""}${stats.burn ? ` · burns ${(stats.burn * (1 + tower.aura)).toFixed(0)}/s` : ""}`
+      }${stats.slow ? ` · slows ${Math.round(stats.slow * 100)}%` : ""}${stats.chain ? ` · jumps ${stats.chain}` : ""}${stats.burn ? ` · burns ${(stats.burn * (1 + tower.aura)).toFixed(0)}/s` : ""}${stats.execute ? ` · collapses at ${Math.round(stats.execute * 100)}%` : ""}`
     : stats.aura || stats.haste
       ? `Towers in its circle (${stats.range.toFixed(1)}) deal ${Math.round(stats.aura * 100)}% more damage${stats.haste ? ` and fire ${Math.round(stats.haste * 100)}% faster` : ""}. Boosting ${tower.boosts} now.`
       : stats.vuln || stats.shred
-        ? `Creeps in its circle (${stats.range.toFixed(1)}) take ${Math.round(stats.vuln * 100)}% more damage${stats.shred ? ` and lose ${Math.round(stats.shred * 100)}% of their armor` : ""}.`
-        : `Pays ${Math.round(stats.income)} O/I every time a wave clears${stats.bounty ? `; kills pay ${Math.round(stats.bounty * 100)}% more` : ""}.`;
+        ? `Creeps in its circle (${stats.range.toFixed(1)}) take ${Math.round(stats.vuln * 100)}% more damage${stats.shred ? ` and lose ${Math.round(stats.shred * 100)}% of their armor` : ""}${stats.execute ? `; any but bosses at ${Math.round(stats.execute * 100)}% life collapse` : ""}.`
+        : stats.fluxIncome
+          ? `Pays ${Math.round(stats.fluxIncome)} flux every time a wave clears${stats.income ? `, and ${Math.round(stats.income)} O/I` : ""}${stats.bounty ? `; kills pay ${Math.round(stats.bounty * 100)}% more` : ""}.`
+          : `Pays ${Math.round(stats.income)} O/I every time a wave clears${stats.bounty ? `; kills pay ${Math.round(stats.bounty * 100)}% more` : ""}.`;
   const canPath = tower.level >= MAX_TOWER_LEVEL && tower.path < 0 && paths.length > 0;
   const canAscend =
     tower.level >= CONFIG.td.ascendLevel && tower.path >= 0 && tower.ascend < 0 && ascensions.length > 0;
@@ -157,9 +202,9 @@ function TowerPanel() {
               key={p.name}
               type="button"
               className="btn h-auto flex-col items-start gap-0 text-left"
-              disabled={gold < offer.cost}
+              disabled={money < offer.cost}
               onClick={() => offer.pick(i)}
-              aria-label={`${offer.prefix}${p.name} for ${offer.cost} O/I: ${p.copy}`}
+              aria-label={`${offer.prefix}${p.name} for ${offer.cost} ${unit}: ${p.copy}`}
             >
               <span className={`font-display text-[0.7rem] ${canAscend ? "text-gold" : "text-violet"}`}>
                 {offer.prefix}
@@ -174,28 +219,30 @@ function TowerPanel() {
         <button
           type="button"
           className="btn flex-col gap-0 px-1"
-          disabled={gold < tower.upgradeCost}
+          disabled={money < tower.upgradeCost}
           onClick={() => game()?.tdUpgrade()}
-          aria-label={`${tower.level >= MAX_TOWER_LEVEL ? "Mastery" : "Upgrade"} for ${tower.upgradeCost} O/I`}
+          aria-label={`${tower.level >= MAX_TOWER_LEVEL ? "Mastery" : "Upgrade"} for ${tower.upgradeCost} ${unit}`}
         >
           <span className="flex items-center gap-1">
             <ArrowUp className="size-3.5" aria-hidden />
             {tower.level >= MAX_TOWER_LEVEL ? "Mastery" : "Upgrade"}
           </span>
-          <span className="text-[0.6rem] tracking-normal">{tower.upgradeCost} O/I</span>
+          <span className="text-[0.6rem] tracking-normal">
+            {tower.upgradeCost} {unit}
+          </span>
         </button>
         <button
           type="button"
           className="btn flex-col gap-0 px-1"
           disabled={tower.maxLevels < 1}
           onClick={() => game()?.tdUpgradeMax()}
-          aria-label={`Upgrade ${tower.maxLevels} levels for ${tower.maxCost} O/I`}
+          aria-label={`Upgrade ${tower.maxLevels} levels for ${tower.maxCost} ${unit}`}
         >
           <span className="flex items-center gap-1">
             <ChevronsUp className="size-3.5" aria-hidden />
             Max{tower.maxLevels > 0 ? ` ×${tower.maxLevels}` : ""}
           </span>
-          <span className="text-[0.6rem] tracking-normal">{tower.maxLevels > 0 ? `${short(tower.maxCost)} O/I` : "—"}</span>
+          <span className="text-[0.6rem] tracking-normal">{tower.maxLevels > 0 ? `${short(tower.maxCost)} ${unit}` : "—"}</span>
         </button>
         <button
           type="button"
@@ -216,13 +263,15 @@ function TowerPanel() {
           type="button"
           className="btn flex-col gap-0 px-1"
           onClick={() => game()?.tdSell()}
-          aria-label={`${tower.undo ? "Undo the build" : "Sell"} for ${tower.sellValue} O/I`}
+          aria-label={`${tower.undo ? "Undo the build" : "Sell"} for ${tower.sellValue} ${unit}`}
         >
           <span className="flex items-center gap-1">
             <Trash2 className="size-3.5" aria-hidden />
             {tower.undo ? "Undo" : "Sell"}
           </span>
-          <span className="text-[0.6rem] tracking-normal">+{tower.sellValue} O/I</span>
+          <span className="text-[0.6rem] tracking-normal">
+            +{tower.sellValue} {unit}
+          </span>
         </button>
       </div>
     </div>
@@ -276,6 +325,7 @@ function PerkSheet({ onClose }: { onClose: () => void }) {
               </div>
             );
           })}
+          <VoidPerks />
           <div className="rounded-md border border-cyan/30 p-2 sm:col-span-2">
             <p className="font-display text-xs text-fg">This run</p>
             <DamageReport />
@@ -283,6 +333,215 @@ function PerkSheet({ onClose }: { onClose: () => void }) {
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * The void in the Library: upgrades bought only with flux (the rep currency),
+ * and the Rift Titan, summoned for O/I, that pays flux and more flux a rep.
+ */
+function VoidPerks() {
+  const v = useGame((s) => s.tdView);
+  return (
+    <div className="rounded-md border border-violet/50 p-2 sm:col-span-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="font-display text-xs tracking-[0.14em] text-violet">THE VOID · FLUX ONLY</p>
+        <p className="font-display text-xs text-violet">◆ {Math.floor(v.flux)}</p>
+      </div>
+      <p className="mt-1 text-xs leading-snug text-muted">
+        Flux comes only from reps (the ◆ at the top opens the rep window): +{v.fluxPerRep} a rep now
+        {v.repGold ? `, and +${v.repGold} O/I` : ""}. {v.reps.toLocaleString()} reps this run
+        {v.fluxBoost ? `; Rift Titans slain: +${Math.round(v.fluxBoost * 100)}% a rep` : ""}.
+      </p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {VOID_PERK_KEYS.map((key) => {
+          const spec = VOID_PERKS[key];
+          const level = v.voidPerks[key];
+          const maxed = level >= spec.max;
+          const cost = voidPerkCost(key, level);
+          return (
+            <div key={key} className="rounded-md border border-violet/30 p-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="font-display text-xs text-fg">{spec.name}</p>
+                <p className="text-xs text-muted">
+                  {level}/{spec.max}
+                </p>
+              </div>
+              <p className="mt-1 text-xs leading-snug text-muted">{spec.copy}</p>
+              <button
+                type="button"
+                className="btn mt-2 w-full"
+                disabled={maxed || v.flux < cost}
+                onClick={() => game()?.tdBuyVoidPerk(key)}
+              >
+                {maxed ? "Complete" : `Learn · ${cost} flux`}
+              </button>
+            </div>
+          );
+        })}
+        <div className="rounded-md border border-danger/40 p-2 sm:col-span-2">
+          <p className="font-display text-xs text-fg">Summon a Rift Titan</p>
+          <p className="mt-1 text-xs leading-snug text-muted">
+            A void boss walks the lane, for O/I. Slay it for {v.summonReward} flux and +
+            {Math.round(CONFIG.td.void.summonBoost * 100)}% flux a rep for the rest of the run. If it
+            reaches the core, it costs {CREEPS.rift.leak} lives.
+          </p>
+          <button
+            type="button"
+            className="btn mt-2 w-full"
+            disabled={v.gold < v.summonCost || v.phase === "over"}
+            onClick={() => game()?.tdSummon()}
+          >
+            Summon · {v.summonCost} O/I
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The rep window: a small window beside the board. Pick a phrase from Reps,
+ * say it, tap Rep. A rep counts only once its time has passed (td.void.repSeconds,
+ * shown filling up), so it is done, not tapped through; each pays flux, and they
+ * go into the Recitation drill's totals and History too.
+ */
+const REP_KEY = "azshara-td-rep-v1";
+
+function RepWindow({ onClose }: { onClose: () => void }) {
+  const v = useGame((s) => s.tdView);
+  const lines = useGame((s) => s.lines);
+  const [items, setItems] = useState<RepItem[]>(() => readReps().items);
+  const [id, setId] = useState(() => {
+    try {
+      return localStorage.getItem(REP_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const item = items.find((i) => i.id === id) ?? items[0];
+  const [ready, setReady] = useState(true);
+  const [pulse, setPulse] = useState(0);
+  const [count, setCount] = useState(0);
+  const gap = Math.max(0, CONFIG.td.void.repSeconds * 1000);
+
+  useEffect(() => {
+    if (ready) return;
+    const t = window.setTimeout(() => setReady(true), gap);
+    return () => window.clearTimeout(t);
+  }, [ready, pulse, gap]);
+
+  const choose = (next: RepItem | undefined) => {
+    if (!next) return;
+    game()?.tdFlushReps();
+    setId(next.id);
+    setCount(0);
+    try {
+      localStorage.setItem(REP_KEY, next.id);
+    } catch {
+      /* private mode */
+    }
+  };
+  const turn = (dir: 1 | -1) => {
+    if (!items.length) return;
+    const i = Math.max(0, items.indexOf(item ?? items[0]!));
+    choose(items[(i + dir + items.length) % items.length]);
+  };
+  const rep = () => {
+    if (!ready || !item) return;
+    if (game()?.tdRep(item.id)) {
+      setCount((c) => c + 1);
+      setReady(false);
+      setPulse((p) => p + 1);
+    }
+  };
+  const addFirst = () => {
+    const text = (lines[0] ?? "").trim();
+    if (!text) return;
+    const made = addItem(readReps(), text, Date.now());
+    writeReps(made.state);
+    setItems(made.state.items);
+    choose(made.state.items.find((i) => i.id === made.id));
+  };
+  const close = () => {
+    game()?.tdFlushReps();
+    onClose();
+  };
+
+  return (
+    <section
+      className="glass pointer-events-auto absolute top-[30%] right-3 z-30 w-[min(19rem,calc(100%-1.5rem))] p-2"
+      role="dialog"
+      aria-label="Rep window"
+    >
+      <header className="flex items-center justify-between gap-2">
+        <p className="font-display text-xs tracking-[0.14em] text-violet">REPS → FLUX</p>
+        <p className="font-display text-xs text-violet">◆ {short(v.flux)}</p>
+        <button type="button" className="btn stepper" onClick={close} aria-label="Close the rep window">
+          <X className="size-4" aria-hidden />
+        </button>
+      </header>
+      {item ? (
+        <>
+          <div className="mt-1.5 flex items-center gap-1">
+            <button
+              type="button"
+              className="btn stepper"
+              onClick={() => turn(-1)}
+              disabled={items.length < 2}
+              aria-label="Previous phrase"
+            >
+              <ChevronLeft className="size-4" aria-hidden />
+            </button>
+            <p className="line-clamp-2 min-w-0 flex-1 text-center text-sm leading-snug text-fg" aria-live="polite">
+              {item.text}
+            </p>
+            <button
+              type="button"
+              className="btn stepper"
+              onClick={() => turn(1)}
+              disabled={items.length < 2}
+              aria-label="Next phrase"
+            >
+              <ChevronRight className="size-4" aria-hidden />
+            </button>
+          </div>
+          <button
+            type="button"
+            className={`btn mt-1.5 min-h-14 w-full flex-col gap-0 ${ready ? "btn-gold" : ""}`}
+            disabled={!ready}
+            onClick={rep}
+            aria-label={`Rep: ${item.text}. Pays ${v.fluxPerRep} flux`}
+          >
+            <span className="font-display text-sm">{ready ? "Rep ✓" : "Saying it…"}</span>
+            <span className="text-[0.6rem] tracking-normal normal-case">
+              +{v.fluxPerRep} flux{v.repGold ? ` +${v.repGold} O/I` : ""} · at least{" "}
+              {CONFIG.td.void.repSeconds} s a rep
+            </span>
+          </button>
+          <div className="mt-1 h-1 overflow-hidden rounded bg-violet/15" aria-hidden>
+            {!ready && (
+              <span
+                key={pulse}
+                className="block h-full bg-violet"
+                style={{ animation: `rep-fill ${gap}ms linear forwards` }}
+              />
+            )}
+          </div>
+          <p className="mt-1 text-center text-[0.65rem] text-muted">
+            This phrase now: {count} · this run: {v.reps.toLocaleString()} · they count in Reps and
+            History too
+          </p>
+        </>
+      ) : (
+        <div className="mt-2 text-xs leading-snug text-muted">
+          <p>No phrases in Reps yet. Use the loaded text's first line, or add your own in Recitation drill → Reps.</p>
+          <button type="button" className="btn mt-2 w-full" onClick={addFirst} disabled={!lines[0]}>
+            Use “{(lines[0] ?? "").slice(0, 40)}”
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -365,6 +624,7 @@ export function TdHud() {
   const footerRef = useRef<HTMLElement>(null);
   useChromeInsets(headerRef, footerRef);
   const [perksOpen, setPerksOpen] = useState(false);
+  const [repsOpen, setRepsOpen] = useState(false);
   const lifePct = Math.max(0, Math.min(100, (v.lives / Math.max(1, v.maxLives)) * 100));
   const status = paused
     ? "Held"
@@ -382,6 +642,16 @@ export function TdHud() {
           >
             <Coins className="size-3.5" aria-hidden /> {short(v.gold)}
           </span>
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded border border-violet/50 px-1.5 py-0.5 text-violet"
+            data-on={repsOpen}
+            aria-pressed={repsOpen}
+            onClick={() => setRepsOpen((o) => !o)}
+            aria-label={`${Math.floor(v.flux)} flux. ${repsOpen ? "Close" : "Open"} the rep window`}
+          >
+            <Atom className="size-3.5" aria-hidden /> {short(v.flux)}
+          </button>
           <span
             className="flex items-center gap-1 text-danger"
             aria-label={`${Math.round(v.lives)} lives`}
@@ -499,13 +769,14 @@ export function TdHud() {
       </footer>
 
       {perksOpen && <PerkSheet onClose={() => setPerksOpen(false)} />}
+      {repsOpen && <RepWindow onClose={() => setRepsOpen(false)} />}
     </div>
   );
 }
 
 /** A map's lane, drawn small: the gate is the open end, the core the gold dot. */
 function LaneThumb({ map }: { map: TdMap }) {
-  const points = map.waypoints.map(([c, r]) => `${c + 0.5},${r + 0.5}`).join(" ");
+  const lanes = map.lanes.map((l) => l.waypoints.map(([c, r]) => `${c + 0.5},${r + 0.5}`).join(" "));
   return (
     <svg viewBox="0 0 9 9" className="size-10" aria-hidden>
       <rect
@@ -519,14 +790,17 @@ function LaneThumb({ map }: { map: TdMap }) {
         strokeOpacity="0.3"
         strokeWidth="0.15"
       />
-      <polyline
-        points={points}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="0.75"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
+      {lanes.map((points, i) => (
+        <polyline
+          key={i}
+          points={points}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="0.75"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      ))}
       <circle cx={map.core[0] + 0.5} cy={map.core[1] + 0.5} r="0.85" fill="var(--color-gold)" />
     </svg>
   );
@@ -578,7 +852,10 @@ export function MapPicker() {
         ))}
       </div>
       <p className="mt-1.5 text-xs leading-relaxed text-muted">
-        <span className="text-fg">{current.name}</span> · lane {current.length} cells
+        <span className="text-fg">{current.name}</span> ·{" "}
+        {current.lanes.length > 1
+          ? `${current.lanes.length} lanes of ${current.lanes.map((l) => l.length).join(" and ")} cells`
+          : `lane ${current.length} cells`}
         {best > 0 ? ` · best wave ${best}` : ""}. {current.blurb} {difficulty(level).copy}
       </p>
     </div>
@@ -659,6 +936,11 @@ export function TdOver() {
           </div>
         </dl>
         <p className="mt-2 text-xs text-muted">{v.message}</p>
+        {v.reps > 0 && (
+          <p className="mt-1 text-xs text-violet">
+            {v.reps.toLocaleString()} reps this run (in your Reps and History) · ◆ {Math.floor(v.flux)} flux left
+          </p>
+        )}
         <div className="mt-3">
           <p className="font-display text-xs tracking-[0.16em] text-violet">DAMAGE BY TOWER</p>
           <DamageReport limit={5} />
