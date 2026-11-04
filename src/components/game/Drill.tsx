@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { X } from "lucide-react";
 import { CONFIG } from "@/game/config";
 import { flashToast, grantSkillXp } from "@/game/engine";
@@ -6,24 +6,18 @@ import { sectorWords } from "@/game/reader";
 import {
   coreDamageMultiplier,
   coreLevel,
-  cycleMs,
   levelForXp,
   recallScore,
   recallXp,
-  repAt,
-  repXp,
   SKILLS,
-  tapRep,
-  wordIndexAt,
-  WORD_MS,
   xpForLevel,
-  type RepState,
   type SkillKey,
 } from "@/game/recite";
 import { useGame } from "@/game/store";
 import { RepsTab } from "@/components/game/RepsTab";
 import { RepsHistory } from "@/components/game/RepsHistory";
 import { ReadTab } from "@/components/game/ReadTab";
+import { RehearseTab } from "@/components/game/RehearseTab";
 
 type DrillTab = "rehearse" | "recall" | "read" | "reps" | "history";
 const TAB_KEY = "azshara-drill-tab";
@@ -68,95 +62,6 @@ function SkillBar({ skill }: { skill: SkillKey }) {
       <div className="meter mt-1" role="meter" aria-label={`${name} progress`} aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
         <span style={{ width: `${pct}%` }} />
       </div>
-    </div>
-  );
-}
-
-/** Says a sector to the beat, one word every 0.9 s, and taps once per repetition. */
-function Rehearse({ words }: { words: string[] }) {
-  const [running, setRunning] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const [rep, setRep] = useState<RepState>({ reps: 0, lastCountedRep: -1 });
-  const [note, setNote] = useState("Press start, then tap once for every full pass through the sector.");
-  const baseRef = useRef(0);
-  const startRef = useRef(0);
-  const n = words.length;
-
-  useEffect(() => {
-    if (!running) return;
-    startRef.current = performance.now();
-    const id = window.setInterval(() => {
-      setElapsed(baseRef.current + performance.now() - startRef.current);
-    }, 40);
-    return () => {
-      window.clearInterval(id);
-      baseRef.current += performance.now() - startRef.current;
-    };
-  }, [running]);
-
-  const reset = () => {
-    setRunning(false);
-    baseRef.current = 0;
-    setElapsed(0);
-    setRep({ reps: 0, lastCountedRep: -1 });
-    setNote("Press start, then tap once for every full pass through the sector.");
-  };
-
-  if (!n) {
-    return <p className="text-sm text-muted">This sector has no words.</p>;
-  }
-
-  const current = wordIndexAt(n, elapsed);
-  const pass = repAt(n, elapsed);
-  const passProgress = (elapsed % cycleMs(n)) / cycleMs(n);
-
-  const tap = () => {
-    if (!running) return;
-    const next = tapRep(rep, pass);
-    if (!next.counted) {
-      setNote("One tap per pass. Wait for the next pass to start.");
-      return;
-    }
-    const before = levelForXp(useGame.getState().skills.recitation);
-    const xp = repXp(n, 1);
-    grantSkillXp("recitation", xp);
-    const after = levelForXp(useGame.getState().skills.recitation);
-    setRep(next.state);
-    setNote(`Rep ${next.state.reps} · +${xp} XP`);
-    if (after > before) flashToast(`Recitation level ${after}`);
-  };
-
-  return (
-    <div>
-      <div className="glass p-3 text-center" aria-live="polite">
-        <p className="text-xs tracking-wider text-muted uppercase">Pass {pass + 1} · word {current + 1} of {n}</p>
-        <p className="font-display mt-2 min-h-[3.5rem] text-3xl text-cyan">{words[current]}</p>
-        <div className="meter mt-3" aria-hidden>
-          <span style={{ width: `${Math.round(passProgress * 100)}%` }} />
-        </div>
-        <p className="mt-2 text-xs text-muted">Each word stays on screen for {WORD_MS / 1000} s. One pass is {(cycleMs(n) / 1000).toFixed(1)} s.</p>
-      </div>
-      <p className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-sm leading-relaxed text-muted">
-        {words.map((w, i) => (
-          <span key={`${i}-${w}`} className={i === current && running ? "text-cyan" : undefined}>
-            {w}
-          </span>
-        ))}
-      </p>
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        <button type="button" className="btn" onClick={() => setRunning((r) => !r)}>
-          {running ? "Hold" : "Start"}
-        </button>
-        <button type="button" className="btn btn-gold col-span-1" onClick={tap} disabled={!running} aria-label="Tap for one repetition">
-          Rep · {rep.reps}
-        </button>
-        <button type="button" className="btn" onClick={reset}>
-          Reset
-        </button>
-      </div>
-      <p className="mt-2 text-sm text-muted" role="status">
-        {note}
-      </p>
     </div>
   );
 }
@@ -255,7 +160,11 @@ export function DrillPanel() {
             </button>
           </div>
 
-          {tab === "reps" || tab === "history" || tab === "read" ? (
+          {tab === "rehearse" ? (
+            <div className="mt-4">
+              <RehearseTab />
+            </div>
+          ) : tab === "reps" || tab === "history" || tab === "read" ? (
             <div className="mt-4">
               {tab === "reps" ? <RepsTab /> : tab === "read" ? <ReadTab /> : <RepsHistory />}
             </div>
@@ -275,17 +184,8 @@ export function DrillPanel() {
               <p className="mt-2 text-sm leading-relaxed text-fg">{text}</p>
 
               <div className="mt-4">
-                {tab === "rehearse" ? (
-                  <>
-                    <p className="text-sm leading-relaxed text-muted">{SKILLS[0]?.copy}</p>
-                    <Rehearse key={safeIndex} words={words} />
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm leading-relaxed text-muted">{SKILLS[1]?.copy}</p>
-                    <Recall key={safeIndex} words={words} text={text} />
-                  </>
-                )}
+                <p className="text-sm leading-relaxed text-muted">{SKILLS[1]?.copy}</p>
+                <Recall key={safeIndex} words={words} text={text} />
               </div>
             </>
           )}
