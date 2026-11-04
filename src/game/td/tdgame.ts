@@ -14,6 +14,7 @@ import { readPhrase, type Cursor } from "@/game/reader";
 import { setSpeech, useGame, type TdView } from "@/game/store";
 import {
   addRep,
+  armReps,
   build,
   buyPerk,
   buyVoidPerk,
@@ -75,6 +76,7 @@ import {
 import { restore, serialize, summarize } from "./save.ts";
 import { cancelSleep, resting, sleepFrames } from "@/game/rest";
 import { readReps, recordReps, writeReps } from "@/game/reps";
+import { readRepUi } from "./repui.ts";
 
 const BEST_KEY = "azshara-td-v1";
 /** The run in progress, saved so it survives the app closing. */
@@ -221,6 +223,7 @@ export class TdGame implements GameBase {
     else if (key === "t") this.tdTarget();
     else if (key === "q") this.tdSpell("storm");
     else if (key === "e") this.tdSpell("still");
+    else if (key === "r") this.tdRepBatch();
     else if (e.key === "Escape" && this.selected) {
       // Clearing the selection uses up the key; the next Esc opens the menu.
       e.preventDefault();
@@ -502,29 +505,53 @@ export class TdGame implements GameBase {
   private repTally = new Map<string, { count: number; ms: number; last: number }>();
 
   /**
-   * A rep from the rep window, for a phrase in Reps: it counts only when
-   * td.void.repSeconds have passed since the last (the simulation checks, by the
-   * clock), pays flux, and goes into the Recitation drill too (every 25, and when
-   * the window closes or the run ends). True when it counted.
+   * Reps for a phrase in Reps, count of them in one tap: they count only when
+   * count x td.void.repSeconds have passed since the last tap (the simulation
+   * checks, by the clock), pay flux, and go into the Recitation drill too (every
+   * 100, and when the window closes or the run ends). True when they counted.
    */
-  tdRep(phraseId: string): boolean {
+  tdRep(phraseId: string, count = 1): boolean {
     const now = Date.now();
-    const r = addRep(this.sim, now);
+    const r = addRep(this.sim, now, count);
     if (!r.ok) {
       this.note(r.reason);
       return false;
     }
+    const n = r.count ?? 1;
     const t = this.repTally.get(phraseId) ?? { count: 0, ms: 0, last: 0 };
-    // Time between reps counts as the set's time (a long pause counts as one rep's time).
-    const step = Math.max(0, Math.min(10_000, now - (t.last || now)));
-    t.ms += step || CONFIG.td.void.repSeconds * 1000;
-    t.count += 1;
+    // Time since the last tap counts as the set's time; a long pause counts as the batch's own time.
+    const least = n * Math.max(0, CONFIG.td.void.repSeconds) * 1000;
+    const step = t.last ? now - t.last : least;
+    t.ms += step > least * 2 ? least : Math.max(least, step);
+    t.count += n;
     t.last = now;
     this.repTally.set(phraseId, t);
-    if (t.count >= 25) this.tdFlushReps();
+    if (t.count >= 100) this.tdFlushReps();
+    this.message = `${n} rep${n > 1 ? "s" : ""} done: +${r.flux ?? 0} flux${r.gold ? ` +${r.gold} O/I` : ""}.`;
     this.saveRun();
     this.pushView(true);
     return true;
+  }
+
+  /**
+   * A batch from the rep controls (the window's Rep, the tap button, the core or
+   * beside the board): the phrase and batch picked in the window.
+   */
+  tdRepBatch(): boolean {
+    const ui = readRepUi();
+    const items = readReps().items;
+    const item = items.find((i) => i.id === ui.phraseId) ?? items[0];
+    if (!item) {
+      this.note("Pick a phrase in the rep window first: tap the flux count at the top.");
+      return false;
+    }
+    return this.tdRep(item.id, ui.batch);
+  }
+
+  /** The rep clock starts when the rep controls first show, so the first batch is earned too. */
+  tdArmReps() {
+    armReps(this.sim, Date.now());
+    this.pushView(true);
   }
 
   /** Writes the reps done here into the Recitation drill: totals and History, one set per phrase. */
@@ -564,8 +591,21 @@ export class TdGame implements GameBase {
 
   private select(x: number, y: number) {
     this.geometry();
-    const col = Math.floor((x - this.ox) / this.cell);
-    const row = Math.floor((y - this.oy) / this.cell);
+    const fx = (x - this.ox) / this.cell;
+    const fy = (y - this.oy) / this.cell;
+    const col = Math.floor(fx);
+    const row = Math.floor(fy);
+    // Tapping the core, or beside the board, can count a rep batch (set in the rep window).
+    if (useGame.getState().phase === "battle" && this.sim.phase !== "over") {
+      const ui = readRepUi();
+      const [cc, cr] = this.sim.map.core;
+      const onCore = Math.hypot(fx - cc - 0.5, fy - cr - 0.5) <= 0.9;
+      if ((ui.coreTap && onCore) || (ui.offTap && !inGrid(col, row))) {
+        this.selected = null;
+        this.tdRepBatch();
+        return;
+      }
+    }
     const same = this.selected && this.selected.col === col && this.selected.row === row;
     this.selected = !inGrid(col, row) || same ? null : { col, row };
     this.pushView(true);
@@ -692,7 +732,8 @@ export class TdGame implements GameBase {
         if (e.key === "storm") sfx.kill(true);
         else sfx.bless();
       } else if (e.type === "rep") {
-        this.float(core.x, core.y - 0.9, `+${e.flux} flux${e.gold ? ` +${e.gold}` : ""}`, PAL.violet);
+        const times = e.count > 1 ? `×${e.count} ` : "";
+        this.float(core.x, core.y - 0.9, `${times}+${e.flux} flux${e.gold ? ` +${e.gold}` : ""}`, PAL.violet);
       } else if (e.type === "riftSummoned") {
         this.banner = "RIFT TITAN SUMMONED";
         this.bannerLife = 2.4;
@@ -783,6 +824,7 @@ export class TdGame implements GameBase {
       report: damageReport(sim),
       flux: sim.flux,
       reps: sim.reps,
+      lastRepAt: sim.lastRepAt,
       fluxPerRep: fluxPerRep(sim.voidPerks, sim.fluxBoost),
       repGold: repGold(sim.voidPerks),
       fluxBoost: sim.fluxBoost,

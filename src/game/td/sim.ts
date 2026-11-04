@@ -170,7 +170,7 @@ export type TdEvent =
   | { type: "bossSpawned"; kind: CreepKind; wave: number }
   | { type: "bossKilled"; kind: CreepKind; gold: number }
   | { type: "spell"; key: SpellKey; hit: number; text: string }
-  | { type: "rep"; flux: number; gold: number }
+  | { type: "rep"; flux: number; gold: number; count: number }
   | { type: "riftSummoned"; cost: number }
   | { type: "riftKilled"; flux: number; boost: number }
   | { type: "over" };
@@ -493,19 +493,34 @@ export function buyVoidPerk(s: TdState, key: VoidPerkKey): Result {
  * one (by the clock, so neither fast-forward nor quick taps make more), and pays
  * flux (and O/I with Rep tithe). Works while the game is held, too.
  */
-export function addRep(s: TdState, now: number): Result & { flux?: number; gold?: number } {
+export function addRep(
+  s: TdState,
+  now: number,
+  count = 1,
+): Result & { flux?: number; gold?: number; count?: number } {
   if (s.phase === "over") return fail("The rite is over");
-  const gap = Math.max(0, CONFIG.td.void.repSeconds) * 1000;
-  if (s.lastRepAt > 0 && now - s.lastRepAt < gap)
-    return fail(`A rep takes ${CONFIG.td.void.repSeconds} s`);
+  const n = Math.max(1, Math.min(100, Math.floor(count)));
+  const gap = Math.max(0, CONFIG.td.void.repSeconds) * 1000 * n;
+  if (s.lastRepAt > 0 && now - s.lastRepAt < gap) {
+    const left = Math.ceil((gap - (now - s.lastRepAt)) / 100) / 10;
+    return fail(`${n === 1 ? "A rep" : `${n} reps`} take${n === 1 ? "s" : ""} ${+(gap / 1000).toFixed(2)} s: ${left} s to go`);
+  }
   s.lastRepAt = now;
-  const flux = fluxPerRep(s.voidPerks, s.fluxBoost);
-  const gold = repGold(s.voidPerks);
+  const flux = fluxPerRep(s.voidPerks, s.fluxBoost) * n;
+  const gold = repGold(s.voidPerks) * n;
   s.flux += flux;
   s.gold += gold;
-  s.reps += 1;
-  s.events.push({ type: "rep", flux, gold });
-  return { ok: true, flux, gold };
+  s.reps += n;
+  s.events.push({ type: "rep", flux, gold, count: n });
+  return { ok: true, flux, gold, count: n };
+}
+
+/**
+ * Starts the reps' clock (when the rep window or the tap button first shows):
+ * the first tap then needs its time too, like every one after it.
+ */
+export function armReps(s: TdState, now: number) {
+  if (s.lastRepAt <= 0) s.lastRepAt = now;
 }
 
 /** Summons a Rift Titan, for O/I: slain, it pays flux and raises flux per rep for the run. */

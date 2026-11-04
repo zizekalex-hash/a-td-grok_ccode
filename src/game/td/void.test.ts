@@ -22,9 +22,11 @@ import {
   VOID_TOWER_KEYS,
   voidPerkCost,
 } from "./economy.ts";
+import { batchMs, clampBatch, defaultRepUi, loadRepUi } from "./repui.ts";
 import { restore, serialize } from "./save.ts";
 import {
   addRep,
+  armReps,
   build,
   buyVoidPerk,
   createGame,
@@ -90,6 +92,25 @@ describe("the void", () => {
     reps(t, 10);
     assert.equal(t.flux, V.startFlux + 10 * V.fluxPerRep);
     assert.equal(10 * V.fluxPerRep, 100);
+  });
+
+  it("counts reps in batches: 10 at once after 10 reps' time, paying 10 reps' flux", () => {
+    const s = createGame();
+    armReps(s, 100_000);
+    assert.equal(addRep(s, 100_000, 1).ok, false, "armed: even the first needs its time");
+    const ten = 10 * V.repSeconds * 1000;
+    assert.equal(addRep(s, 100_000 + ten - 1, 10).ok, false);
+    const r = addRep(s, 100_000 + ten, 10);
+    assert.ok(r.ok);
+    assert.equal(r.count, 10);
+    assert.equal(s.reps, 10);
+    assert.equal(s.flux, V.startFlux + 10 * V.fluxPerRep);
+    assert.equal(10 * V.fluxPerRep, 100, "10 reps in one tap: 100 flux");
+    // The next batch counts from this tap.
+    assert.equal(addRep(s, 100_000 + ten + ten - 1, 10).ok, false);
+    armReps(s, 999_999_999);
+    assert.equal(s.lastRepAt, 100_000 + ten, "arming does not reset a running clock");
+    assert.deepEqual(CONFIG.td.void.batches.slice(0, 2), [1, 10]);
   });
 
   it("builds, upgrades and sells void towers with flux, never O/I", () => {
@@ -290,3 +311,31 @@ function freeCell(s: TdState): [number, number] {
   for (let c = 0; c < 9; c++) for (let r = 0; r < 9; r++) if (buildable(s.map, c, r)) return [c, r];
   throw new Error("no free cell");
 }
+
+describe("the rep controls' setup", () => {
+  it("starts on batches of 10, with the tap button at the side, and checks a save", () => {
+    const u = defaultRepUi();
+    assert.equal(u.batch, 10);
+    assert.ok(u.tap.on && u.tap.x > 0.5, "the tap button starts at the right side");
+    assert.equal(u.coreTap, false);
+    assert.equal(u.offTap, false);
+    assert.equal(batchMs(10), 10 * V.repSeconds * 1000);
+    const back = loadRepUi({
+      batch: 17,
+      win: { x: 2, y: -1, scale: 9, opacity: 0 },
+      tap: { on: false, size: 5, opacity: 0.5, x: 0.05 },
+      coreTap: true,
+      offTap: "yes",
+      phraseId: "a",
+    });
+    assert.equal(back.batch, 20, "the nearest batch there is");
+    assert.deepEqual(back.win, { x: 1, y: 0, scale: 1.6, opacity: 0.15, min: false });
+    assert.equal(back.tap.on, false);
+    assert.equal(back.tap.size, 44);
+    assert.equal(back.tap.x, 0.05);
+    assert.equal(back.coreTap, true);
+    assert.equal(back.offTap, false, "only true or false");
+    assert.equal(back.phraseId, "a");
+    assert.equal(clampBatch(1), 1);
+  });
+});

@@ -967,9 +967,10 @@
       }
     },
     "void": {
-      "_about": "The void: a second currency, flux, earned only by reps. In a run, the rep window counts a rep at most once every repSeconds (a tap sooner does not count); each pays fluxPerRep flux (more with Resonance and every Rift Titan slain). Void towers (the ten with void: true) are built, upgraded and specialized with flux, never O/I; the void perks below are bought with flux too. A Rift Titan (creep rift) can be summoned for summonGold plus summonGoldPerWave a wave of O/I: slaying it pays summonFlux plus summonFluxPerWave a wave of flux and raises flux per rep by summonBoost for the rest of the run (to summonBoostMax). Reps done here also count in the Recitation drill (its Reps totals and History).",
+      "_about": "The void: a second currency, flux, earned only by reps. In a run, the rep window counts a rep at most once every repSeconds (a tap sooner does not count); each pays fluxPerRep flux (more with Resonance and every Rift Titan slain). Void towers (the ten with void: true) are built, upgraded and specialized with flux, never O/I; the void perks below are bought with flux too. A Rift Titan (creep rift) can be summoned for summonGold plus summonGoldPerWave a wave of O/I: slaying it pays summonFlux plus summonFluxPerWave a wave of flux and raises flux per rep by summonBoost for the rest of the run (to summonBoostMax). Reps done here also count in the Recitation drill (its Reps totals and History). batches: how many reps one tap can count at once (10 takes 10 times repSeconds, from the last tap, and pays 10 reps' flux); the clock starts when the rep window or the tap button first shows.",
       "fluxPerRep": 10,
       "repSeconds": 0.9,
+      "batches": [1, 10, 20, 30],
       "startFlux": 0,
       "summonGold": 250,
       "summonGoldPerWave": 25,

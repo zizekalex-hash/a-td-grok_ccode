@@ -175,6 +175,8 @@ export type TdView = {
   /** Flux (the rep currency), reps done this run, what a rep pays now (flux and O/I), and the void perks. */
   flux: number;
   reps: number;
+  /** When the last rep batch counted (ms since 1970; 0 before the rep clock starts). */
+  lastRepAt: number;
   fluxPerRep: number;
   repGold: number;
   fluxBoost: number;
@@ -444,6 +446,7 @@ export const useGame = create<State>(() => ({
     report: [],
     flux: 0,
     reps: 0,
+    lastRepAt: 0,
     fluxPerRep: CONFIG.td.void.fluxPerRep,
     repGold: 0,
     fluxBoost: 0,

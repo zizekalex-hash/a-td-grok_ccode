@@ -183,7 +183,13 @@ The run saves itself on the device whenever a wave is called or cleared, when th
 
 ### The void: reps into flux
 
-A second currency, **flux** (◆, next to the O/I at the top), comes only from reps. Tap ◆ to open the **rep window** beside the board: pick one of your Reps phrases (‹ ›), say it, tap **Rep ✓**. A rep counts only once its time has passed (0.9 s, the bar filling under the button; a tap sooner does nothing, and the game checks by the clock, so no fast-tapping or fast-forward makes more), and each pays **10 flux** (10 reps = 100), more with upgrades. The reps go into the Recitation drill too: the phrase's total and a set in the History (written every 25 reps, when the window closes, and when the run ends). If Reps has no phrase yet, the window offers the loaded text's first line. A natural time for it: once the defense is built and waves are still coming.
+A second currency, **flux** (◆, next to the O/I at the top), comes only from reps. Tap ◆ to open the **rep window**: pick one of your Reps phrases (‹ ›) and a **batch** (×1, ×10, ×20 or ×30 reps a tap), say them, tap **Rep ✓**. A batch counts only once its time has passed since the last tap that counted: 0.9 s a rep, so ×10 opens after 9 s and pays **100 flux** in one tap (the bar fills under the button; a tap sooner does nothing, and the game checks by the clock, so no fast-tapping or fast-forward makes more). Each rep pays **10 flux**, more with upgrades. The reps go into the Recitation drill too: the phrase's total and a set in the History (written every 100 reps, when the window closes, and when the run ends). If Reps has no phrase yet, the window offers the loaded text's first line. A natural time for it: once the defense is built and waves are still coming.
+
+The rep controls are yours to arrange, and stay as set on the device:
+
+- **The window** drags anywhere by its top bar, folds to that bar (−, which keeps a small Rep button), and has its own **size** and **opacity** (⚙), so the board shows through it.
+- **The round tap button** stays in game even with the window closed, at the right side to start: drag it where your thumb rests (⚙ → Move it, or Left side / Right side), with its own size and opacity. Its ring fills as the batch's time passes and turns gold when it is ready.
+- **On the board** (⚙, off to start): tapping the **core** counts the batch, and so can tapping **beside the board** (off its cells). The key **R** does too. Every way taps the same batch for the same phrase, under the same clock.
 
 Flux buys the **void set**, ten more towers, one for each (built, upgraded, specialized and refunded in flux, never O/I; the build menu's Void tab), drawn as black orbs in a glowing ring:
 

@@ -439,3 +439,13 @@ html.resting body > :not(.rest-screen) * {
     width: 100%;
   }
 }
+
+/* The TD tap button's ring: the batch's time going round. */
+@keyframes rep-ring {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowUp,
   Atom,
@@ -10,9 +10,14 @@ import {
   FastForward,
   Heart,
   Hourglass,
+  Maximize2,
+  Minus,
+  Move,
   Pause,
   Play,
+  Plus,
   Repeat,
+  Settings2,
   Shield,
   Sparkles,
   Swords,
@@ -27,6 +32,17 @@ import { getGame } from "@/game/registry";
 import { CONFIG } from "@/game/config";
 import { useGame } from "@/game/store";
 import { addItem, readReps, writeReps, type RepItem } from "@/game/reps";
+import {
+  batches,
+  batchMs,
+  clampOpacity,
+  clampScale,
+  clampSpot,
+  clampTapSize,
+  readRepUi,
+  writeRepUi,
+  type RepUi,
+} from "@/game/td/repui";
 import {
   buildCost,
   CREEPS,
@@ -401,46 +417,212 @@ function VoidPerks() {
 }
 
 /**
- * The rep window: a small window beside the board. Pick a phrase from Reps,
- * say it, tap Rep. A rep counts only once its time has passed (td.void.repSeconds,
- * shown filling up), so it is done, not tapped through; each pays flux, and they
- * go into the Recitation drill's totals and History too.
+ * The rep controls. Pick a phrase from Reps and a batch (1, 10, 20 or 30 reps a
+ * tap), say them, tap Rep: a batch counts only once its time has passed (batch x
+ * td.void.repSeconds since the last tap, by the clock), so it is done, not tapped
+ * through. Each pays flux, and they go into the Recitation drill's totals and
+ * History too. The window drags by its top bar, folds to that bar, and has its
+ * own size and opacity; the round tap button stays in game with the window
+ * closed, wherever it is put.
  */
-const REP_KEY = "azshara-td-rep-v1";
+const OLD_REP_KEY = "azshara-td-rep-v1";
+/** How far a placed box keeps from the screen's edge, in px. */
+const EDGE = 8;
 
-function RepWindow({ onClose }: { onClose: () => void }) {
+/** The rep setup, from the device (and the phrase picked before there was one). */
+function startRepUi(): RepUi {
+  const u = readRepUi();
+  if (!u.phraseId) {
+    try {
+      const old = localStorage.getItem(OLD_REP_KEY);
+      if (old) {
+        u.phraseId = old;
+        writeRepUi(u);
+      }
+    } catch {
+      /* private mode */
+    }
+  }
+  return u;
+}
+
+/** Where a box sits in the HUD: x and y are fractions of the room beside it (0 left or top, 1 right or bottom). */
+function usePlacement<T extends HTMLElement>(x: number, y: number, size: number) {
+  const ref = useRef<T>(null);
+  const [room, setRoom] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const parent = el?.offsetParent;
+    if (!el || !(parent instanceof HTMLElement)) return;
+    const measure = () => {
+      const box = el.getBoundingClientRect();
+      const w = Math.max(0, parent.clientWidth - box.width - 2 * EDGE);
+      const h = Math.max(0, parent.clientHeight - box.height - 2 * EDGE);
+      setRoom((r) => (r.w === w && r.h === h ? r : { w, h }));
+    };
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    watch.observe(parent);
+    return () => watch.disconnect();
+  }, [size]);
+  return { ref, room, left: EDGE + x * room.w, top: EDGE + y * room.h };
+}
+
+/** Dragging a placed box: the pointer moves its x and y, as fractions of its room; done when let go. */
+function useDragPlace(
+  room: { w: number; h: number },
+  spot: { x: number; y: number },
+  onPlace: (x: number, y: number, done: boolean) => void,
+  opts: { on?: boolean; buttons?: boolean } = {},
+) {
+  const drag = useRef<{ id: number; px: number; py: number; x: number; y: number; nx: number; ny: number } | null>(null);
+  const on = opts.on ?? true;
+  const end = () => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    onPlace(d.nx, d.ny, true);
+  };
+  return {
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+      if (!on || e.button !== 0) return;
+      if (!opts.buttons && (e.target as HTMLElement).closest("button")) return;
+      drag.current = { id: e.pointerId, px: e.clientX, py: e.clientY, x: spot.x, y: spot.y, nx: spot.x, ny: spot.y };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
+      const d = drag.current;
+      if (!d || d.id !== e.pointerId) return;
+      d.nx = room.w ? clampSpot(d.x + (e.clientX - d.px) / room.w) : d.x;
+      d.ny = room.h ? clampSpot(d.y + (e.clientY - d.py) / room.h) : d.y;
+      onPlace(d.nx, d.ny, false);
+    },
+    onPointerUp: end,
+    onPointerCancel: end,
+  };
+}
+
+/** The rep clock for a batch: ready once its time has passed since the last tap that counted. */
+function useRepClock(batch: number) {
+  const last = useGame((s) => s.tdView.lastRepAt);
+  const ms = batchMs(batch);
+  const readyAt = last > 0 ? last + ms : 0;
+  const [now, setNow] = useState(() => Date.now());
+  useLayoutEffect(() => {
+    const t0 = Date.now();
+    setNow(t0);
+    if (t0 >= readyAt) return;
+    const t = window.setTimeout(() => setNow(Date.now()), readyAt - t0 + 4);
+    return () => window.clearTimeout(t);
+  }, [readyAt]);
+  return { ready: now >= readyAt, readyAt, ms };
+}
+
+/** How far into its wait a batch is, as a negative animation delay (set once, when the wait shows). */
+function useWaitDelay(readyAt: number, ms: number) {
+  const [delay] = useState(() => Math.min(0, readyAt - ms - Date.now()));
+  return delay;
+}
+
+function RepBar({ readyAt, ms }: { readyAt: number; ms: number }) {
+  const delay = useWaitDelay(readyAt, ms);
+  return (
+    <span
+      className="block h-full bg-violet"
+      style={{ animation: `rep-fill ${ms}ms linear ${delay}ms forwards` }}
+    />
+  );
+}
+
+function RepRing({ readyAt, ms }: { readyAt: number; ms: number }) {
+  const delay = useWaitDelay(readyAt, ms);
+  return (
+    <circle
+      cx="50"
+      cy="50"
+      r="45"
+      pathLength={100}
+      fill="none"
+      stroke="var(--color-violet)"
+      strokeWidth="7"
+      strokeLinecap="round"
+      strokeDasharray="100"
+      transform="rotate(-90 50 50)"
+      style={{ animation: `rep-ring ${ms}ms linear ${delay}ms forwards` }}
+    />
+  );
+}
+
+/** A setting with − and + buttons. */
+function Tune({ label, value, down, up }: { label: string; value: string; down: () => void; up: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs">
+      <span className="text-muted">{label}</span>
+      <span className="flex items-center gap-1">
+        <button type="button" className="btn stepper" onClick={down} aria-label={`${label}: less`}>
+          <Minus className="size-4" aria-hidden />
+        </button>
+        <span className="w-11 text-center text-fg" aria-live="polite">
+          {value}
+        </span>
+        <button type="button" className="btn stepper" onClick={up} aria-label={`${label}: more`}>
+          <Plus className="size-4" aria-hidden />
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** An on/off setting, as one wide button. */
+function Toggle({ label, on, flip }: { label: string; on: boolean; flip: () => void }) {
+  return (
+    <button
+      type="button"
+      className="btn w-full justify-between px-2 tracking-normal normal-case"
+      data-on={on}
+      aria-pressed={on}
+      onClick={flip}
+    >
+      <span>{label}</span>
+      <span className="font-display text-[0.6rem] tracking-wider uppercase">{on ? "On" : "Off"}</span>
+    </button>
+  );
+}
+
+const pct = (v: number) => `${Math.round(v * 100)}%`;
+
+function RepWindow({
+  ui,
+  change,
+  arranging,
+  setArranging,
+  onClose,
+}: {
+  ui: RepUi;
+  change: (next: RepUi, keep?: boolean) => void;
+  arranging: boolean;
+  setArranging: (on: boolean) => void;
+  onClose: () => void;
+}) {
   const v = useGame((s) => s.tdView);
   const lines = useGame((s) => s.lines);
   const [items, setItems] = useState<RepItem[]>(() => readReps().items);
-  const [id, setId] = useState(() => {
-    try {
-      return localStorage.getItem(REP_KEY) ?? "";
-    } catch {
-      return "";
-    }
-  });
-  const item = items.find((i) => i.id === id) ?? items[0];
-  const [ready, setReady] = useState(true);
-  const [pulse, setPulse] = useState(0);
-  const [count, setCount] = useState(0);
-  const gap = Math.max(0, CONFIG.td.void.repSeconds * 1000);
-
-  useEffect(() => {
-    if (ready) return;
-    const t = window.setTimeout(() => setReady(true), gap);
-    return () => window.clearTimeout(t);
-  }, [ready, pulse, gap]);
+  const [tune, setTune] = useState(false);
+  const item = items.find((i) => i.id === ui.phraseId) ?? items[0];
+  const clock = useRepClock(ui.batch);
+  const win = ui.win;
+  const place = usePlacement<HTMLElement>(win.x, win.y, win.scale);
+  const drag = useDragPlace(place.room, win, (x, y, done) => change({ ...ui, win: { ...win, x, y } }, done));
+  const setWin = (next: Partial<RepUi["win"]>) => change({ ...ui, win: { ...win, ...next } });
+  const setTap = (next: Partial<RepUi["tap"]>) => change({ ...ui, tap: { ...ui.tap, ...next } });
+  const pays = v.fluxPerRep * ui.batch;
+  const secs = +(clock.ms / 1000).toFixed(2);
 
   const choose = (next: RepItem | undefined) => {
     if (!next) return;
     game()?.tdFlushReps();
-    setId(next.id);
-    setCount(0);
-    try {
-      localStorage.setItem(REP_KEY, next.id);
-    } catch {
-      /* private mode */
-    }
+    change({ ...ui, phraseId: next.id });
   };
   const turn = (dir: 1 | -1) => {
     if (!items.length) return;
@@ -448,12 +630,7 @@ function RepWindow({ onClose }: { onClose: () => void }) {
     choose(items[(i + dir + items.length) % items.length]);
   };
   const rep = () => {
-    if (!ready || !item) return;
-    if (game()?.tdRep(item.id)) {
-      setCount((c) => c + 1);
-      setReady(false);
-      setPulse((p) => p + 1);
-    }
+    if (clock.ready && item) game()?.tdRepBatch();
   };
   const addFirst = () => {
     const text = (lines[0] ?? "").trim();
@@ -465,23 +642,72 @@ function RepWindow({ onClose }: { onClose: () => void }) {
   };
   const close = () => {
     game()?.tdFlushReps();
+    setArranging(false);
     onClose();
   };
 
   return (
     <section
-      className="glass pointer-events-auto absolute top-[30%] right-3 z-30 w-[min(19rem,calc(100%-1.5rem))] p-2"
+      ref={place.ref}
+      className="glass pointer-events-auto absolute z-30 p-2"
+      style={{
+        left: place.left,
+        top: place.top,
+        width: win.min ? "auto" : `min(19rem, calc((100vw - 1rem) / ${win.scale}))`,
+        transform: `scale(${win.scale})`,
+        transformOrigin: "top left",
+        opacity: win.opacity,
+        backdropFilter: `blur(${Math.round(14 * win.opacity ** 3)}px)`,
+      }}
       role="dialog"
       aria-label="Rep window"
     >
-      <header className="flex items-center justify-between gap-2">
-        <p className="font-display text-xs tracking-[0.14em] text-violet">REPS → FLUX</p>
-        <p className="font-display text-xs text-violet">◆ {short(v.flux)}</p>
+      <header
+        className="flex cursor-move items-center gap-1 select-none"
+        style={{ touchAction: "none" }}
+        title="Drag to move"
+        {...drag}
+      >
+        <p className="min-w-0 flex-1 truncate font-display text-xs tracking-[0.14em] text-violet">
+          ◆ {short(v.flux)}{win.min ? "" : " FLUX"}
+        </p>
+        {win.min && item && (
+          <button
+            type="button"
+            className={`btn px-2 ${clock.ready ? "btn-gold" : ""}`}
+            disabled={!clock.ready}
+            onClick={rep}
+            aria-label={`Rep ×${ui.batch}: ${item.text}. Pays ${pays} flux`}
+          >
+            ×{ui.batch} {clock.ready ? "✓" : "…"}
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn stepper"
+          data-on={tune}
+          aria-pressed={tune}
+          onClick={() => {
+            setTune((t) => !t);
+            if (win.min) setWin({ min: false });
+          }}
+          aria-label="Rep settings"
+        >
+          <Settings2 className="size-4" aria-hidden />
+        </button>
+        <button
+          type="button"
+          className="btn stepper"
+          onClick={() => setWin({ min: !win.min })}
+          aria-label={win.min ? "Unfold the rep window" : "Fold the rep window to its top bar"}
+        >
+          {win.min ? <Maximize2 className="size-4" aria-hidden /> : <Minus className="size-4" aria-hidden />}
+        </button>
         <button type="button" className="btn stepper" onClick={close} aria-label="Close the rep window">
           <X className="size-4" aria-hidden />
         </button>
       </header>
-      {item ? (
+      {!win.min && (item ? (
         <>
           <div className="mt-1.5 flex items-center gap-1">
             <button
@@ -506,31 +732,41 @@ function RepWindow({ onClose }: { onClose: () => void }) {
               <ChevronRight className="size-4" aria-hidden />
             </button>
           </div>
+          <div className="mt-1.5 grid grid-cols-4 gap-1" role="radiogroup" aria-label="Reps per tap">
+            {batches().map((b) => (
+              <button
+                key={b}
+                type="button"
+                role="radio"
+                aria-checked={ui.batch === b}
+                data-on={ui.batch === b}
+                className="btn px-1"
+                onClick={() => change({ ...ui, batch: b })}
+              >
+                ×{b}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
-            className={`btn mt-1.5 min-h-14 w-full flex-col gap-0 ${ready ? "btn-gold" : ""}`}
-            disabled={!ready}
+            className={`btn mt-1.5 min-h-14 w-full flex-col gap-0 ${clock.ready ? "btn-gold" : ""}`}
+            disabled={!clock.ready}
             onClick={rep}
-            aria-label={`Rep: ${item.text}. Pays ${v.fluxPerRep} flux`}
+            aria-label={`Rep ×${ui.batch}: ${item.text}. Pays ${pays} flux`}
           >
-            <span className="font-display text-sm">{ready ? "Rep ✓" : "Saying it…"}</span>
+            <span className="font-display text-sm">
+              {clock.ready ? `${ui.batch} rep${ui.batch > 1 ? "s" : ""} ✓` : "Saying them…"}
+            </span>
             <span className="text-[0.6rem] tracking-normal normal-case">
-              +{v.fluxPerRep} flux{v.repGold ? ` +${v.repGold} O/I` : ""} · at least{" "}
-              {CONFIG.td.void.repSeconds} s a rep
+              +{pays.toLocaleString()} flux{v.repGold ? ` +${v.repGold * ui.batch} O/I` : ""} · {ui.batch} ×{" "}
+              {CONFIG.td.void.repSeconds} s = {secs} s
             </span>
           </button>
           <div className="mt-1 h-1 overflow-hidden rounded bg-violet/15" aria-hidden>
-            {!ready && (
-              <span
-                key={pulse}
-                className="block h-full bg-violet"
-                style={{ animation: `rep-fill ${gap}ms linear forwards` }}
-              />
-            )}
+            {!clock.ready && <RepBar key={clock.readyAt} readyAt={clock.readyAt} ms={clock.ms} />}
           </div>
           <p className="mt-1 text-center text-[0.65rem] text-muted">
-            This phrase now: {count} · this run: {v.reps.toLocaleString()} · they count in Reps and
-            History too
+            This run: {v.reps.toLocaleString()} reps · they count in Reps and History too
           </p>
         </>
       ) : (
@@ -540,8 +776,139 @@ function RepWindow({ onClose }: { onClose: () => void }) {
             Use “{(lines[0] ?? "").slice(0, 40)}”
           </button>
         </div>
+      ))}
+      {!win.min && tune && (
+        <div className="mt-2 max-h-[38dvh] space-y-1.5 overflow-y-auto border-t border-violet/30 pt-2">
+          <p className="font-display text-[0.6rem] tracking-[0.14em] text-violet">THIS WINDOW · DRAG ITS TOP BAR</p>
+          <Tune
+            label="Size"
+            value={pct(win.scale)}
+            down={() => setWin({ scale: clampScale(win.scale - 0.1) })}
+            up={() => setWin({ scale: clampScale(win.scale + 0.1) })}
+          />
+          <Tune
+            label="Opacity"
+            value={pct(win.opacity)}
+            down={() => setWin({ opacity: clampOpacity(win.opacity - 0.05) })}
+            up={() => setWin({ opacity: clampOpacity(win.opacity + 0.05) })}
+          />
+          <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">THE TAP BUTTON · STAYS WITH THIS CLOSED</p>
+          <Toggle label="Round tap button in game" on={ui.tap.on} flip={() => setTap({ on: !ui.tap.on })} />
+          {ui.tap.on && (
+            <>
+              <button
+                type="button"
+                className="btn w-full tracking-normal normal-case"
+                data-on={arranging}
+                aria-pressed={arranging}
+                onClick={() => setArranging(!arranging)}
+              >
+                <Move className="size-4" aria-hidden />
+                {arranging ? "Done moving it" : "Move it: drag the button"}
+              </button>
+              <div className="grid grid-cols-2 gap-1">
+                <button type="button" className="btn tracking-normal normal-case" onClick={() => setTap({ x: 0 })}>
+                  Left side
+                </button>
+                <button type="button" className="btn tracking-normal normal-case" onClick={() => setTap({ x: 1 })}>
+                  Right side
+                </button>
+              </div>
+              <Tune
+                label="Button size"
+                value={`${ui.tap.size}px`}
+                down={() => setTap({ size: clampTapSize(ui.tap.size - 8) })}
+                up={() => setTap({ size: clampTapSize(ui.tap.size + 8) })}
+              />
+              <Tune
+                label="Button opacity"
+                value={pct(ui.tap.opacity)}
+                down={() => setTap({ opacity: clampOpacity(ui.tap.opacity - 0.05) })}
+                up={() => setTap({ opacity: clampOpacity(ui.tap.opacity + 0.05) })}
+              />
+            </>
+          )}
+          <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">ON THE BOARD</p>
+          <Toggle label="Tapping the core counts" on={ui.coreTap} flip={() => change({ ...ui, coreTap: !ui.coreTap })} />
+          <Toggle
+            label="Tapping beside the board counts"
+            on={ui.offTap}
+            flip={() => change({ ...ui, offTap: !ui.offTap })}
+          />
+          <p className="text-[0.65rem] leading-snug text-muted">
+            Every way taps the same batch for the phrase above, and only once its time has passed. Key: R.
+          </p>
+        </div>
       )}
     </section>
+  );
+}
+
+/** The round tap button: the batch for the picked phrase, in game with the window closed. */
+function RepTapButton({
+  ui,
+  change,
+  arranging,
+}: {
+  ui: RepUi;
+  change: (next: RepUi, keep?: boolean) => void;
+  arranging: boolean;
+}) {
+  const fluxPerRep = useGame((s) => s.tdView.fluxPerRep);
+  const clock = useRepClock(ui.batch);
+  const tap = ui.tap;
+  const place = usePlacement<HTMLButtonElement>(tap.x, tap.y, tap.size);
+  const drag = useDragPlace(place.room, tap, (x, y, done) => change({ ...ui, tap: { ...tap, x, y } }, done), {
+    on: arranging,
+    buttons: true,
+  });
+  const pays = fluxPerRep * ui.batch;
+  return (
+    <button
+      ref={place.ref}
+      type="button"
+      className={`pointer-events-auto absolute z-20 grid place-items-center rounded-full font-display ${clock.ready ? "text-gold" : "text-violet"} ${arranging ? "cursor-move outline-2 outline-offset-4 outline-cyan outline-dashed" : ""}`}
+      style={{
+        left: place.left,
+        top: place.top,
+        width: tap.size,
+        height: tap.size,
+        opacity: tap.opacity,
+        touchAction: arranging ? "none" : "manipulation",
+      }}
+      onClick={() => {
+        if (!arranging) game()?.tdRepBatch();
+      }}
+      {...drag}
+      aria-label={
+        arranging
+          ? "Drag to move the tap button"
+          : `Rep ×${ui.batch}, ${clock.ready ? "ready" : "not yet"}: pays ${pays} flux`
+      }
+    >
+      <svg viewBox="0 0 100 100" className="absolute inset-0 size-full" aria-hidden>
+        <circle cx="50" cy="50" r="45" fill="rgba(8, 6, 16, 0.78)" stroke="rgba(168, 85, 247, 0.28)" strokeWidth="7" />
+        {clock.ready ? (
+          <circle cx="50" cy="50" r="45" fill="none" stroke="var(--color-gold)" strokeWidth="7" />
+        ) : (
+          <RepRing key={clock.readyAt} readyAt={clock.readyAt} ms={clock.ms} />
+        )}
+      </svg>
+      <span className="relative text-center leading-none">
+        {arranging ? (
+          <Move style={{ width: tap.size * 0.36, height: tap.size * 0.36 }} aria-hidden />
+        ) : (
+          <>
+            <span className="block" style={{ fontSize: tap.size * 0.26 }}>
+              ×{ui.batch}
+            </span>
+            <span className="mt-0.5 block" style={{ fontSize: Math.max(9, tap.size * 0.14) }}>
+              {clock.ready ? `+${short(pays)}` : "…"}
+            </span>
+          </>
+        )}
+      </span>
+    </button>
   );
 }
 
@@ -625,6 +992,16 @@ export function TdHud() {
   useChromeInsets(headerRef, footerRef);
   const [perksOpen, setPerksOpen] = useState(false);
   const [repsOpen, setRepsOpen] = useState(false);
+  const [repUi, setRepUi] = useState<RepUi>(startRepUi);
+  const [arranging, setArranging] = useState(false);
+  const changeRepUi = (next: RepUi, keep = true) => {
+    setRepUi(next);
+    if (keep) writeRepUi(next);
+  };
+  // The rep clock starts with the board, so the first batch is earned too.
+  useEffect(() => {
+    game()?.tdArmReps();
+  }, []);
   const lifePct = Math.max(0, Math.min(100, (v.lives / Math.max(1, v.maxLives)) * 100));
   const status = paused
     ? "Held"
@@ -769,7 +1146,16 @@ export function TdHud() {
       </footer>
 
       {perksOpen && <PerkSheet onClose={() => setPerksOpen(false)} />}
-      {repsOpen && <RepWindow onClose={() => setRepsOpen(false)} />}
+      {repUi.tap.on && <RepTapButton ui={repUi} change={changeRepUi} arranging={arranging} />}
+      {repsOpen && (
+        <RepWindow
+          ui={repUi}
+          change={changeRepUi}
+          arranging={arranging}
+          setArranging={setArranging}
+          onClose={() => setRepsOpen(false)}
+        />
+      )}
     </div>
   );
 }

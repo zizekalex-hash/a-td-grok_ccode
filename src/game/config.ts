@@ -580,6 +580,8 @@ export interface GameConfig {
     void: {
       fluxPerRep: number;
       repSeconds: number;
+      /** Reps one tap can count at once (each takes repSeconds). */
+      batches: number[];
       startFlux: number;
       summonGold: number;
       summonGoldPerWave: number;
