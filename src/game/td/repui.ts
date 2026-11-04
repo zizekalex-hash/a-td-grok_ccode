@@ -17,9 +17,13 @@ export interface RepUi {
   batch: number;
   /** The window: its place (fractions), size (scale), opacity, and folded to its top bar. */
   win: { x: number; y: number; scale: number; opacity: number; min: boolean };
-  /** The tap button: shown, its place (fractions), size (px), opacity, and the phrase under it (shown, font px). */
+  /**
+   * The tap button: shown, its place (fractions), size (px), opacity, the phrase
+   * under it (shown, font px), and a twin on the other side (at 1 - x, same height).
+   */
   tap: {
     on: boolean;
+    twin: boolean;
     x: number;
     y: number;
     size: number;
@@ -60,7 +64,7 @@ export function defaultRepUi(): RepUi {
     phraseId: "",
     batch: list.includes(10) ? 10 : list[0]!,
     win: { x: 0.5, y: 0.26, scale: 1, opacity: 0.92, min: false },
-    tap: { on: true, x: 1, y: 0.4, size: 72, opacity: 0.85, label: true, labelSize: 9 },
+    tap: { on: true, twin: true, x: 1, y: 0.4, size: 72, opacity: 0.85, label: true, labelSize: 9 },
     coreTap: false,
     offTap: false,
   };
@@ -83,6 +87,7 @@ export function loadRepUi(data: unknown): RepUi {
   const t = obj(d.tap);
   u.tap = {
     on: typeof t.on === "boolean" ? t.on : u.tap.on,
+    twin: typeof t.twin === "boolean" ? t.twin : u.tap.twin,
     x: clampSpot(num(t.x, u.tap.x)),
     y: clampSpot(num(t.y, u.tap.y)),
     size: clampTapSize(num(t.size, u.tap.size)),

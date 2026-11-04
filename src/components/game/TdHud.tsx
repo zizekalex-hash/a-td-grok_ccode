@@ -805,6 +805,11 @@ function RepWindow({
           <Toggle label="Round tap button in game" on={ui.tap.on} flip={() => setTap({ on: !ui.tap.on })} />
           {ui.tap.on && (
             <>
+              <Toggle
+                label="A twin on the other side"
+                on={ui.tap.twin}
+                flip={() => setTap({ twin: !ui.tap.twin })}
+              />
               <button
                 type="button"
                 className="btn w-full tracking-normal normal-case"
@@ -813,7 +818,7 @@ function RepWindow({
                 onClick={() => setArranging(!arranging)}
               >
                 <Move className="size-4" aria-hidden />
-                {arranging ? "Done moving it" : "Move it: drag the button"}
+                {arranging ? "Done moving" : ui.tap.twin ? "Move them: drag either" : "Move it: drag the button"}
               </button>
               <div className="grid grid-cols-2 gap-1">
                 <button type="button" className="btn tracking-normal normal-case" onClick={() => setTap({ x: 0 })}>
@@ -871,10 +876,13 @@ function RepTapButton({
   ui,
   change,
   arranging,
+  mirror = false,
 }: {
   ui: RepUi;
   change: (next: RepUi, keep?: boolean) => void;
   arranging: boolean;
+  /** The twin on the other side: at 1 - x, and moving it moves both. */
+  mirror?: boolean;
 }) {
   const voidPerks = useGame((s) => s.tdView.voidPerks);
   const fluxBoost = useGame((s) => s.tdView.fluxBoost);
@@ -886,13 +894,16 @@ function RepTapButton({
     return (items.find((i) => i.id === ui.phraseId) ?? items[0])?.text ?? "";
   }, [ui.phraseId]);
   const label = tap.label && phrase ? phrase : "";
-  const place = usePlacement<HTMLDivElement>(tap.x, tap.y, tap.size);
-  const drag = useDragPlace(place.room, tap, (x, y, done) => change({ ...ui, tap: { ...tap, x, y } }, done), {
-    on: arranging,
-    buttons: true,
-  });
+  const x = mirror ? 1 - tap.x : tap.x;
+  const place = usePlacement<HTMLDivElement>(x, tap.y, tap.size);
+  const drag = useDragPlace(
+    place.room,
+    { x, y: tap.y },
+    (nx, y, done) => change({ ...ui, tap: { ...tap, x: clampSpot(mirror ? 1 - nx : nx), y } }, done),
+    { on: arranging, buttons: true },
+  );
   const pays = batchFlux(voidPerks, fluxBoost, reps, ui.batch);
-  const side = tap.x < 0.34 ? "items-start text-left" : tap.x > 0.66 ? "items-end text-right" : "items-center text-center";
+  const side = x < 0.34 ? "items-start text-left" : x > 0.66 ? "items-end text-right" : "items-center text-center";
   return (
     <div
       ref={place.ref}
@@ -1188,6 +1199,9 @@ export function TdHud() {
 
       {perksOpen && <PerkSheet onClose={() => setPerksOpen(false)} />}
       {repUi.tap.on && <RepTapButton ui={repUi} change={changeRepUi} arranging={arranging} />}
+      {repUi.tap.on && repUi.tap.twin && (
+        <RepTapButton ui={repUi} change={changeRepUi} arranging={arranging} mirror />
+      )}
       {repsOpen && (
         <RepWindow
           ui={repUi}

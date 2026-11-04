@@ -337,13 +337,14 @@ describe("the rep controls' setup", () => {
     const u = defaultRepUi();
     assert.equal(u.batch, 10);
     assert.ok(u.tap.on && u.tap.x > 0.5, "the tap button starts at the right side");
+    assert.ok(u.tap.twin, "and its twin at the left");
     assert.equal(u.coreTap, false);
     assert.equal(u.offTap, false);
     assert.equal(batchMs(10), 10 * V.repSeconds * 1000);
     const back = loadRepUi({
       batch: 17,
       win: { x: 2, y: -1, scale: 9, opacity: 0 },
-      tap: { on: false, size: 5, opacity: 0.5, x: 0.05, labelSize: 99 },
+      tap: { on: false, twin: false, size: 5, opacity: 0.5, x: 0.05, labelSize: 99 },
       coreTap: true,
       offTap: "yes",
       phraseId: "a",
@@ -351,6 +352,7 @@ describe("the rep controls' setup", () => {
     assert.equal(back.batch, 20, "the nearest batch there is");
     assert.deepEqual(back.win, { x: 1, y: 0, scale: 1.6, opacity: 0.15, min: false });
     assert.equal(back.tap.on, false);
+    assert.equal(back.tap.twin, false);
     assert.equal(back.tap.size, 44);
     assert.equal(back.tap.x, 0.05);
     assert.equal(back.tap.label, true, "the phrase shows under the button to start");
