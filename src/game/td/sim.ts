@@ -12,7 +12,7 @@ import {
   buildCost,
   CREEPS,
   currencyOf,
-  fluxPerRep,
+  batchFlux,
   noVoidPerks,
   repGold,
   summonCost,
@@ -506,7 +506,7 @@ export function addRep(
     return fail(`${n === 1 ? "A rep" : `${n} reps`} take${n === 1 ? "s" : ""} ${+(gap / 1000).toFixed(2)} s: ${left} s to go`);
   }
   s.lastRepAt = now;
-  const flux = fluxPerRep(s.voidPerks, s.fluxBoost) * n;
+  const flux = batchFlux(s.voidPerks, s.fluxBoost, s.reps, n);
   const gold = repGold(s.voidPerks) * n;
   s.flux += flux;
   s.gold += gold;

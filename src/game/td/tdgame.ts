@@ -825,7 +825,7 @@ export class TdGame implements GameBase {
       flux: sim.flux,
       reps: sim.reps,
       lastRepAt: sim.lastRepAt,
-      fluxPerRep: fluxPerRep(sim.voidPerks, sim.fluxBoost),
+      fluxPerRep: fluxPerRep(sim.voidPerks, sim.fluxBoost, sim.reps),
       repGold: repGold(sim.voidPerks),
       fluxBoost: sim.fluxBoost,
       voidPerks: { ...sim.voidPerks },

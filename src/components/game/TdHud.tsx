@@ -63,6 +63,8 @@ import {
   TOWERS,
   towerStats,
   type SpellKey,
+  batchFlux,
+  repsToGrowth,
 } from "@/game/td/economy";
 import { MAP_KEYS, MAPS, mapFor, type TdMap } from "@/game/td/map";
 import { bestKey, TdGame } from "@/game/td/tdgame";
@@ -366,7 +368,11 @@ function VoidPerks() {
       </div>
       <p className="mt-1 text-xs leading-snug text-muted">
         Flux comes only from reps (the ◆ at the top opens the rep window): +{v.fluxPerRep} a rep now
-        {v.repGold ? `, and +${v.repGold} O/I` : ""}. {v.reps.toLocaleString()} reps this run
+        {v.repGold ? `, and +${v.repGold} O/I` : ""}
+        {CONFIG.td.void.repGrowth > 0
+          ? `, +${CONFIG.td.void.repGrowth} a rep for every ${CONFIG.td.void.repGrowthEvery} reps done`
+          : ""}
+        . {v.reps.toLocaleString()} reps this run
         {v.fluxBoost ? `; Rift Titans slain: +${Math.round(v.fluxBoost * 100)}% a rep` : ""}.
       </p>
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -616,7 +622,8 @@ function RepWindow({
   const drag = useDragPlace(place.room, win, (x, y, done) => change({ ...ui, win: { ...win, x, y } }, done));
   const setWin = (next: Partial<RepUi["win"]>) => change({ ...ui, win: { ...win, ...next } });
   const setTap = (next: Partial<RepUi["tap"]>) => change({ ...ui, tap: { ...ui.tap, ...next } });
-  const pays = v.fluxPerRep * ui.batch;
+  const pays = batchFlux(v.voidPerks, v.fluxBoost, v.reps, ui.batch);
+  const growth = CONFIG.td.void.repGrowth;
   const secs = +(clock.ms / 1000).toFixed(2);
 
   const choose = (next: RepItem | undefined) => {
@@ -766,7 +773,8 @@ function RepWindow({
             {!clock.ready && <RepBar key={clock.readyAt} readyAt={clock.readyAt} ms={clock.ms} />}
           </div>
           <p className="mt-1 text-center text-[0.65rem] text-muted">
-            This run: {v.reps.toLocaleString()} reps · they count in Reps and History too
+            This run: {v.reps.toLocaleString()} reps · {v.fluxPerRep} flux a rep now
+            {growth > 0 ? `, +${growth} in ${repsToGrowth(v.reps)} more` : ""} · they count in Reps and History too
           </p>
         </>
       ) : (
@@ -854,7 +862,9 @@ function RepTapButton({
   change: (next: RepUi, keep?: boolean) => void;
   arranging: boolean;
 }) {
-  const fluxPerRep = useGame((s) => s.tdView.fluxPerRep);
+  const voidPerks = useGame((s) => s.tdView.voidPerks);
+  const fluxBoost = useGame((s) => s.tdView.fluxBoost);
+  const reps = useGame((s) => s.tdView.reps);
   const clock = useRepClock(ui.batch);
   const tap = ui.tap;
   const place = usePlacement<HTMLButtonElement>(tap.x, tap.y, tap.size);
@@ -862,7 +872,7 @@ function RepTapButton({
     on: arranging,
     buttons: true,
   });
-  const pays = fluxPerRep * ui.batch;
+  const pays = batchFlux(voidPerks, fluxBoost, reps, ui.batch);
   return (
     <button
       ref={place.ref}

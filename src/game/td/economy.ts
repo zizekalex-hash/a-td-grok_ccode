@@ -117,9 +117,27 @@ export function voidPerkCost(key: VoidPerkKey, level: number): number {
   return spec.baseCost + spec.costPerLevel * level;
 }
 
-/** Flux one rep pays: fluxPerRep, raised by Resonance and by every Rift Titan slain (boost). */
-export function fluxPerRep(vp: VoidPerks, boost = 0): number {
-  return Math.round(V.fluxPerRep * (1 + VOID_PERKS.yield.amount * vp.yield + Math.max(0, boost)));
+/**
+ * Flux one rep pays after reps others in the run: fluxPerRep plus repGrowth for
+ * every repGrowthEvery reps done, raised by Resonance and by every Rift Titan slain (boost).
+ */
+export function fluxPerRep(vp: VoidPerks, boost = 0, reps = 0): number {
+  const every = Math.max(1, Math.floor(V.repGrowthEvery));
+  const base = V.fluxPerRep + Math.max(0, V.repGrowth) * Math.floor(Math.max(0, reps) / every);
+  return Math.round(base * (1 + VOID_PERKS.yield.amount * vp.yield + Math.max(0, boost)));
+}
+
+/** Flux a batch of n reps pays, done after reps others in the run (each rep at its own step). */
+export function batchFlux(vp: VoidPerks, boost: number, reps: number, n: number): number {
+  let flux = 0;
+  for (let i = 0; i < n; i++) flux += fluxPerRep(vp, boost, reps + i);
+  return flux;
+}
+
+/** Reps to go before flux a rep goes up again. */
+export function repsToGrowth(reps: number): number {
+  const every = Math.max(1, Math.floor(V.repGrowthEvery));
+  return every - (Math.max(0, reps) % every);
 }
 
 /** O/I one rep also pays, with Rep tithe. */

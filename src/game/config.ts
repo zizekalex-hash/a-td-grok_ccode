@@ -579,6 +579,9 @@ export interface GameConfig {
     /** Flux, the rep currency, and what it buys (see td.void._about). */
     void: {
       fluxPerRep: number;
+      /** Flux a rep goes up by for every repGrowthEvery reps done in the run. */
+      repGrowth: number;
+      repGrowthEvery: number;
       repSeconds: number;
       /** Reps one tap can count at once (each takes repSeconds). */
       batches: number[];

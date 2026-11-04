@@ -7,12 +7,14 @@ import assert from "node:assert/strict";
 import { CONFIG } from "../config.ts";
 import { buildable, laneCount, laneLength, MAPS, pointAt, type TdMap } from "./map.ts";
 import {
+  batchFlux,
   buildCost,
   CREEPS,
   fluxPerRep,
   isVoid,
   noVoidPerks,
   repGold,
+  repsToGrowth,
   summonCost,
   summonReward,
   TOWER_KEYS,
@@ -111,6 +113,24 @@ describe("the void", () => {
     armReps(s, 999_999_999);
     assert.equal(s.lastRepAt, 100_000 + ten, "arming does not reset a running clock");
     assert.deepEqual(CONFIG.td.void.batches.slice(0, 2), [1, 10]);
+  });
+
+  it("pays more as the run's reps grow: +1 flux a rep for every 10 done (100, 110, 120)", () => {
+    assert.equal(V.repGrowth, 1);
+    assert.equal(V.repGrowthEvery, 10);
+    const s = createGame();
+    armReps(s, 1);
+    const ten = 10 * V.repSeconds * 1000;
+    const paid: number[] = [];
+    for (let i = 1; i <= 3; i++) paid.push(addRep(s, 1 + i * ten, 10).flux ?? 0);
+    assert.deepEqual(paid, [100, 110, 120]);
+    assert.equal(s.flux, V.startFlux + 330);
+    assert.equal(fluxPerRep(s.voidPerks, 0, s.reps), 13, "the next rep pays 13");
+    // A batch across a step pays each rep at its own step: 5 at 10, then 5 at 11.
+    assert.equal(batchFlux(noVoidPerks(), 0, 5, 10), 105);
+    assert.equal(batchFlux(noVoidPerks(), 0, 0, 30), 330);
+    assert.equal(repsToGrowth(0), 10);
+    assert.equal(repsToGrowth(13), 7);
   });
 
   it("builds, upgrades and sells void towers with flux, never O/I", () => {
