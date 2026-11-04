@@ -413,8 +413,13 @@ export function textSum(lines: string[]): string {
 /** A text checked (and not changed since), changed since it was checked, or not checked. */
 export type CheckState = "checked" | "changed" | "unchecked";
 
-export function checkState(s: ReaderState, name: string, lines: string[]): CheckState {
-  const c = s.checked[textKey(name)];
+export function checkState(
+  s: ReaderState,
+  name: string,
+  lines: string[],
+  folder?: string,
+): CheckState {
+  const c = s.checked[textKey(name, folder)];
   if (!c) return "unchecked";
   return c.sum === textSum(lines) ? "checked" : "changed";
 }
@@ -425,14 +430,18 @@ export function markChecked(
   name: string,
   lines: string[],
   now: number,
+  folder?: string,
 ): ReaderState {
-  return { ...s, checked: { ...s.checked, [textKey(name)]: { at: now, sum: textSum(lines) } } };
+  return {
+    ...s,
+    checked: { ...s.checked, [textKey(name, folder)]: { at: now, sum: textSum(lines) } },
+  };
 }
 
 /** Takes the check off a text. */
-export function unmarkChecked(s: ReaderState, name: string): ReaderState {
+export function unmarkChecked(s: ReaderState, name: string, folder?: string): ReaderState {
   const checked = { ...s.checked };
-  delete checked[textKey(name)];
+  delete checked[textKey(name, folder)];
   return { ...s, checked };
 }
 
@@ -505,9 +514,12 @@ export function editPhrase(lines: string[], unit: Unit, text: string): string[] 
   return out;
 }
 
-/** A text's key for your place in it: its name (an edited text keeps its place). */
-export function textKey(name: string): string {
-  return name;
+/**
+ * A text's key for your place in it and its check: its name (an edited text
+ * keeps its place), with its folder in front for a text from a .zip folder.
+ */
+export function textKey(name: string, folder?: string): string {
+  return folder ? `${folder}/${name}` : name;
 }
 
 /** The phrase to start at (the next one, or the first after the end). */

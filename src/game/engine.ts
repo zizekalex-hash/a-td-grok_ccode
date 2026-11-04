@@ -1,7 +1,7 @@
 import { sfx } from "@/game/audio";
 import { Backdrop } from "@/game/backdrop";
 import { drawCoreImage } from "@/game/coreImage";
-import { DEFAULT_CODEX, parseCodex } from "@/game/codex";
+import { DEFAULT_CODEX, MAX_LINES, parseCodex } from "@/game/codex";
 import { CONFIG } from "@/game/config";
 import { pickCouncilLine, QUEEN } from "@/game/council";
 import { FrameLimiter, frameStats, renderDpr } from "@/game/frameLimiter";
@@ -12,7 +12,13 @@ import { getGame, setActiveGame, type GameBase } from "@/game/registry";
 import { byName, gateOpen, readChunk, wrapped, type Cursor, type PhraseGate } from "@/game/reader";
 import { mergeTexts } from "@/game/texts";
 import { DISPLAY, FONT, PAL } from "@/game/palette";
-import { defaultSettings, useGame, type LoadedText, type Settings } from "@/game/store";
+import {
+  defaultSettings,
+  useGame,
+  type LoadedText,
+  type Settings,
+  type TextFolder,
+} from "@/game/store";
 import { coreDamageMultiplier, coreLevel, type SkillKey } from "@/game/recite";
 import {
   cooldownMultiplier,
@@ -240,6 +246,7 @@ function persistShared() {
         lines: s.custom ? s.lines : null,
         texts: s.custom ? s.texts : null,
         textIndex: s.textIndex,
+        folders: s.folders,
         skills: s.skills,
       }),
     );
@@ -291,6 +298,58 @@ export function nudgeSetting(key: FieldKey, dir: number) {
 
 /** Most text files kept at once. */
 export const MAX_TEXTS = 30;
+
+/** Most texts in all the folders (from .zip files) together. */
+export const MAX_FOLDER_TEXTS = 300;
+
+/**
+ * Loads the .txt files of a .zip as a folder of its own in the Read tab, apart
+ * from the texts loaded one by one (and from the games, which read those).
+ * Loading a zip of the same name again adds what is new to that folder.
+ */
+export function loadTextFolder(zipName: string, files: { name: string; raw: string }[]) {
+  const name = zipName.replace(/\.zip$/i, "").trim().slice(0, 120) || "Folder";
+  const incoming = files
+    .map((f) => ({ name: f.name.slice(0, 120) || "Text", lines: parseCodex(f.raw) }))
+    .filter((t) => t.lines.length > 0);
+  if (!incoming.length) {
+    flashToast(`No usable texts in ${zipName}`);
+    return;
+  }
+  const { folders } = useGame.getState();
+  const old = folders.find((f) => f.name === name);
+  const elsewhere = folders.reduce((n, f) => n + (f === old ? 0 : f.texts.length), 0);
+  const room = Math.max(0, MAX_FOLDER_TEXTS - elsewhere);
+  const r = mergeTexts(old?.texts ?? [], incoming, room);
+  if (!r.added) {
+    flashToast(r.full ? `${MAX_FOLDER_TEXTS} folder texts at most: remove a folder first` : `“${name}” has those texts already`);
+    return;
+  }
+  const folder: TextFolder = { name, texts: r.texts };
+  useGame.setState({
+    folders: old ? folders.map((f) => (f === old ? folder : f)) : [...folders, folder],
+  });
+  flashToast(
+    `Folder “${name}”: ${r.added} text${r.added === 1 ? "" : "s"} added${r.already ? `, ${r.already} already there` : ""}${r.full ? `, ${r.full} over the limit` : ""}`,
+  );
+  schedulePersist();
+}
+
+/** Takes a whole folder out of the Read tab. */
+export function removeFolder(name: string) {
+  useGame.setState({ folders: useGame.getState().folders.filter((f) => f.name !== name) });
+  schedulePersist();
+}
+
+/** Takes one text out of a folder (an empty folder goes too). */
+export function removeFolderText(folder: string, index: number) {
+  const folders = useGame
+    .getState()
+    .folders.map((f) => (f.name === folder ? { ...f, texts: f.texts.filter((_, i) => i !== index) } : f))
+    .filter((f) => f.texts.length > 0);
+  useGame.setState({ folders });
+  schedulePersist();
+}
 
 /** Loads one pasted text, in place of whatever was loaded. */
 export function loadCodexText(raw: string) {
@@ -376,9 +435,21 @@ export function removeText(index: number) {
  * A text rewritten (the Read tab's Edit): its lines replaced, keeping its name
  * and place. The built-in text, edited, becomes a text of your own.
  */
-export function updateText(name: string, lines: string[]) {
-  const { texts, custom, textIndex } = useGame.getState();
+export function updateText(name: string, lines: string[], folder?: string) {
+  const { texts, custom, textIndex, folders } = useGame.getState();
   if (!lines.length) return;
+  // A text in a folder: changed there, and nowhere else.
+  if (folder) {
+    useGame.setState({
+      folders: folders.map((f) =>
+        f.name === folder
+          ? { ...f, texts: f.texts.map((t) => (t.name === name ? { name, lines } : t)) }
+          : f,
+      ),
+    });
+    schedulePersist();
+    return;
+  }
   if (!custom || !texts.length) {
     useGame.setState({ texts: [{ name, lines }], textIndex: 0, lines, custom: true });
     getGame()?.onCodex(lines.length);
@@ -771,6 +842,7 @@ export class Engine implements GameBase {
         lines: s.custom ? s.lines : null,
         texts: s.custom ? s.texts : null,
         textIndex: s.textIndex,
+        folders: s.folders,
         skills: s.skills,
       };
       localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
@@ -791,6 +863,7 @@ export class Engine implements GameBase {
         lines?: unknown;
         texts?: unknown;
         textIndex?: unknown;
+        folders?: unknown;
         skills?: Partial<Record<SkillKey, number>>;
       };
       if (data.settings && typeof data.settings === "object") {
@@ -798,7 +871,7 @@ export class Engine implements GameBase {
         applySound(useGame.getState().settings);
       }
       const clean = (v: unknown) =>
-        Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 4).slice(0, 400) : [];
+        Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 4).slice(0, MAX_LINES) : [];
       const texts: LoadedText[] = data.custom && Array.isArray(data.texts)
         ? data.texts
             .map((t) => {
@@ -815,6 +888,25 @@ export class Engine implements GameBase {
         // Saves from before several texts: one text, kept as the only one.
         const lines = clean(data.lines);
         if (lines.length) useGame.setState({ lines, texts: [{ name: "Your text", lines }], textIndex: 0, custom: true });
+      }
+      // The Read tab's folders (from .zip files), each text checked like the others.
+      if (Array.isArray(data.folders)) {
+        let left = MAX_FOLDER_TEXTS;
+        const folders: TextFolder[] = [];
+        for (const f of data.folders) {
+          const o = (typeof f === "object" && f !== null ? f : {}) as { name?: unknown; texts?: unknown };
+          if (typeof o.name !== "string" || !Array.isArray(o.texts)) continue;
+          const texts = o.texts
+            .map((t) => {
+              const x = (typeof t === "object" && t !== null ? t : {}) as { name?: unknown; lines?: unknown };
+              return { name: typeof x.name === "string" ? x.name.slice(0, 120) : "Text", lines: clean(x.lines) };
+            })
+            .filter((t) => t.lines.length > 0)
+            .slice(0, left);
+          left -= texts.length;
+          if (texts.length) folders.push({ name: o.name.slice(0, 120), texts });
+        }
+        useGame.setState({ folders });
       }
       if (data.skills && typeof data.skills === "object") {
         const skills = useGame.getState().skills;

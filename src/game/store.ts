@@ -73,6 +73,8 @@ export type Settings = {
 
 /** A loaded text file: its name and its sectors. */
 export type LoadedText = { name: string; lines: string[] };
+/** A folder of texts loaded from a .zip (the Read tab): kept apart from the texts loaded one by one, and from the games. */
+export type TextFolder = { name: string; texts: LoadedText[] };
 
 export type Hud = {
   wave: number;
@@ -365,6 +367,7 @@ type State = {
   lines: string[];
   /** Every loaded text, read in turn; `lines` is the one in use. Empty for the built-in text. */
   texts: LoadedText[];
+  folders: TextFolder[];
   textIndex: number;
   hud: Hud;
   chrome: Chrome;
@@ -399,6 +402,7 @@ export const useGame = create<State>(() => ({
   settings: defaultSettings,
   lines: DEFAULT_CODEX,
   texts: [],
+  folders: [],
   textIndex: 0,
   hud: initialHud,
   chrome: initialChrome,

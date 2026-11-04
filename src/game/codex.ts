@@ -5,7 +5,7 @@ export const DEFAULT_CODEX: string[] = CONFIG.textPool;
 
 /** How much of a text is kept: whole texts fit (the Read tab reads them through). */
 const MAX_CHARS = 1_000_000;
-const MAX_LINES = 2000;
+export const MAX_LINES = 2000;
 
 export function parseCodex(raw: string): string[] {
   const clipped = raw.length > MAX_CHARS ? raw.slice(0, MAX_CHARS) : raw;

@@ -19,6 +19,7 @@ import {
   ChevronRight,
   ChevronUp,
   Download,
+  FolderArchive,
   Eye,
   EyeOff,
   Lock,
@@ -35,7 +36,17 @@ import {
 } from "lucide-react";
 import { Confirm } from "@/components/game/Confirm";
 import { CONFIG } from "@/game/config";
-import { flashToast, grantSkillXp, loadCodexTexts, removeText, updateText } from "@/game/engine";
+import {
+  flashToast,
+  grantSkillXp,
+  loadCodexTexts,
+  loadTextFolder,
+  removeFolder,
+  removeFolderText,
+  removeText,
+  updateText,
+} from "@/game/engine";
+import { unzipTexts } from "@/game/unzip";
 import { levelForXp, repXp } from "@/game/recite";
 import { clock, logRead, readReps, writeReps } from "@/game/reps";
 import {
@@ -192,10 +203,11 @@ function miniWindow(): Promise<{ api: MiniWindowApi } | null> {
 /** The mini window's shape: the words' area, a little wider than tall. */
 const MINI_SHAPE = { width: 16, height: 10 };
 
-/** A text to read: its name and lines. */
+/** A text to read: its name and lines, and its folder for a text from a .zip. */
 interface OpenText {
   name: string;
   lines: string[];
+  folder?: string;
 }
 
 /** "notes.txt", safe for a file name (or "notes.png"). */
@@ -257,7 +269,7 @@ async function exportText(name: string, lines: string[]) {
  * Documents/confirmed_txt (the folder is made if it is not there). If the phone
  * will not take it there, the share sheet; in a browser, a download.
  */
-async function saveConfirmed(name: string, lines: string[]) {
+async function saveConfirmed(name: string, lines: string[], sub?: string) {
   const folder = (CONFIG.reader.confirmedFolder || "confirmed_txt").replace(/[\\/:*?"<>|]+/g, "-");
   const file = fileName(name);
   const body = `${lines.join("\n")}\n`;
@@ -268,14 +280,15 @@ async function saveConfirmed(name: string, lines: string[]) {
     native = Capacitor.isNativePlatform();
     if (native) {
       const { Filesystem, Directory, Encoding } = await import("@capacitor/filesystem");
+      const dir = sub ? `${folder}/${sub.replace(/[\\:*?"<>|]+/g, "-")}` : folder;
       await Filesystem.writeFile({
-        path: `${folder}/${file}`,
+        path: `${dir}/${file}`,
         data: body,
         directory: Directory.Documents,
         encoding: Encoding.UTF8,
         recursive: true,
       });
-      flashToast(`Checked ✓ saved: Documents/${folder}/${file}`);
+      flashToast(`Checked ✓ saved: Documents/${dir}/${file}`);
       return;
     }
   } catch {
@@ -284,7 +297,11 @@ async function saveConfirmed(name: string, lines: string[]) {
       return;
     }
   }
-  await saveFile(`${folder}_${file}`, blob(), "Save the checked text");
+  await saveFile(
+    `${folder}_${sub ? `${sub.replace(/[\\/:*?"<>|]+/g, "-")}_` : ""}${file}`,
+    blob(),
+    "Save the checked text",
+  );
 }
 
 /** "3 Nov", for when a text was checked. */
@@ -374,11 +391,12 @@ export function ReadTab() {
   const texts = useGame((s) => s.texts);
   const custom = useGame((s) => s.custom);
   const lines = useGame((s) => s.lines);
+  const folders = useGame((s) => s.folders);
   const [reader, setReader] = useState<ReaderState>(() => readReader());
   const [open, setOpen] = useState<OpenText | null>(null);
-  const [asking, setAsking] = useState<number | null>(null);
-  const [checking, setChecking] = useState<number | null>(null);
+  const [dropping, setDropping] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const zipRef = useRef<HTMLInputElement>(null);
 
   const library = useMemo(
     () => (custom && texts.length ? texts : [{ name: "Built-in text", lines }]),
@@ -395,7 +413,33 @@ export function ReadTab() {
       flashToast("No phrases in that text");
       return;
     }
-    setOpen({ name: t.name, lines: t.lines });
+    setOpen({ name: t.name, lines: t.lines, folder: t.folder });
+  };
+
+  /** Files picked: each .zip becomes a folder of its own; .txt files join your texts. */
+  const load = (files: File[]) => {
+    const zips = files.filter((f) => /\.zip$/i.test(f.name));
+    const txts = files.filter((f) => !/\.zip$/i.test(f.name));
+    for (const z of zips) {
+      void z
+        .arrayBuffer()
+        .then((buf) => unzipTexts(new Uint8Array(buf)))
+        .then(
+          (found) =>
+            found.length
+              ? loadTextFolder(
+                  z.name,
+                  found.map((f) => ({ name: f.name, raw: f.text })),
+                )
+              : flashToast(`No .txt files in ${z.name}`),
+          (e: unknown) => flashToast(`${z.name}: ${String((e as Error)?.message ?? e)}`),
+        );
+    }
+    if (txts.length)
+      void Promise.all(txts.map(async (f) => ({ name: f.name, raw: await f.text() }))).then(
+        (loaded) => loadCodexTexts(loaded),
+        () => flashToast("Could not read that file"),
+      );
   };
 
   if (open)
@@ -411,156 +455,245 @@ export function ReadTab() {
       />
     );
 
+  const checkedIn = (list: { name: string; lines: string[] }[], folder?: string) =>
+    list.filter((t) => checkState(reader, t.name, t.lines, folder) === "checked").length;
+
   return (
     <div>
       <p className="text-sm leading-relaxed text-muted">
         Read a whole text, phrase by phrase in order, word by word: the big word in the middle, the
         whole phrase below. Your texts stay here (the same ones the game reads), with your place in
-        each; fix a phrase while reading (Edit), and take any text out as a .txt (⬇).
+        each; fix a phrase while reading (Edit), and take any text out as a .txt (⬇). A .zip of
+        texts becomes a folder of its own, kept apart from the rest.
       </p>
-      <div className="mt-3 grid grid-cols-1 gap-2">
+      <div className="mt-3 grid grid-cols-2 gap-2">
         <button type="button" className="btn min-h-11" onClick={() => fileRef.current?.click()}>
           <Upload className="size-4" aria-hidden />
-          Load .txt (adds to your texts)
+          Load .txt
+        </button>
+        <button type="button" className="btn min-h-11" onClick={() => zipRef.current?.click()}>
+          <FolderArchive className="size-4" aria-hidden />
+          Load .zip (a folder)
         </button>
         <input
           ref={fileRef}
           className="hidden"
           type="file"
-          accept=".txt,text/plain"
+          accept=".txt,text/plain,.zip,application/zip,application/x-zip-compressed"
           multiple
           aria-label="Text files to read"
           onChange={(e) => {
             const files = [...(e.target.files ?? [])];
             e.target.value = "";
-            if (!files.length) return;
-            void Promise.all(files.map(async (f) => ({ name: f.name, raw: await f.text() }))).then(
-              (loaded) => loadCodexTexts(loaded),
-              () => flashToast("Could not read that file"),
-            );
+            if (files.length) load(files);
+          }}
+        />
+        <input
+          ref={zipRef}
+          className="hidden"
+          type="file"
+          accept=".zip,application/zip,application/x-zip-compressed"
+          multiple
+          aria-label="Zip files of texts"
+          onChange={(e) => {
+            const files = [...(e.target.files ?? [])];
+            e.target.value = "";
+            if (files.length) load(files);
           }}
         />
       </div>
 
       <h3 className="mt-4 text-xs tracking-wider text-muted uppercase">
         Your texts ({library.length}) ·{" "}
-        <span className="text-green-400">
-          checked{" "}
-          {library
-            .filter((t) => checkState(reader, t.name, t.lines) === "checked")
-            .length.toLocaleString()}
-        </span>
+        <span className="text-green-400">checked {checkedIn(library).toLocaleString()}</span>
       </h3>
       <ul className="mt-1 space-y-2" aria-label="Your texts">
-        {library.map((t, i) => {
-          const at = placeOf(reader, textKey(t.name), Number.MAX_SAFE_INTEGER);
-          const state = checkState(reader, t.name, t.lines);
-          const when = reader.checked[textKey(t.name)]?.at ?? 0;
-          return (
-            <li key={`${i}-${t.name}`} className="rounded-md border border-cyan/25 p-2">
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  className="min-w-0 flex-1 rounded-md p-1 text-left hover:bg-cyan/5"
-                  onClick={() => openText(t)}
-                  aria-label={`Read ${t.name}${at ? `, from phrase ${at + 1}` : ""}`}
-                >
-                  <span className="block truncate text-fg">
-                    <BookOpen className="mr-1 inline size-4 align-[-2px] text-cyan" aria-hidden />
-                    {t.name}
-                  </span>
-                  <span className="block text-xs text-muted">
-                    {t.lines.length.toLocaleString()} line{t.lines.length === 1 ? "" : "s"}
-                    {at > 0 ? ` · go on from phrase ${(at + 1).toLocaleString()}` : ""}
-                  </span>
-                  <span
-                    className={`block text-xs ${state === "checked" ? "text-green-400" : state === "changed" ? "text-gold" : "text-muted"}`}
-                  >
-                    {state === "checked"
-                      ? `✓ Checked ${dayOf(when)}`
-                      : state === "changed"
-                        ? `Changed since checked (${dayOf(when)}): read it again`
-                        : "Not checked yet"}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="btn shrink-0 px-2"
-                  data-on={state === "checked"}
-                  onClick={() => setChecking(checking === i ? null : i)}
-                  aria-label={
-                    state === "checked"
-                      ? `${t.name} is checked. Uncheck it`
-                      : `Mark ${t.name} as checked`
-                  }
-                >
-                  <CircleCheck className="size-4" aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-gold shrink-0 px-2"
-                  onClick={() => openText(t)}
-                  aria-label={`Read ${t.name}`}
-                >
-                  <Play className="size-4" aria-hidden />
-                  {at > 0 ? "Go on" : "Read"}
-                </button>
-                <button
-                  type="button"
-                  className="btn shrink-0 px-2"
-                  onClick={() => void exportText(t.name, t.lines)}
-                  aria-label={`Export ${t.name} as .txt`}
-                >
-                  <Download className="size-4" aria-hidden />
-                </button>
-                {custom && texts.length > 0 && (
-                  <button
-                    type="button"
-                    className="btn shrink-0 px-2"
-                    onClick={() => setAsking(i)}
-                    aria-label={`Remove ${t.name}`}
-                  >
-                    <X className="size-4" aria-hidden />
-                  </button>
-                )}
-              </div>
-              {checking === i && (
-                <Confirm
-                  text={
-                    state === "checked"
-                      ? `Mark “${t.name}” as not checked? (The saved copy in ${CONFIG.reader.confirmedFolder} stays.)`
-                      : `Mark “${t.name}” as checked (read through, written right) and save it to Documents/${CONFIG.reader.confirmedFolder}?`
-                  }
-                  yes={state === "checked" ? "Yes, uncheck it" : "Yes, checked: save it"}
-                  no="No"
-                  onYes={() => {
-                    if (state === "checked") save(unmarkChecked(reader, t.name));
-                    else {
-                      save(markChecked(reader, t.name, t.lines, Date.now()));
-                      void saveConfirmed(t.name, t.lines);
-                    }
-                    setChecking(null);
-                  }}
-                  onNo={() => setChecking(null)}
-                />
-              )}
-              {asking === i && (
-                <Confirm
-                  text={`Take “${t.name}” out of your texts?`}
-                  yes="Yes, take it out"
-                  no="No, keep it"
-                  onYes={() => {
-                    removeText(i);
-                    setAsking(null);
-                  }}
-                  onNo={() => setAsking(null)}
-                />
-              )}
-            </li>
-          );
-        })}
+        {library.map((t, i) => (
+          <TextRow
+            key={`${i}-${t.name}`}
+            text={t}
+            reader={reader}
+            save={save}
+            onOpen={() => openText(t)}
+            onRemove={custom && texts.length > 0 ? () => removeText(i) : undefined}
+          />
+        ))}
       </ul>
+
+      {folders.map((f) => (
+        <details
+          key={f.name}
+          className="mt-4 rounded-md border border-violet/40 p-2"
+          open={folders.length === 1}
+        >
+          <summary className="flex cursor-pointer list-none items-center gap-2">
+            <FolderArchive className="size-4 shrink-0 text-violet" aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-sm text-fg">{f.name}</span>
+            <span className="shrink-0 text-xs text-muted">
+              {f.texts.length} text{f.texts.length === 1 ? "" : "s"} ·{" "}
+              <span className="text-green-400">checked {checkedIn(f.texts, f.name)}</span>
+            </span>
+            <button
+              type="button"
+              className="btn shrink-0 px-2"
+              onClick={(e) => {
+                e.preventDefault();
+                setDropping(dropping === f.name ? null : f.name);
+              }}
+              aria-label={`Remove the folder ${f.name}`}
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          </summary>
+          {dropping === f.name && (
+            <Confirm
+              text={`Take the whole folder “${f.name}” (${f.texts.length} texts) out? Your other texts stay.`}
+              yes="Yes, take it out"
+              no="No, keep it"
+              onYes={() => {
+                removeFolder(f.name);
+                setDropping(null);
+              }}
+              onNo={() => setDropping(null)}
+            />
+          )}
+          <ul className="mt-2 space-y-2" aria-label={`Folder ${f.name}`}>
+            {f.texts.map((t, i) => (
+              <TextRow
+                key={`${i}-${t.name}`}
+                text={{ ...t, folder: f.name }}
+                reader={reader}
+                save={save}
+                onOpen={() => openText({ ...t, folder: f.name })}
+                onRemove={() => removeFolderText(f.name, i)}
+              />
+            ))}
+          </ul>
+        </details>
+      ))}
     </div>
+  );
+}
+
+/** A text in the list: read it, check it, take it out as a .txt, or out of the list. */
+function TextRow({
+  text: t,
+  reader,
+  save,
+  onOpen,
+  onRemove,
+}: {
+  text: OpenText;
+  reader: ReaderState;
+  save: (s: ReaderState) => void;
+  onOpen: () => void;
+  onRemove?: () => void;
+}) {
+  const [checking, setChecking] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const key = textKey(t.name, t.folder);
+  const at = placeOf(reader, key, Number.MAX_SAFE_INTEGER);
+  const state = checkState(reader, t.name, t.lines, t.folder);
+  const when = reader.checked[key]?.at ?? 0;
+  return (
+    <li className="rounded-md border border-cyan/25 p-2">
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          className="min-w-0 flex-1 rounded-md p-1 text-left hover:bg-cyan/5"
+          onClick={onOpen}
+          aria-label={`Read ${t.name}${at ? `, from phrase ${at + 1}` : ""}`}
+        >
+          <span className="block truncate text-fg">
+            <BookOpen className="mr-1 inline size-4 align-[-2px] text-cyan" aria-hidden />
+            {t.name}
+          </span>
+          <span className="block text-xs text-muted">
+            {t.lines.length.toLocaleString()} line{t.lines.length === 1 ? "" : "s"}
+            {at > 0 ? ` · go on from phrase ${(at + 1).toLocaleString()}` : ""}
+          </span>
+          <span
+            className={`block text-xs ${state === "checked" ? "text-green-400" : state === "changed" ? "text-gold" : "text-muted"}`}
+          >
+            {state === "checked"
+              ? `✓ Checked ${dayOf(when)}`
+              : state === "changed"
+                ? `Changed since checked (${dayOf(when)}): read it again`
+                : "Not checked yet"}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="btn shrink-0 px-2"
+          data-on={state === "checked"}
+          onClick={() => setChecking((c) => !c)}
+          aria-label={
+            state === "checked" ? `${t.name} is checked. Uncheck it` : `Mark ${t.name} as checked`
+          }
+        >
+          <CircleCheck className="size-4" aria-hidden />
+        </button>
+        <button
+          type="button"
+          className="btn btn-gold shrink-0 px-2"
+          onClick={onOpen}
+          aria-label={`Read ${t.name}`}
+        >
+          <Play className="size-4" aria-hidden />
+          {at > 0 ? "Go on" : "Read"}
+        </button>
+        <button
+          type="button"
+          className="btn shrink-0 px-2"
+          onClick={() => void exportText(t.name, t.lines)}
+          aria-label={`Export ${t.name} as .txt`}
+        >
+          <Download className="size-4" aria-hidden />
+        </button>
+        {onRemove && (
+          <button
+            type="button"
+            className="btn shrink-0 px-2"
+            onClick={() => setAsking(true)}
+            aria-label={`Remove ${t.name}`}
+          >
+            <X className="size-4" aria-hidden />
+          </button>
+        )}
+      </div>
+      {checking && (
+        <Confirm
+          text={
+            state === "checked"
+              ? `Mark “${t.name}” as not checked? (The saved copy in ${CONFIG.reader.confirmedFolder} stays.)`
+              : `Mark “${t.name}” as checked (read through, written right) and save it to Documents/${CONFIG.reader.confirmedFolder}${t.folder ? `/${t.folder}` : ""}?`
+          }
+          yes={state === "checked" ? "Yes, uncheck it" : "Yes, checked: save it"}
+          no="No"
+          onYes={() => {
+            if (state === "checked") save(unmarkChecked(reader, t.name, t.folder));
+            else {
+              save(markChecked(reader, t.name, t.lines, Date.now(), t.folder));
+              void saveConfirmed(t.name, t.lines, t.folder);
+            }
+            setChecking(false);
+          }}
+          onNo={() => setChecking(false)}
+        />
+      )}
+      {asking && onRemove && (
+        <Confirm
+          text={`Take “${t.name}” out of ${t.folder ? `the folder “${t.folder}”` : "your texts"}?`}
+          yes="Yes, take it out"
+          no="No, keep it"
+          onYes={() => {
+            onRemove();
+            setAsking(false);
+          }}
+          onNo={() => setAsking(false)}
+        />
+      )}
+    </li>
   );
 }
 
@@ -1062,7 +1195,7 @@ function Reader({
   save: (s: ReaderState) => void;
   onClose: () => void;
 }) {
-  const key = textKey(text.name);
+  const key = textKey(text.name, text.folder);
   const [lines, setLines] = useState(text.lines);
   const units = useMemo(() => readUnits(lines), [lines]);
   const phrases = useMemo(() => units.map((u) => u.text), [units]);
@@ -1295,7 +1428,7 @@ function Reader({
     if (editing === null || !unit) return;
     const next = editPhrase(lines, unit, editing);
     if (next !== lines && next.join("\n") !== lines.join("\n")) {
-      updateText(text.name, next);
+      updateText(text.name, next, text.folder);
       setLines(next);
       const left = readUnits(next).length;
       if (index >= left) setIndex(Math.max(0, left - 1));
@@ -1933,7 +2066,7 @@ function Reader({
             “{text.name}”: {total.toLocaleString()} phrases, in{" "}
             {clock(Date.now() - session.current.began)}. It is in your History.
           </p>
-          {checkState(reader, text.name, lines) === "checked" ? (
+          {checkState(reader, text.name, lines, text.folder) === "checked" ? (
             <p className="mt-3 text-sm text-green-400">
               ✓ Checked: saved in Documents/{CONFIG.reader.confirmedFolder}
             </p>
@@ -1943,12 +2076,12 @@ function Reader({
               className="btn mt-4 min-h-12 w-full max-w-sm"
               style={{ color: "#4ade80", borderColor: "#4ade80" }}
               onClick={() => {
-                save(markChecked(reader, text.name, lines, Date.now()));
-                void saveConfirmed(text.name, lines);
+                save(markChecked(reader, text.name, lines, Date.now(), text.folder));
+                void saveConfirmed(text.name, lines, text.folder);
               }}
             >
               <CircleCheck className="size-4" aria-hidden />
-              {checkState(reader, text.name, lines) === "changed"
+              {checkState(reader, text.name, lines, text.folder) === "changed"
                 ? "Checked again: save the new version"
                 : "Checked, all written right: save to confirmed_txt"}
             </button>
