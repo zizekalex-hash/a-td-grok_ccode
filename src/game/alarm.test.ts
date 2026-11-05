@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { CONFIG } from "./config.ts";
 import {
   ALARM_RATE,
+  alarmDb,
+  alarmGain,
   alarmSamples,
   alarmSpec,
   MAX_ALARM_MS,
@@ -69,18 +71,20 @@ describe("timed set alarm", () => {
     assert.equal(clampAlarmVolume(0), 0.01);
   });
 
-  it("says how the Test rang, never at more than the share", () => {
-    const rang = { played: true, before: 15, want: 5, during: 5, max: 15, gain: 1 };
+  it("is a knob in dB, and says how the Test rang", () => {
+    assert.equal(Math.round(alarmDb(1)), 0);
+    assert.equal(Math.round(alarmDb(0.36)), -18);
+    assert.equal(Math.round(alarmDb(0.09)), -42);
+    assert.equal(Math.round(alarmDb(0.03)), -61);
+    assert.ok(Math.abs(alarmGain(0.36) - 0.1296) < 1e-4, "0.36 squared");
+    assert.ok(alarmGain(0.09) < alarmGain(0.36) / 10, "0.09 far quieter than 0.36");
+    const rang = { played: true, before: 11, want: 3, during: 3, max: 25, gain: 0.56 };
     assert.match(
-      rungNote(rang, 0.36),
-      /at 5\/15 of the phone's alarm volume \(36%\), back to 15\/15 after/,
+      rungNote(rang, 0.09),
+      /-42 dB below full: alarm volume 3\/25, the sound at 56%, back to 11\/25 after/,
     );
-    assert.match(
-      rungNote({ ...rang, during: 15, gain: 0.36 }, 0.36),
-      /kept its alarm volume at 15\/15, so the sound was scaled to 36%/,
-    );
-    assert.match(rungNote({ ...rang, before: 5 }, 0.36), /\(36%\)\.$/);
-    assert.match(rungNote(null, 0.36), /page.*36%/);
+    assert.match(rungNote({ ...rang, during: 11 }, 0.09), /11\/25 \(the phone kept its own\)/);
+    assert.match(rungNote(null, 0.36), /page, -18 dB below/);
     assert.match(
       rungNote({ ...rang, played: false, error: "busy" }, 0.36),
       /could not play it \(busy\)/,

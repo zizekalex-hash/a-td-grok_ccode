@@ -459,9 +459,16 @@ export function RepsTab() {
           type="button"
           className="btn shrink-0 px-2"
           onClick={() => {
-            const phrase = state.items[0]?.text ?? "done";
-            setAlarmNote("Ringing…");
-            void playAlarmNow(phrase, state.alarmVolume).then(setAlarmNote);
+            // The phrase repped last (the current one), else the first.
+            const current = state.items.reduce<RepItem | undefined>(
+              (best, i) => (!best || i.last > best.last ? i : best),
+              undefined,
+            );
+            const phrase = current?.text ?? "done";
+            setAlarmNote(`Ringing “${phrase}”…`);
+            void playAlarmNow(phrase, state.alarmVolume).then((note) =>
+              setAlarmNote(`“${phrase}”: ${note}`),
+            );
             buzz(400);
           }}
         >
@@ -500,9 +507,9 @@ export function RepsTab() {
           <span>
             Alarm volume
             <span className="block text-xs text-muted">
-              How loud, as a share of the phone's alarm volume (0.36 is 36%, 0.09 is 9%): set for as
-              long as it rings and put back after; if the phone keeps its own, the sound is scaled
-              to the share. Never louder.
+              How loud, like a knob: 1 is the phone's full alarm volume, 0.36 is 18 dB below, 0.09
+              is 42 dB below (quiet), 0.03 is 61 dB below (a whisper). Never louder; the phone's
+              alarm volume is put back after.
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-1">

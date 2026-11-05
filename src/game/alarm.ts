@@ -7,11 +7,12 @@
  * In the Android app (PhraseAlarmPlugin.java) it is rung by whichever of three
  * ways gets there first, once: the phone's own alarm clock, the app's own timer
  * (the phone kept awake till then), or the page when it sees the time is up. It
- * plays on the alarm sound (not media), with the phone's alarm volume set to the
- * chosen share of its steps while it rings (0.36 of 15 steps is 5), put back
- * after; if the phone keeps its own volume, the sound is scaled to that share
- * instead. Never louder than asked. Elsewhere the page plays it on its audio
- * clock, at that share of the page's volume. The sound itself is pure (alarmSamples, pcm16),
+ * plays on the alarm sound (not media). How loud is a knob from 0.01 to 1: a
+ * level below the phone's full alarm volume, 40 x log10(volume) dB (alarmDb:
+ * 0.36 is -18 dB, 0.09 is -42 dB). The phone's alarm volume goes to the step at
+ * or just above that level while it rings (put back after) and the sound is
+ * turned down the rest of the way, so it is never louder than asked. Elsewhere
+ * the page plays it on its audio clock, that far below the media volume. The sound itself is pure (alarmSamples, pcm16),
  * so the tests can load it; playing it needs a page.
  */
 import { CONFIG } from "./config.ts";
@@ -122,22 +123,32 @@ export interface Rung {
   during: number;
   max: number;
   gain: number;
+  /** The asked level and the alarm step's own, in dB below full. */
+  target?: number;
+  stepDb?: number;
   error?: string;
+}
+
+/** How far below full the alarm is, in dB, for a volume from 0.01 to 1 (a knob: 0.36 is -18, 0.09 is -42). */
+export function alarmDb(volume: number): number {
+  return 40 * Math.log10(clamp(volume, 0.001, 1));
+}
+
+/** The sound's own scale for a volume (when nothing else turns it down): its level as an amplitude. */
+export function alarmGain(volume: number): number {
+  return 10 ** (alarmDb(volume) / 20);
 }
 
 /** The Test button's words for how it rang. */
 export function rungNote(r: Rung | null, volume: number): string {
-  const share = `${Math.round(volume * 100)}%`;
-  if (!r) return `Played by the page at ${share} of the media volume (not as a phone alarm).`;
+  const level = `${Math.round(alarmDb(volume))} dB`;
+  if (!r) return `Played by the page, ${level} below the media volume (not as a phone alarm).`;
   if (!r.played) return `The phone could not play it${r.error ? ` (${r.error})` : ""}.`;
   const at = `${r.during}/${r.max}`;
-  const scaled = r.gain < 0.995 ? `, the sound at ${Math.round(r.gain * 100)}%` : "";
-  if (r.during === r.want) {
-    const back =
-      r.before >= 0 && r.before !== r.during ? `, back to ${r.before}/${r.max} after` : "";
-    return `Rang as an alarm at ${at} of the phone's alarm volume (${share})${scaled}${back}.`;
-  }
-  return `Rang as an alarm: the phone kept its alarm volume at ${at}, so the sound was scaled to ${Math.round(r.gain * 100)}% of it (${share} in all).`;
+  const sound = `the sound at ${Math.round(r.gain * 100)}%`;
+  const back = r.before >= 0 && r.before !== r.during ? `, back to ${r.before}/${r.max} after` : "";
+  const kept = r.during === r.want ? "" : " (the phone kept its own)";
+  return `Rang as an alarm ${level} below full: alarm volume ${at}${kept}, ${sound}${back}.`;
 }
 
 /** What the rest screen says once the alarm is set. */
@@ -193,7 +204,7 @@ function pageAlarm(text: string, atMs: number, volume: number): () => void {
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const gain = ctx.createGain();
-    gain.gain.value = clamp(volume, 0, 1);
+    gain.gain.value = alarmGain(volume);
     src.connect(gain).connect(ctx.destination);
     src.start(ctx.currentTime + Math.max(0, (atMs - Date.now()) / 1000));
     return () => {
