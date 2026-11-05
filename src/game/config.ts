@@ -835,13 +835,10 @@ export interface GameConfig {
     /** The timed set's alarm (see reps.alarm._about). */
     alarm: {
       on: boolean;
-      amp: number;
-      bitMs: number;
-      hiHz: number;
-      loHz: number;
+      /** The phone's alarm volume while it rings, 0 to 1. */
+      volume: number;
       repeats: number;
       gapMs: number;
-      maxBits: number;
     };
   };
   core: { damagePerLevel: number; maxDamageBonus: number };

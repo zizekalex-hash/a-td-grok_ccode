@@ -84,16 +84,18 @@ export function RestSet({
   useEffect(() => (on ? holdRest() : undefined), [on]);
 
   // The alarm: when a timer part is up, the phrase itself sounds (game/alarm.ts),
-  // set on the audio clock now for that moment, so it rings on time.
+  // set now for that moment: on the phone with its own alarm clock (it rings with
+  // the screen off), elsewhere on the page's audio clock.
   const timerEnd =
     active && partOf(active) === "timer"
       ? (active.partSince ?? active.since) + Math.max(0, active.duration ?? 0)
       : 0;
   const alarmText = item?.text ?? "";
+  const alarmVolume = state.alarmVolume;
   useEffect(() => {
     if (!state.alarm || !timerEnd || timerEnd <= Date.now()) return;
-    return scheduleAlarm(alarmText, timerEnd);
-  }, [state.alarm, timerEnd, alarmText]);
+    return scheduleAlarm(alarmText, timerEnd, alarmVolume);
+  }, [state.alarm, timerEnd, alarmText, alarmVolume]);
 
   // Once a second, by the clock; a buzz when Done opens. While blank, nothing
   // updates at all: only the buzz is kept, for the moment Done opens.

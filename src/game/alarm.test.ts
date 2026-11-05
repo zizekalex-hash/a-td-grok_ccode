@@ -1,43 +1,62 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CONFIG } from "./config.ts";
-import { alarmBits, alarmSamples, alarmSpec } from "./alarm.ts";
-import { loadReps, newReps } from "./reps.ts";
+import { ALARM_RATE, alarmSamples, alarmSpec, MAX_ALARM_MS, pcm16, toBase64 } from "./alarm.ts";
+import { clampAlarmVolume, loadReps, newReps } from "./reps.ts";
+import { defaultSettings, phraseSignal } from "./rehearse.ts";
+
+const peak = (a: Float32Array) => a.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
 
 describe("timed set alarm", () => {
-  it("turns the phrase into bits, highest first, and stops at the most", () => {
-    assert.deepEqual(alarmBits("A", 99), [0, 1, 0, 0, 0, 0, 0, 1]);
-    assert.equal(alarmBits("name the signal", 20).length, 20);
-    assert.equal(alarmBits("", 99).length, 32, 'an empty phrase still rings ("done")');
-    assert.equal(alarmBits("é", 99).length, 16, "two bytes in UTF-8");
-  });
-
-  it("plays each bit as a quiet tone, the whole a few times over", () => {
+  it("is the phrase's own sound, as Rehearse makes it, a few times over", () => {
+    const sound = defaultSettings();
     const spec = alarmSpec();
-    assert.equal(spec.amp, CONFIG.reps.alarm.amp);
+    assert.equal(spec.repeats, CONFIG.reps.alarm.repeats);
     const rate = 8000;
-    const s = alarmSamples("Hi", rate, spec);
-    const per = Math.round((rate * spec.bitMs) / 1000);
+    const one = phraseSignal("Hold the line.", rate, sound);
+    const s = alarmSamples("Hold the line.", rate, sound, spec);
     const gap = Math.round((rate * spec.gapMs) / 1000);
-    assert.equal(s.length, spec.repeats * 16 * per + (spec.repeats - 1) * gap);
-    let peak = 0;
-    for (const v of s) peak = Math.max(peak, Math.abs(v));
-    assert.ok(peak <= spec.amp + 1e-6, `never louder than amp (${peak})`);
-    assert.ok(peak > spec.amp * 0.8, "and close to it");
-    // Silence between the repeats.
-    const quiet = s.subarray(16 * per + 1, 16 * per + gap - 1);
-    assert.ok(quiet.every((v) => v === 0));
-    // A 1 is the high tone, a 0 the low one: more zero crossings for a 1.
-    const crossings = (a: Float32Array) =>
-      a.reduce((n, v, i) => n + (i && Math.sign(v) !== Math.sign(a[i - 1]!) ? 1 : 0), 0);
-    const zero = s.subarray(0, per); // "H" = 0100 1000: first bit 0
-    const one = s.subarray(per, 2 * per);
-    assert.ok(crossings(one) > crossings(zero));
+    assert.equal(s.length, spec.repeats * one.length + (spec.repeats - 1) * gap);
+    assert.deepEqual(s.subarray(0, one.length), one, "the first time is the phrase's signal");
+    assert.ok(
+      s.subarray(one.length + 1, one.length + gap - 1).every((v) => v === 0),
+      "silence between",
+    );
+    assert.ok(Math.abs(peak(s) - sound.amp) < 1e-6, "as loud as Rehearse's peak");
+    // Quieter or louder with Rehearse's peak.
+    assert.ok(
+      Math.abs(peak(alarmSamples("x y", rate, { ...sound, amp: 0.36 }, spec)) - 0.36) < 1e-6,
+    );
   });
 
-  it("is on by default and kept with the reps", () => {
+  it("keeps to 8 s at most, with one play at least", () => {
+    const long = { ...defaultSettings(), signalMs: 5000 };
+    const s = alarmSamples("a long one", ALARM_RATE, long, { repeats: 3, gapMs: 350 });
+    assert.ok(s.length <= (ALARM_RATE * MAX_ALARM_MS) / 1000);
+    assert.equal(s.length, Math.round(ALARM_RATE * 5), "one play of 5 s");
+    const huge = { ...defaultSettings(), signalMs: 10_000 };
+    assert.equal(
+      alarmSamples("x", 1000, huge, { repeats: 3, gapMs: 0 }).length,
+      10_000,
+      "one, even if longer",
+    );
+  });
+
+  it("goes to the phone as 16-bit sound in base64", () => {
+    const bytes = pcm16(new Float32Array([0, 1, -1, 0.5]));
+    assert.deepEqual([...bytes], [0, 0, 0xff, 0x7f, 0x01, 0x80, 0x00, 0x40]);
+    assert.equal(toBase64(new Uint8Array([104, 105])), "aGk=");
+    const big = new Uint8Array(100_000).fill(65);
+    assert.equal(toBase64(big).length, Math.ceil(100_000 / 3) * 4);
+  });
+
+  it("is on by default at 0.36 of the phone's alarm volume, kept with the reps", () => {
     assert.equal(newReps().alarm, CONFIG.reps.alarm.on);
+    assert.equal(newReps().alarmVolume, 0.36);
     assert.equal(loadReps({ alarm: false }).alarm, false);
     assert.equal(loadReps({}).alarm, CONFIG.reps.alarm.on);
+    assert.equal(loadReps({ alarmVolume: 0.5 }).alarmVolume, 0.5);
+    assert.equal(loadReps({ alarmVolume: 7 }).alarmVolume, 1);
+    assert.equal(clampAlarmVolume(0), 0.05);
   });
 });

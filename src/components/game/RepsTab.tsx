@@ -1,16 +1,26 @@
 import { useState } from "react";
-import { ClipboardPaste, FileText, Library, Play, Plus, RotateCcw, Trash2 } from "lucide-react";
+import {
+  ClipboardPaste,
+  FileText,
+  Library,
+  Minus,
+  Play,
+  Plus,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 import { Confirm } from "@/components/game/Confirm";
 import { DANGER, buzz } from "@/components/game/feel";
 import { RepsPicker } from "@/components/game/RepsPicker";
 import { RestSet } from "@/components/game/RestSet";
-import { scheduleAlarm } from "@/game/alarm";
+import { playAlarmNow } from "@/game/alarm";
 import { CONFIG } from "@/game/config";
 import { flashToast } from "@/game/engine";
 import {
   addItem,
   addMany,
   phrasesFromText,
+  clampAlarmVolume,
   clampMinutes,
   clampSet,
   clock,
@@ -40,6 +50,7 @@ export function RepsTab() {
   const [state, setState] = useState<RepsState>(() => readReps());
   const [draft, setDraft] = useState("");
   const [setText, setSetText] = useState(String(state.set));
+  const [volText, setVolText] = useState<string | null>(null);
   const [minText, setMinText] = useState(String(state.minutes));
   const [asking, setAsking] = useState<
     null | { kind: "reset" } | { kind: "delete"; id: string } | { kind: "cancel" }
@@ -429,7 +440,9 @@ export function RepsTab() {
           <span>
             Alarm when a timer is up
             <span className="block text-xs text-muted">
-              The phrase itself as sound: its bits as high and low tones, quiet, three times.
+              The phrase itself as sound, as Rehearse makes it (its raw bytes, at Rehearse's length
+              and peak loudness), three times. On the phone it rings with the screen off or the app
+              away, on the alarm sound, whatever the media volume.
             </span>
           </span>
           <input
@@ -445,13 +458,62 @@ export function RepsTab() {
           className="btn shrink-0 px-2"
           onClick={() => {
             const phrase = state.items[0]?.text ?? "done";
-            scheduleAlarm(phrase, Date.now());
+            playAlarmNow(phrase, state.alarmVolume);
             buzz(400);
           }}
         >
           Test
         </button>
       </div>
+      {state.alarm && (
+        <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+          <span>
+            Alarm volume
+            <span className="block text-xs text-muted">
+              The phone's alarm volume while it rings (0.36 is 36%), put back after.
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              className="btn stepper"
+              onClick={() =>
+                save({ ...state, alarmVolume: clampAlarmVolume(state.alarmVolume - 0.05) })
+              }
+              aria-label="Alarm volume: less"
+            >
+              <Minus className="size-4" aria-hidden />
+            </button>
+            <input
+              className="w-16 rounded border border-cyan/40 bg-transparent px-1 py-2 text-center"
+              inputMode="decimal"
+              value={volText ?? state.alarmVolume.toFixed(2)}
+              onChange={(e) => setVolText(e.target.value)}
+              onBlur={() => {
+                const v = Number((volText ?? "").replace(",", "."));
+                if (volText !== null && Number.isFinite(v)) {
+                  save({ ...state, alarmVolume: clampAlarmVolume(v) });
+                }
+                setVolText(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+              aria-label="Alarm volume"
+            />
+            <button
+              type="button"
+              className="btn stepper"
+              onClick={() =>
+                save({ ...state, alarmVolume: clampAlarmVolume(state.alarmVolume + 0.05) })
+              }
+              aria-label="Alarm volume: more"
+            >
+              <Plus className="size-4" aria-hidden />
+            </button>
+          </span>
+        </div>
+      )}
 
       {saved && item(saved.id) && (
         <div className="mt-3 rounded-md border border-gold/60 p-3 text-center" role="status">

@@ -78,11 +78,17 @@ export interface RepsState {
   minutes: number;
   first: Part;
   blank: boolean;
-  /** The alarm sounds when a timed set's timer is up (reps.alarm). */
+  /** The alarm sounds when a timed set's timer is up (reps.alarm), at this share of the phone's alarm volume. */
   alarm: boolean;
+  alarmVolume: number;
   active: ActiveSet | null;
   /** Every finished set and reset, newest first, up to reps.historyKeep. Resets do not clear it. */
   log: LogEntry[];
+}
+
+/** The alarm's share of the phone's alarm volume: 0.05 to 1, in hundredths. */
+export function clampAlarmVolume(v: number): number {
+  return Number.isFinite(v) ? Math.min(1, Math.max(0.05, Math.round(v * 100) / 100)) : 0.36;
 }
 
 export function newReps(): RepsState {
@@ -94,6 +100,7 @@ export function newReps(): RepsState {
     first: "reps",
     blank: false,
     alarm: R.alarm.on !== false,
+    alarmVolume: clampAlarmVolume(R.alarm.volume),
     active: null,
     log: [],
   };
@@ -574,6 +581,7 @@ export function loadReps(data: unknown): RepsState {
   if (d.first === "timer") s.first = "timer";
   s.blank = d.blank === true;
   if (typeof d.alarm === "boolean") s.alarm = d.alarm;
+  if (Number.isFinite(num(d.alarmVolume))) s.alarmVolume = clampAlarmVolume(num(d.alarmVolume));
   const seen = new Set<string>();
   for (const raw of Array.isArray(d.items) ? d.items : []) {
     if (!raw || typeof raw !== "object") continue;

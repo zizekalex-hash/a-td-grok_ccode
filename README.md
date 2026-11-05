@@ -133,7 +133,7 @@ Recitation drill → Read: your texts are kept in the app (the same ones the gam
 
 Recitation drill (on the title screen), tab Reps: count reps of your own words and phrases.
 
-- **Alarm** (on to start): when a timed set's timer is up, the phrase itself sounds: its bytes as bits, each bit a short high or low tone, quiet (0.09), three times; it is set on the audio clock for that moment, so it rings on time. Test plays it now. The buzz (vibration) works in the Android app now too. Tuned in `reps.alarm`.
+- **Alarm** (on to start): when a timed set's timer is up, the phrase itself sounds, made the way Rehearse sounds a phrase: its raw bytes as a wave, at Rehearse's length (0.9 s) and **peak loudness** (0.9; both set in the Rehearse tab), three times with a short gap. In the Android app it is set with the **phone's own alarm clock**, so it rings on time with the screen off, the phone asleep or the app in the background, on the **alarm sound** (it plays in silent mode and whatever the media volume), with a buzz. While it rings the phone's alarm volume is set to the **Alarm volume** (0.36 = 36% to start; − + or typed) and put back after. Test plays it now, as it will ring. Elsewhere (a browser) the page plays it. Tuned in `reps.alarm`.
 - **Clear history** (History) also puts every total in Reps back to 0, so the two always agree; your words and phrases stay.
 
 - **Add or paste:**
