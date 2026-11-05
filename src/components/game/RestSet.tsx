@@ -1,10 +1,10 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Check, EyeOff, RotateCcw, X } from "lucide-react";
 import { BinaryWall } from "@/components/game/BinaryWall";
 import { Confirm } from "@/components/game/Confirm";
 import { buzz } from "@/components/game/feel";
-import { scheduleAlarm } from "@/game/alarm";
+import { ringAlarmNow, scheduleAlarm } from "@/game/alarm";
 import { CONFIG } from "@/game/config";
 import { flashToast, grantSkillXp } from "@/game/engine";
 import { levelForXp } from "@/game/recite";
@@ -84,27 +84,37 @@ export function RestSet({
   useEffect(() => (on ? holdRest() : undefined), [on]);
 
   // The alarm: when a timer part is up, the phrase itself sounds (game/alarm.ts),
-  // set now for that moment: on the phone with its own alarm clock (it rings with
-  // the screen off), elsewhere on the page's audio clock.
+  // set now for that moment: on the phone by its alarm clock and the app's own
+  // timer (it rings with the screen off), elsewhere on the page's audio clock;
+  // and rung by the page too when it sees the time is up (once in all).
   const timerEnd =
     active && partOf(active) === "timer"
       ? (active.partSince ?? active.since) + Math.max(0, active.duration ?? 0)
       : 0;
   const alarmText = item?.text ?? "";
   const alarmVolume = state.alarmVolume;
+  const [alarmStatus, setAlarmStatus] = useState("");
   useEffect(() => {
     if (!state.alarm || !timerEnd || timerEnd <= Date.now()) return;
-    return scheduleAlarm(alarmText, timerEnd, alarmVolume);
+    return scheduleAlarm(alarmText, timerEnd, alarmVolume, setAlarmStatus);
   }, [state.alarm, timerEnd, alarmText, alarmVolume]);
+  const alarm = useRef({ on: state.alarm, text: alarmText, end: timerEnd, volume: alarmVolume });
+  alarm.current = { on: state.alarm, text: alarmText, end: timerEnd, volume: alarmVolume };
 
   // Once a second, by the clock; a buzz when Done opens. While blank, nothing
   // updates at all: only the buzz is kept, for the moment Done opens.
   useEffect(() => {
     if (!active) return;
+    /** Time's up, seen here: the buzz, and the alarm rung now unless it has rung. */
+    const timeUp = (timer: boolean) => {
+      buzz(timer ? 400 : 80);
+      const a = alarm.current;
+      if (timer && a.on && a.end) ringAlarmNow(a.text, a.end, a.volume);
+    };
     const left = timeLeft(active, Date.now());
     if (blank) {
       if (left <= 0) return;
-      const id = window.setTimeout(() => buzz(partOf(active) === "timer" ? 400 : 80), left);
+      const id = window.setTimeout(() => timeUp(partOf(active) === "timer"), left);
       return () => window.clearTimeout(id);
     }
     let wasReady = left <= 0;
@@ -112,7 +122,7 @@ export function RestSet({
       const t = Date.now();
       setNow(t);
       const ready = timeLeft(active, t) <= 0;
-      if (ready && !wasReady) buzz(partOf(active) === "timer" ? 400 : 80);
+      if (ready && !wasReady) timeUp(partOf(active) === "timer");
       wasReady = ready;
     }, 1000);
     return () => window.clearInterval(timer);
@@ -301,6 +311,11 @@ export function RestSet({
               : `Recite it ${active.target.toLocaleString()} times; Done opens after ${clock(length)}.`}{" "}
           The game rests meanwhile, and the clock runs with the screen off too.
         </p>
+        {state.alarm && timerEnd > 0 && alarmStatus && (
+          <p className="mt-1 text-[0.7rem] text-gold" role="status">
+            🔔 {alarmStatus}
+          </p>
+        )}
       </div>
     </div>,
     document.body,

@@ -8,6 +8,7 @@ import {
   MAX_ALARM_MS,
   pcm16,
   rungNote,
+  setNote,
   toBase64,
 } from "./alarm.ts";
 import { clampAlarmVolume, loadReps, newReps } from "./reps.ts";
@@ -65,17 +66,33 @@ describe("timed set alarm", () => {
     assert.equal(loadReps({}).alarm, CONFIG.reps.alarm.on);
     assert.equal(loadReps({ alarmVolume: 0.5 }).alarmVolume, 0.5);
     assert.equal(loadReps({ alarmVolume: 7 }).alarmVolume, 1);
-    assert.equal(clampAlarmVolume(0), 0.05);
+    assert.equal(clampAlarmVolume(0), 0.01);
   });
 
-  it("says how the Test rang", () => {
-    const rang = { played: true, raised: true, before: 3, max: 7, gain: 0.36 };
-    assert.match(rungNote(rang, 0.36), /full \(7\/7\).*back to 3\/7.*36%/);
-    assert.match(rungNote({ ...rang, raised: false }, 0.09), /did not let the app raise it.*9%/);
+  it("says how the Test rang, never at more than the share", () => {
+    const rang = { played: true, before: 15, want: 5, during: 5, max: 15, gain: 1 };
+    assert.match(
+      rungNote(rang, 0.36),
+      /at 5\/15 of the phone's alarm volume \(36%\), back to 15\/15 after/,
+    );
+    assert.match(
+      rungNote({ ...rang, during: 15, gain: 0.36 }, 0.36),
+      /kept its alarm volume at 15\/15, so the sound was scaled to 36%/,
+    );
+    assert.match(rungNote({ ...rang, before: 5 }, 0.36), /\(36%\)\.$/);
     assert.match(rungNote(null, 0.36), /page.*36%/);
     assert.match(
       rungNote({ ...rang, played: false, error: "busy" }, 0.36),
       /could not play it \(busy\)/,
     );
+  });
+
+  it("says how the alarm was set", () => {
+    assert.match(
+      setNote({ at: "13:46:00", way: "alarm clock", error: "" }),
+      /13:46:00.*alarm clock and the app's timer/,
+    );
+    assert.match(setNote({ at: "13:46:00", way: "none", error: "denied" }), /failed \(denied\)/);
+    assert.match(setNote(null), /could not be set/);
   });
 });

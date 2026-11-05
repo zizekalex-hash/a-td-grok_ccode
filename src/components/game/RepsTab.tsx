@@ -13,7 +13,7 @@ import { Confirm } from "@/components/game/Confirm";
 import { DANGER, buzz } from "@/components/game/feel";
 import { RepsPicker } from "@/components/game/RepsPicker";
 import { RestSet } from "@/components/game/RestSet";
-import { playAlarmNow } from "@/game/alarm";
+import { alarmLog, playAlarmNow } from "@/game/alarm";
 import { CONFIG } from "@/game/config";
 import { flashToast } from "@/game/engine";
 import {
@@ -52,6 +52,7 @@ export function RepsTab() {
   const [setText, setSetText] = useState(String(state.set));
   const [volText, setVolText] = useState<string | null>(null);
   const [alarmNote, setAlarmNote] = useState("");
+  const [alarmLines, setAlarmLines] = useState<string | null>(null);
   const [minText, setMinText] = useState(String(state.minutes));
   const [asking, setAsking] = useState<
     null | { kind: "reset" } | { kind: "delete"; id: string } | { kind: "cancel" }
@@ -473,12 +474,35 @@ export function RepsTab() {
         </p>
       )}
       {state.alarm && (
+        <div className="mt-1 text-xs">
+          <button
+            type="button"
+            className="text-cyan underline"
+            onClick={() =>
+              alarmLines === null
+                ? void alarmLog().then((l) =>
+                    setAlarmLines(l || "Nothing yet (or not the phone app)."),
+                  )
+                : setAlarmLines(null)
+            }
+          >
+            {alarmLines === null ? "Alarm log" : "Hide the alarm log"}
+          </button>
+          {alarmLines !== null && (
+            <pre className="mt-1 max-h-48 overflow-auto rounded border border-cyan/30 p-2 text-[0.65rem] leading-snug whitespace-pre-wrap text-muted">
+              {alarmLines}
+            </pre>
+          )}
+        </div>
+      )}
+      {state.alarm && (
         <div className="mt-2 flex items-center justify-between gap-2 text-sm">
           <span>
             Alarm volume
             <span className="block text-xs text-muted">
-              How loud: the phone's alarm volume goes to full while it rings (put back after), and
-              the sound plays at this share of it (0.36 is 36%, 0.09 is 9%).
+              How loud, as a share of the phone's alarm volume (0.36 is 36%, 0.09 is 9%): set for as
+              long as it rings and put back after; if the phone keeps its own, the sound is scaled
+              to the share. Never louder.
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-1">

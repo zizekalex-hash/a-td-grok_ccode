@@ -86,9 +86,9 @@ export interface RepsState {
   log: LogEntry[];
 }
 
-/** The alarm's share of the phone's alarm volume: 0.05 to 1, in hundredths. */
+/** The alarm's share of the phone's alarm volume: 0.01 to 1, in hundredths. */
 export function clampAlarmVolume(v: number): number {
-  return Number.isFinite(v) ? Math.min(1, Math.max(0.05, Math.round(v * 100) / 100)) : 0.36;
+  return Number.isFinite(v) ? Math.min(1, Math.max(0.01, Math.round(v * 100) / 100)) : 0.36;
 }
 
 export function newReps(): RepsState {
