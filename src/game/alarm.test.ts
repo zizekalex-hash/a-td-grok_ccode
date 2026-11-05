@@ -1,7 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CONFIG } from "./config.ts";
-import { ALARM_RATE, alarmSamples, alarmSpec, MAX_ALARM_MS, pcm16, toBase64 } from "./alarm.ts";
+import {
+  ALARM_RATE,
+  alarmSamples,
+  alarmSpec,
+  MAX_ALARM_MS,
+  pcm16,
+  rungNote,
+  toBase64,
+} from "./alarm.ts";
 import { clampAlarmVolume, loadReps, newReps } from "./reps.ts";
 import { defaultSettings, phraseSignal } from "./rehearse.ts";
 
@@ -58,5 +66,16 @@ describe("timed set alarm", () => {
     assert.equal(loadReps({ alarmVolume: 0.5 }).alarmVolume, 0.5);
     assert.equal(loadReps({ alarmVolume: 7 }).alarmVolume, 1);
     assert.equal(clampAlarmVolume(0), 0.05);
+  });
+
+  it("says how the Test rang", () => {
+    const rang = { played: true, raised: true, before: 3, max: 7, gain: 0.36 };
+    assert.match(rungNote(rang, 0.36), /full \(7\/7\).*back to 3\/7.*36%/);
+    assert.match(rungNote({ ...rang, raised: false }, 0.09), /did not let the app raise it.*9%/);
+    assert.match(rungNote(null, 0.36), /page.*36%/);
+    assert.match(
+      rungNote({ ...rang, played: false, error: "busy" }, 0.36),
+      /could not play it \(busy\)/,
+    );
   });
 });

@@ -6,9 +6,10 @@
  *
  * In the Android app it is set with the phone's own alarm clock
  * (PhraseAlarmPlugin.java), so it rings on time with the screen off or the app
- * away, on the alarm sound (not media), with the phone's alarm volume set to the
- * chosen share (0.36) while it rings and put back after. Elsewhere the page
- * plays it on its audio clock. The sound itself is pure (alarmSamples, pcm16),
+ * away, on the alarm sound (not media). While it rings the phone's alarm volume
+ * goes to full (put back after) and the sound plays at the chosen share of it
+ * (0.36 = 36%), so each setting is heard as set. Elsewhere the page plays it on
+ * its audio clock, at that share of the page's volume. The sound itself is pure (alarmSamples, pcm16),
  * so the tests can load it; playing it needs a page.
  */
 import { CONFIG } from "./config.ts";
@@ -106,7 +107,28 @@ interface PhraseAlarmApi {
     pcm: string;
   }): Promise<{ exact: boolean }>;
   cancel(o: { id: string }): Promise<void>;
-  play(o: { rate: number; volume: number; pcm: string }): Promise<void>;
+  play(o: { rate: number; volume: number; pcm: string }): Promise<Rung>;
+}
+
+/** How the phone rang it: whether it played, the alarm volume raised to full (and before), and the sound's share. */
+export interface Rung {
+  played: boolean;
+  raised: boolean;
+  before: number;
+  max: number;
+  gain: number;
+  error?: string;
+}
+
+/** The Test button's words for how it rang. */
+export function rungNote(r: Rung | null, volume: number): string {
+  const share = `${Math.round(volume * 100)}%`;
+  if (!r) return `Played by the page at ${share} of the media volume (not as a phone alarm).`;
+  if (!r.played) return `The phone could not play it${r.error ? ` (${r.error})` : ""}.`;
+  if (r.raised) {
+    return `Rang as an alarm: the phone's alarm volume at full (${r.max}/${r.max}) while it rang, back to ${r.before}/${r.max} after; the sound at ${share} of that.`;
+  }
+  return `Rang as an alarm at your alarm volume (${Math.max(0, r.before)}/${r.max}): the phone did not let the app raise it (Do Not Disturb?). The sound at ${share} of that.`;
 }
 
 let native: Promise<{ api: PhraseAlarmApi } | null> | null = null;
@@ -141,8 +163,8 @@ function context(): AudioContext | null {
   }
 }
 
-/** The page plays it at a moment (ms, like Date.now()), on the audio clock; gives back what stops it. */
-function pageAlarm(text: string, atMs: number): () => void {
+/** The page plays it at a moment (ms, like Date.now()), on the audio clock, at a share of its volume; gives back what stops it. */
+function pageAlarm(text: string, atMs: number, volume: number): () => void {
   const ctx = context();
   const sound = rehearseSound();
   if (!ctx || sound.amp <= 0) return () => {};
@@ -152,7 +174,9 @@ function pageAlarm(text: string, atMs: number): () => void {
     buf.copyToChannel(data, 0);
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.connect(ctx.destination);
+    const gain = ctx.createGain();
+    gain.gain.value = clamp(volume, 0, 1);
+    src.connect(gain).connect(ctx.destination);
     src.start(ctx.currentTime + Math.max(0, (atMs - Date.now()) / 1000));
     return () => {
       try {
@@ -187,7 +211,7 @@ export function scheduleAlarm(
   void phoneAlarm().then((phone) => {
     if (cancelled) return;
     if (!phone) {
-      stop = pageAlarm(text, atMs);
+      stop = pageAlarm(text, atMs, volume);
       return;
     }
     const id = `t${Math.round(atMs)}`;
@@ -201,7 +225,7 @@ export function scheduleAlarm(
         pcm: phonePcm(text),
       })
       .catch(() => {
-        if (!cancelled) stop = pageAlarm(text, atMs);
+        if (!cancelled) stop = pageAlarm(text, atMs, volume);
       });
   });
   return () => {
@@ -211,11 +235,22 @@ export function scheduleAlarm(
 }
 
 /** The alarm now, as it will sound (the Test button). */
-export function playAlarmNow(text: string, volume = CONFIG.reps.alarm.volume) {
-  void phoneAlarm().then((phone) => {
-    if (!phone) return void pageAlarm(text, Date.now());
-    phone.api
-      .play({ rate: ALARM_RATE, volume: clamp(volume, 0.05, 1), pcm: phonePcm(text) })
-      .catch(() => pageAlarm(text, Date.now()));
-  });
+export async function playAlarmNow(
+  text: string,
+  volume = CONFIG.reps.alarm.volume,
+): Promise<string> {
+  const v = clamp(volume, 0.05, 1);
+  const phone = await phoneAlarm();
+  if (phone) {
+    try {
+      return rungNote(
+        await phone.api.play({ rate: ALARM_RATE, volume: v, pcm: phonePcm(text) }),
+        v,
+      );
+    } catch {
+      /* the page plays it */
+    }
+  }
+  pageAlarm(text, Date.now(), v);
+  return rungNote(null, v);
 }

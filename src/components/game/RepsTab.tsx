@@ -51,6 +51,7 @@ export function RepsTab() {
   const [draft, setDraft] = useState("");
   const [setText, setSetText] = useState(String(state.set));
   const [volText, setVolText] = useState<string | null>(null);
+  const [alarmNote, setAlarmNote] = useState("");
   const [minText, setMinText] = useState(String(state.minutes));
   const [asking, setAsking] = useState<
     null | { kind: "reset" } | { kind: "delete"; id: string } | { kind: "cancel" }
@@ -458,19 +459,26 @@ export function RepsTab() {
           className="btn shrink-0 px-2"
           onClick={() => {
             const phrase = state.items[0]?.text ?? "done";
-            playAlarmNow(phrase, state.alarmVolume);
+            setAlarmNote("Ringing…");
+            void playAlarmNow(phrase, state.alarmVolume).then(setAlarmNote);
             buzz(400);
           }}
         >
           Test
         </button>
       </div>
+      {alarmNote && (
+        <p className="mt-1 text-xs leading-snug text-gold" role="status">
+          {alarmNote}
+        </p>
+      )}
       {state.alarm && (
         <div className="mt-2 flex items-center justify-between gap-2 text-sm">
           <span>
             Alarm volume
             <span className="block text-xs text-muted">
-              The phone's alarm volume while it rings (0.36 is 36%), put back after.
+              How loud: the phone's alarm volume goes to full while it rings (put back after), and
+              the sound plays at this share of it (0.36 is 36%, 0.09 is 9%).
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-1">
