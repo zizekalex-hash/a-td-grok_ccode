@@ -81,6 +81,8 @@ export interface RepsState {
   /** The alarm sounds when a timed set's timer is up (reps.alarm), at this share of the phone's alarm volume. */
   alarm: boolean;
   alarmVolume: number;
+  /** Which knob alarmVolume is on: 2, even dB steps (game/alarm.ts); older saves are turned into it. */
+  alarmCurve?: number;
   active: ActiveSet | null;
   /** Every finished set and reset, newest first, up to reps.historyKeep. Resets do not clear it. */
   log: LogEntry[];
@@ -101,6 +103,7 @@ export function newReps(): RepsState {
     blank: false,
     alarm: R.alarm.on !== false,
     alarmVolume: clampAlarmVolume(R.alarm.volume),
+    alarmCurve: 2,
     active: null,
     log: [],
   };
@@ -581,7 +584,13 @@ export function loadReps(data: unknown): RepsState {
   if (d.first === "timer") s.first = "timer";
   s.blank = d.blank === true;
   if (typeof d.alarm === "boolean") s.alarm = d.alarm;
-  if (Number.isFinite(num(d.alarmVolume))) s.alarmVolume = clampAlarmVolume(num(d.alarmVolume));
+  if (Number.isFinite(num(d.alarmVolume))) {
+    // Saved on the older knob (40 x log10 of it, in dB): the same loudness on this one (70 dB of even steps).
+    const v = num(d.alarmVolume);
+    s.alarmVolume = clampAlarmVolume(
+      d.alarmCurve === 2 ? v : 1 + (40 * Math.log10(Math.max(0.001, v))) / 70,
+    );
+  }
   const seen = new Set<string>();
   for (const raw of Array.isArray(d.items) ? d.items : []) {
     if (!raw || typeof raw !== "object") continue;

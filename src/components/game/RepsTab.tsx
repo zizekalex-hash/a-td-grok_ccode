@@ -507,9 +507,9 @@ export function RepsTab() {
           <span>
             Alarm volume
             <span className="block text-xs text-muted">
-              How loud, like a knob: 1 is the phone's full alarm volume, 0.36 is 18 dB below, 0.09
-              is 42 dB below (quiet), 0.03 is 61 dB below (a whisper). Never louder; the phone's
-              alarm volume is put back after.
+              How loud, like a knob: 1 is the phone's full alarm volume, 0.9 is 7 dB below, 0.6 is
+              28 dB below, 0.3 is 49 dB below (quiet). Never louder; the phone's alarm volume is put
+              back after. Not answered, it calls again at 0.3, 0.6, 0.9 till answered.
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-1">

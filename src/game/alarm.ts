@@ -8,8 +8,9 @@
  * ways gets there first, once: the phone's own alarm clock, the app's own timer
  * (the phone kept awake till then), or the page when it sees the time is up. It
  * plays on the alarm sound (not media). How loud is a knob from 0.01 to 1: a
- * level below the phone's full alarm volume, 40 x log10(volume) dB (alarmDb:
- * 0.36 is -18 dB, 0.09 is -42 dB). The phone's alarm volume goes to the step at
+ * level below the phone's full alarm volume, even steps of dB over 70 dB
+ * (alarmDb: 1 is full, 0.9 is -7 dB, 0.6 is -28 dB, 0.3 is -49 dB, quiet). The
+ * phone's alarm volume goes to the step at
  * or just above that level while it rings (put back after) and the sound is
  * turned down the rest of the way, so it is never louder than asked. Elsewhere
  * the page plays it on its audio clock, that far below the media volume.
@@ -157,9 +158,12 @@ export interface Rung {
   error?: string;
 }
 
-/** How far below full the alarm is, in dB, for a volume from 0.01 to 1 (a knob: 0.36 is -18, 0.09 is -42). */
+/** The knob's whole range, in dB: 0.01 is nearly that far below full. */
+export const ALARM_RANGE_DB = 70;
+
+/** How far below full the alarm is, in dB, for a volume from 0.01 to 1: even steps (1 is 0, 0.9 is -7, 0.6 is -28, 0.3 is -49). */
 export function alarmDb(volume: number): number {
-  return 40 * Math.log10(clamp(volume, 0.001, 1));
+  return ALARM_RANGE_DB * (clamp(volume, 0.01, 1) - 1);
 }
 
 /** The sound's own scale for a volume (when nothing else turns it down): its level as an amplitude. */

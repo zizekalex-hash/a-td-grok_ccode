@@ -66,27 +66,34 @@ describe("timed set alarm", () => {
   it("is on by default at 0.36 of the phone's alarm volume, kept with the reps", () => {
     assert.equal(newReps().alarm, CONFIG.reps.alarm.on);
     assert.equal(newReps().alarmVolume, 0.36);
+    assert.equal(newReps().alarmCurve, 2);
+    // Saved on the older knob: the same loudness on this one (0.06 was -49 dB, now 0.3).
+    assert.equal(loadReps({ alarmVolume: 0.06 }).alarmVolume, 0.3);
+    assert.equal(loadReps({ alarmVolume: 0.06, alarmCurve: 2 }).alarmVolume, 0.06);
     assert.equal(loadReps({ alarm: false }).alarm, false);
     assert.equal(loadReps({}).alarm, CONFIG.reps.alarm.on);
-    assert.equal(loadReps({ alarmVolume: 0.5 }).alarmVolume, 0.5);
-    assert.equal(loadReps({ alarmVolume: 7 }).alarmVolume, 1);
+    assert.equal(loadReps({ alarmVolume: 0.5, alarmCurve: 2 }).alarmVolume, 0.5);
+    assert.equal(loadReps({ alarmVolume: 7, alarmCurve: 2 }).alarmVolume, 1);
     assert.equal(clampAlarmVolume(0), 0.01);
   });
 
-  it("is a knob in dB, and says how the Test rang", () => {
-    assert.equal(Math.round(alarmDb(1)), 0);
-    assert.equal(Math.round(alarmDb(0.36)), -18);
-    assert.equal(Math.round(alarmDb(0.09)), -42);
-    assert.equal(Math.round(alarmDb(0.03)), -61);
-    assert.ok(Math.abs(alarmGain(0.36) - 0.1296) < 1e-4, "0.36 squared");
-    assert.ok(alarmGain(0.09) < alarmGain(0.36) / 10, "0.09 far quieter than 0.36");
-    const rang = { played: true, before: 11, want: 3, during: 3, max: 25, gain: 0.56 };
+  it("is a knob in even dB steps, and says how the Test rang", () => {
+    assert.equal(alarmDb(1), 0);
+    assert.equal(Math.round(alarmDb(0.9)), -7);
+    assert.equal(Math.round(alarmDb(0.6)), -28);
+    assert.equal(Math.round(alarmDb(0.3)), -49);
+    assert.equal(Math.round(alarmDb(0)), -69, "never silent: 0.01 at least");
+    assert.ok(Math.abs(alarmGain(0.3) - 10 ** (-49 / 20)) < 1e-6);
+    // Each call louder than the last, by even steps.
+    const levels = NAG.map((n) => alarmDb(n.volume));
+    assert.deepEqual(levels.map(Math.round), [-49, -28, -7]);
+    const rang = { played: true, before: 11, want: 1, during: 1, max: 25, gain: 0.11 };
     assert.match(
-      rungNote(rang, 0.09),
-      /-42 dB below full: alarm volume 3\/25, the sound at 56%, back to 11\/25 after/,
+      rungNote(rang, 0.3),
+      /-49 dB below full: alarm volume 1\/25, the sound at 11%, back to 11\/25 after/,
     );
-    assert.match(rungNote({ ...rang, during: 11 }, 0.09), /11\/25 \(the phone kept its own\)/);
-    assert.match(rungNote(null, 0.36), /page, -18 dB below/);
+    assert.match(rungNote({ ...rang, during: 11 }, 0.3), /11\/25 \(the phone kept its own\)/);
+    assert.match(rungNote(null, 0.6), /page, -28 dB below/);
     assert.match(
       rungNote({ ...rang, played: false, error: "busy" }, 0.36),
       /could not play it \(busy\)/,
