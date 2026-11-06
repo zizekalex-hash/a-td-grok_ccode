@@ -4,7 +4,7 @@ import { Check, EyeOff, RotateCcw, X } from "lucide-react";
 import { BinaryWall } from "@/components/game/BinaryWall";
 import { Confirm } from "@/components/game/Confirm";
 import { buzz } from "@/components/game/feel";
-import { ringAlarmNow, scheduleAlarm } from "@/game/alarm";
+import { ringAlarmNow, scheduleAlarm, stopAlarm } from "@/game/alarm";
 import { CONFIG } from "@/game/config";
 import { flashToast, grantSkillXp } from "@/game/engine";
 import { levelForXp } from "@/game/recite";
@@ -86,7 +86,9 @@ export function RestSet({
   // The alarm: when a timer part is up, the phrase itself sounds (game/alarm.ts),
   // set now for that moment: on the phone by its alarm clock and the app's own
   // timer (it rings with the screen off), elsewhere on the page's audio clock;
-  // and rung by the page too when it sees the time is up (once in all).
+  // and rung by the page too when it sees the time is up (once in all). Then it
+  // keeps calling, louder each time, till the set is answered here: Done, Done
+  // and again, the next part or Cancel end this set, and with it the alarm.
   const timerEnd =
     active && partOf(active) === "timer"
       ? (active.partSince ?? active.since) + Math.max(0, active.duration ?? 0)
@@ -95,7 +97,12 @@ export function RestSet({
   const alarmVolume = state.alarmVolume;
   const [alarmStatus, setAlarmStatus] = useState("");
   useEffect(() => {
-    if (!state.alarm || !timerEnd || timerEnd <= Date.now()) return;
+    if (!state.alarm || !timerEnd) return;
+    // Over already (the app opened at time's up): it rings (if it has not) and calls till answered.
+    if (timerEnd <= Date.now()) {
+      ringAlarmNow(alarmText, timerEnd, alarmVolume);
+      return () => stopAlarm(timerEnd);
+    }
     return scheduleAlarm(alarmText, timerEnd, alarmVolume, setAlarmStatus);
   }, [state.alarm, timerEnd, alarmText, alarmVolume]);
   const alarm = useRef({ on: state.alarm, text: alarmText, end: timerEnd, volume: alarmVolume });

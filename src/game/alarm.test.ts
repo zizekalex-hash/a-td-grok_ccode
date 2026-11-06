@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { CONFIG } from "./config.ts";
 import {
   ALARM_RATE,
+  alarmMs,
+  NAG,
   alarmDb,
   alarmGain,
   alarmSamples,
@@ -98,5 +100,25 @@ describe("timed set alarm", () => {
     );
     assert.match(setNote({ at: "13:46:00", way: "none", error: "denied" }), /failed \(denied\)/);
     assert.match(setNote(null), /could not be set/);
+  });
+
+  it("keeps calling after the first ring: 3 s then 0.3, 6 s then 0.6, 9 s then 0.9, round again", () => {
+    assert.deepEqual(
+      NAG.map((n) => [n.waitMs, n.volume]),
+      [
+        [3000, 0.3],
+        [6000, 0.6],
+        [9000, 0.9],
+      ],
+    );
+    // Louder each time, whatever the setting was.
+    assert.ok(NAG.every((n, i) => i === 0 || n.volume > NAG[i - 1]!.volume));
+    // One ring's length, as the sound is made.
+    const sound = defaultSettings();
+    const spec = alarmSpec();
+    const rate = 8000;
+    const len = alarmSamples("Oxygenation", rate, sound, spec).length;
+    assert.equal(alarmMs(sound, spec), Math.round((len / rate) * 1000));
+    assert.equal(alarmMs({ ...sound, signalMs: 5000 }, { repeats: 3, gapMs: 350 }), 5000);
   });
 });

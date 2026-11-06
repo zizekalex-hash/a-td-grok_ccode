@@ -12,8 +12,15 @@
  * 0.36 is -18 dB, 0.09 is -42 dB). The phone's alarm volume goes to the step at
  * or just above that level while it rings (put back after) and the sound is
  * turned down the rest of the way, so it is never louder than asked. Elsewhere
- * the page plays it on its audio clock, that far below the media volume. The sound itself is pure (alarmSamples, pcm16),
- * so the tests can load it; playing it needs a page.
+ * the page plays it on its audio clock, that far below the media volume.
+ *
+ * After that first ring, until the set is answered (Done, Done and again, the
+ * next part, or the set cancelled), it keeps calling, louder each time and
+ * whatever the phone's volume: 3 s, then at 0.3; 6 s, then at 0.6; 9 s, then at
+ * 0.9; and round again (NAG; hardcoded, the same in AlarmRun.java). On the phone
+ * the app stays in the foreground with a notification meanwhile, so it calls
+ * with the screen off too. The sound itself is pure (alarmSamples, pcm16,
+ * alarmMs), so the tests can load it; playing it needs a page.
  */
 import { CONFIG } from "./config.ts";
 import {
@@ -71,6 +78,25 @@ export function alarmSamples(
   return out;
 }
 
+/**
+ * After the first ring, till the set is answered: the wait before each call (ms,
+ * from the end of the ring before) and its volume (the same knob as the
+ * setting), round and round. Hardcoded on purpose, as in AlarmRun.java.
+ */
+export const NAG: readonly { waitMs: number; volume: number }[] = [
+  { waitMs: 3000, volume: 0.3 },
+  { waitMs: 6000, volume: 0.6 },
+  { waitMs: 9000, volume: 0.9 },
+];
+
+/** How long one ring lasts (ms): its plays and the gaps between, as alarmSamples makes them. */
+export function alarmMs(sound: AlarmSound, spec: AlarmSpec): number {
+  const one = sound.signalMs;
+  let repeats = Math.max(1, spec.repeats);
+  while (repeats > 1 && repeats * one + (repeats - 1) * spec.gapMs > MAX_ALARM_MS) repeats--;
+  return repeats * one + (repeats - 1) * spec.gapMs;
+}
+
 /** Samples as 16-bit PCM, little-endian, for the phone. */
 export function pcm16(samples: Float32Array): Uint8Array {
   const out = new Uint8Array(samples.length * 2);
@@ -108,8 +134,10 @@ interface PhraseAlarmApi {
     rate: number;
     volume: number;
     pcm: string;
+    title: string;
   }): Promise<{ at: string; way: string; error: string }>;
   cancel(o: { id: string }): Promise<void>;
+  stopAll(): Promise<void>;
   fire(o: { id: string; rate: number; volume: number; pcm: string }): Promise<{ rang: boolean }>;
   play(o: { rate: number; volume: number; pcm: string }): Promise<Rung>;
   log(): Promise<{ log: string }>;
@@ -228,6 +256,39 @@ function phonePcm(text: string): string {
 /** An alarm's id: its moment. */
 const alarmId = (atMs: number) => `t${Math.round(atMs)}`;
 
+/** The page's own calls after the first ring (no phone), by alarm id: what stops them. */
+const pageNags = new Map<string, () => void>();
+
+/** Without the phone: the page calls again as NAG says, till stopped. The first ring is the one at atMs. */
+function startPageNag(text: string, atMs: number) {
+  const id = alarmId(atMs);
+  if (pageNags.has(id)) return;
+  const ring = alarmMs(rehearseSound(), alarmSpec());
+  let stopped = false;
+  let timer = 0;
+  let sound: () => void = () => {};
+  const call = (k: number, wait: number) => {
+    timer = window.setTimeout(() => {
+      if (stopped) return;
+      const step = NAG[k % NAG.length]!;
+      sound = pageAlarm(text, Date.now(), step.volume);
+      call(k + 1, ring + NAG[(k + 1) % NAG.length]!.waitMs);
+    }, wait);
+  };
+  call(0, Math.max(0, atMs + ring - Date.now()) + NAG[0]!.waitMs);
+  pageNags.set(id, () => {
+    stopped = true;
+    window.clearTimeout(timer);
+    sound();
+  });
+}
+
+function stopPageNag(atMs: number) {
+  const id = alarmId(atMs);
+  pageNags.get(id)?.();
+  pageNags.delete(id);
+}
+
 /**
  * Sets the alarm for a phrase at a moment (ms, like Date.now()), at a share of
  * the phone's alarm volume (the Android app); gives back what cancels it, and
@@ -244,7 +305,11 @@ export function scheduleAlarm(
   void phoneAlarm().then((phone) => {
     if (cancelled) return;
     if (!phone) {
-      stop = pageAlarm(text, atMs, volume);
+      const sound = pageAlarm(text, atMs, volume);
+      stop = () => {
+        sound();
+        stopPageNag(atMs);
+      };
       onStatus?.("The page rings it at the time (keep the app open and the screen on).");
       return;
     }
@@ -257,6 +322,7 @@ export function scheduleAlarm(
         rate: ALARM_RATE,
         volume: clamp(volume, 0.01, 1),
         pcm: phonePcm(text),
+        title: text.slice(0, 80),
       })
       .then((r) => {
         if (!cancelled) onStatus?.(setNote(r));
@@ -272,13 +338,14 @@ export function scheduleAlarm(
 }
 
 /**
- * Time's up, seen by the page: on the phone it rings the alarm for that moment
- * now, unless it has rung already (one ring in all). Without the phone the page
- * already has it on its audio clock.
+ * Time's up, seen by the page: on the phone it starts the alarm for that moment
+ * now (the ring, then the calls till answered), unless it has started already.
+ * Without the phone the page has the ring on its audio clock, and starts its
+ * own calls after it.
  */
 export function ringAlarmNow(text: string, atMs: number, volume = CONFIG.reps.alarm.volume) {
   void phoneAlarm().then((phone) => {
-    if (!phone) return;
+    if (!phone) return startPageNag(text, atMs);
     void phone.api
       .fire({
         id: alarmId(atMs),
@@ -287,6 +354,22 @@ export function ringAlarmNow(text: string, atMs: number, volume = CONFIG.reps.al
         pcm: phonePcm(text),
       })
       .catch(() => {});
+  });
+}
+
+/** The set was answered: the alarm for that moment stops, waiting or calling. */
+export function stopAlarm(atMs: number) {
+  stopPageNag(atMs);
+  void phoneAlarm().then((phone) => {
+    if (phone) void phone.api.cancel({ id: alarmId(atMs) }).catch(() => {});
+  });
+}
+
+/** At the app's start: with no set running, any alarm still waiting or calling is stale, and stops. */
+export function settleAlarms(setRunning: boolean) {
+  if (setRunning) return;
+  void phoneAlarm().then((phone) => {
+    if (phone) void phone.api.stopAll().catch(() => {});
   });
 }
 
