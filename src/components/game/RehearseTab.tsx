@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FolderOpen,
+  PictureInPicture2,
   Minus,
   Plus,
   RotateCcw,
@@ -18,6 +19,15 @@ import { bytesPicture } from "@/game/readview";
 import { BYTES_MODES, type BytesMode } from "@/game/readtext";
 import { useGame } from "@/game/store";
 import { fileLoop, phraseLoop, type FileLoop, type PhraseLoop } from "@/game/phraseSound";
+import {
+  bubbleState,
+  closeBubble,
+  onBubble,
+  openBubble,
+  takeBubbleReps,
+  updateBubble,
+  type BubbleSetup,
+} from "@/game/repBubble";
 import {
   folderFileUrl,
   folderName,
@@ -588,6 +598,83 @@ export function RehearseTab() {
     const id = item.id;
     update((s) => countRep(s, id, t, n));
   };
+  // The floating window over other apps (the phone app): taps there count here when the app takes them.
+  const [bubbleHere, setBubbleHere] = useState(false);
+  const [bubbleOn, setBubbleOn] = useState(false);
+  const takeFromBubble = useRef<() => Promise<void>>(async () => {});
+  takeFromBubble.current = async () => {
+    const r = await takeBubbleReps();
+    if (!r) return;
+    setBubbleOn(r.shown);
+    if (r.reps.length) {
+      for (const t of r.reps) {
+        const it = st.items.find((i) => i.id === t.id);
+        if (!it) continue;
+        const before = levelForXp(useGame.getState().skills.recitation);
+        grantSkillXp("recitation", repXp(wordsOf(it.text), t.n));
+        const after = levelForXp(useGame.getState().skills.recitation);
+        if (after > before) flashToast(`Recitation level ${after}`);
+      }
+      update((s) => r.reps.reduce((acc, t) => countRep(acc, t.id, t.at, t.n), s));
+    }
+    if (r.current && r.current !== item?.id) update((s) => select(s, r.current));
+  };
+  useEffect(() => {
+    let live = true;
+    let off = () => {};
+    void bubbleState().then((b) => {
+      if (!live) return;
+      setBubbleHere(b.here);
+      setBubbleOn(b.shown);
+      void takeFromBubble.current();
+    });
+    void onBubble(() => void takeFromBubble.current()).then((f) => {
+      if (live) off = f;
+      else f();
+    });
+    const back = () => {
+      if (!document.hidden) void takeFromBubble.current();
+    };
+    document.addEventListener("visibilitychange", back);
+    return () => {
+      live = false;
+      off();
+      document.removeEventListener("visibilitychange", back);
+    };
+  }, []);
+  const bubbleSetup = (): BubbleSetup => ({
+    phrases: st.items.map((i) => ({ id: i.id, text: i.text, count: i.count })),
+    current: item?.id ?? "",
+    batch: set.batch,
+    waitMs: batchWait,
+    lastTap: st.lastTap,
+  });
+  // The window shows what is here: the phrases, their counts, the batch and its wait.
+  const bubbleKey = JSON.stringify([
+    st.items.map((i) => [i.id, i.count]),
+    item?.id,
+    set.batch,
+    batchWait,
+    st.lastTap,
+  ]);
+  useEffect(() => {
+    if (!bubbleOn) return;
+    const id = window.setTimeout(() => void updateBubble(bubbleSetup()), 250);
+    return () => window.clearTimeout(id);
+    // bubbleKey holds everything the window shows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bubbleOn, bubbleKey]);
+  const toggleBubble = async () => {
+    if (bubbleOn) {
+      await closeBubble();
+      setBubbleOn(false);
+      return;
+    }
+    const msg = await openBubble(bubbleSetup());
+    if (msg) setTapNote(msg);
+    else setBubbleOn(true);
+  };
+
   const press = (count: boolean) => {
     if (!item) return;
     emitter.start();
@@ -762,6 +849,20 @@ export function RehearseTab() {
               <Settings2 className="size-4" aria-hidden /> Sound and picture
             </button>
           </div>
+          {bubbleHere && (
+            <button
+              type="button"
+              className="btn mt-2 w-full tracking-normal normal-case"
+              data-on={bubbleOn}
+              aria-pressed={bubbleOn}
+              onClick={() => void toggleBubble()}
+            >
+              <PictureInPicture2 className="size-4" aria-hidden />
+              {bubbleOn
+                ? "Floating window on: tap it over other apps (tap here to close it)"
+                : "Floating window over other apps: tap it to count reps"}
+            </button>
+          )}
           <div className="mt-2">
             <Toggle
               label={`Nonstop: its sound all the time${mode === "cycle" ? " (rising cycle)" : ""}`}
