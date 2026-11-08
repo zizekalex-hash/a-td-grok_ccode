@@ -10,7 +10,9 @@ import {
   phraseBytes,
   phraseSignal,
   phrasesOf,
+  batchWaitMs,
   cycleSignal,
+  tapReady,
   fileBase,
   phraseFileNames,
   wavSampleRate,
@@ -228,5 +230,26 @@ describe("rehearse: phrases as files", () => {
     v.setUint32(24, 48_000, true);
     assert.equal(wavSampleRate(head), 48_000);
     assert.equal(wavSampleRate(new Uint8Array(44)), null, "not a wav");
+  });
+
+  it("counts a batch a tap: 10 reps after 9.9 s since the last tap that counted", () => {
+    let s = addPhrases(newRehearse(), ["Oxygenation"], 1, ids).state;
+    assert.equal(s.settings.batch, 1, "one a tap to start, no wait");
+    assert.equal(batchWaitMs(s.settings), 0);
+    s = countRep(s, "p0", 1000);
+    assert.ok(tapReady(s, 1001).ready, "one a tap: no wait");
+    s = { ...s, settings: { ...s.settings, batch: 10 } };
+    assert.equal(batchWaitMs(s.settings), 9900);
+    const soon = tapReady(s, 1000 + 9899);
+    assert.equal(soon.ready, false);
+    assert.equal(soon.leftMs, 1);
+    assert.ok(tapReady(s, 1000 + 9900).ready);
+    s = countRep(s, "p0", 1000 + 9900, 10);
+    assert.equal(s.items[0]!.count, 11);
+    assert.equal(s.lastTap, 10_900);
+    const back = loadRehearse({ ...s, settings: { batch: 0, repSeconds: 999 } });
+    assert.equal(back.lastTap, 10_900);
+    assert.equal(back.settings.batch, 1);
+    assert.equal(back.settings.repSeconds, 60);
   });
 });

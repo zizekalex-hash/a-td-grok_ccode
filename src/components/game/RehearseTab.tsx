@@ -37,7 +37,11 @@ import {
   MAX_CYCLE_MS,
   clampSignalMs,
   clampTapHeight,
+  batchWaitMs,
+  clampBatch,
+  clampRepSeconds,
   countRep,
+  tapReady,
   PHRASE_FOLDER,
   phraseFileNames,
   currentPhrase,
@@ -296,6 +300,17 @@ function Num({
   );
 }
 
+/** A batch's wait filling up, from the last tap that counted (set once, when the wait shows). */
+function WaitBar({ lastTap, wait }: { lastTap: number; wait: number }) {
+  const [delay] = useState(() => Math.min(0, lastTap - Date.now()));
+  return (
+    <span
+      className="block h-full bg-violet"
+      style={{ animation: `rep-fill ${wait}ms linear ${delay}ms forwards` }}
+    />
+  );
+}
+
 function Toggle({ label, on, flip }: { label: string; on: boolean; flip: () => void }) {
   return (
     <button
@@ -331,6 +346,26 @@ export function RehearseTab() {
   const set = st.settings;
   const emitter = useEmitter(item?.text ?? "", set);
   const index = item ? st.items.indexOf(item) : -1;
+
+  // Reps a tap: above 1, a tap counts once batch x repSeconds have passed since the last that counted.
+  const batchWait = batchWaitMs(set);
+  const [clock, setClock] = useState(() => Date.now());
+  const [tapNote, setTapNote] = useState("");
+  const gateAt = st.lastTap + batchWait;
+  const waiting = batchWait > 0 && st.lastTap > 0 && clock < gateAt;
+  useEffect(() => {
+    const t0 = Date.now();
+    setClock(t0);
+    if (batchWait <= 0 || t0 >= gateAt) return;
+    const id = window.setTimeout(
+      () => {
+        setClock(Date.now());
+        setTapNote("");
+      },
+      gateAt - t0 + 4,
+    );
+    return () => window.clearTimeout(id);
+  }, [gateAt, batchWait]);
 
   // Nonstop: the current phrase's sound all the time while this tab is open.
   const loop = useRef<PhraseLoop | null>(null);
@@ -534,12 +569,24 @@ export function RehearseTab() {
 
   const rep = () => {
     if (!item) return;
+    const t = Date.now();
+    setClock(t);
+    // A batch counts once its time has passed since the last tap that counted.
+    const gate = tapReady(st, t);
+    if (!gate.ready) {
+      setTapNote(
+        `${set.batch} reps take ${+(batchWait / 1000).toFixed(2)} s: ${(Math.ceil(gate.leftMs / 100) / 10).toFixed(1)} s to go`,
+      );
+      return;
+    }
+    setTapNote("");
+    const n = set.batch;
     const before = levelForXp(useGame.getState().skills.recitation);
-    grantSkillXp("recitation", repXp(wordsOf(item.text), 1));
+    grantSkillXp("recitation", repXp(wordsOf(item.text), n));
     const after = levelForXp(useGame.getState().skills.recitation);
     if (after > before) flashToast(`Recitation level ${after}`);
     const id = item.id;
-    update((s) => countRep(s, id, Date.now()));
+    update((s) => countRep(s, id, t, n));
   };
   const press = (count: boolean) => {
     if (!item) return;
@@ -616,15 +663,31 @@ export function RehearseTab() {
               WebkitTouchCallout: "none",
             }}
             {...holdProps(true)}
-            aria-label={`Rep: ${item.text}. ${item.count} so far`}
+            aria-label={`Rep${set.batch > 1 ? ` ×${set.batch}` : ""}: ${item.text}. ${item.count} so far`}
           >
             <span className="font-display text-[0.65rem] tracking-[0.14em] text-violet">
-              TAP = 1 REP · HOLD TO KEEP IT ON
+              {set.batch > 1
+                ? `TAP = ${set.batch} REPS · ONCE EVERY ${+(batchWait / 1000).toFixed(2)} S`
+                : "TAP = 1 REP · HOLD TO KEEP IT ON"}
             </span>
             <span className="line-clamp-5 text-lg leading-snug text-fg">{item.text}</span>
             <span className="font-display text-3xl text-cyan" aria-live="polite">
               {item.count.toLocaleString()}
             </span>
+            {batchWait > 0 && (
+              <span className="block h-1 w-2/3 overflow-hidden rounded bg-violet/15" aria-hidden>
+                {waiting ? (
+                  <WaitBar key={st.lastTap} lastTap={st.lastTap} wait={batchWait} />
+                ) : (
+                  <span className="block h-full w-full bg-gold" />
+                )}
+              </span>
+            )}
+            {tapNote && (
+              <span className="text-xs text-gold" role="status">
+                {tapNote}
+              </span>
+            )}
             {wavHere && (
               <span className="text-[0.65rem] text-violet">
                 ♪ {name}.wav{" "}
@@ -659,6 +722,26 @@ export function RehearseTab() {
             >
               <ChevronRight className="size-4" aria-hidden />
             </button>
+          </div>
+          <div
+            className="mt-2 grid grid-cols-5 items-center gap-1"
+            role="radiogroup"
+            aria-label="Reps a tap"
+          >
+            <span className="text-[0.65rem] leading-tight text-muted">Reps a tap</span>
+            {[1, 10, 20, 30].map((b) => (
+              <button
+                key={b}
+                type="button"
+                role="radio"
+                aria-checked={set.batch === b}
+                data-on={set.batch === b}
+                className="btn px-1"
+                onClick={() => setOpt({ batch: b })}
+              >
+                ×{b}
+              </button>
+            ))}
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <button
@@ -756,6 +839,19 @@ export function RehearseTab() {
               />
             </>
           )}
+          <Num
+            label="Reps a tap"
+            value={set.batch}
+            step={1}
+            set={(v) => setOpt({ batch: clampBatch(v) })}
+          />
+          <Num
+            label="Seconds a rep (a batch's wait)"
+            value={set.repSeconds}
+            step={0.01}
+            digits={2}
+            set={(v) => setOpt({ repSeconds: clampRepSeconds(v) })}
+          />
           <Num
             label="Length (ms)"
             value={set.signalMs}

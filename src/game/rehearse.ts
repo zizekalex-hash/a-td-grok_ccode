@@ -53,6 +53,9 @@ export interface RehearseSettings {
   topSpeed: number;
   /** The phrase's sound all the time while Rehearse is open, not only on a tap. */
   nonstop: boolean;
+  /** Reps one tap counts; above 1 a tap counts only once batch x repSeconds have passed since the last. */
+  batch: number;
+  repSeconds: number;
   /** The phrase's own .wav (made outside, next to its .txt in azs-folder/input_perphrase) looped as it is, at this gain. */
   wavLoop: boolean;
   wavVolume: number;
@@ -71,6 +74,8 @@ export interface RehearseState {
   /** The phrase being repped ("" for the first). */
   current: string;
   settings: RehearseSettings;
+  /** When the last tap counted (ms since 1970; 0 for none): a batch waits from there. */
+  lastTap: number;
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -81,6 +86,8 @@ export const clampSignalMs = (v: number) => clamp(Math.round(v), 1, 60_000);
 export const clampAmp = (v: number) => clamp(Math.round(v * 100) / 100, 0, 1);
 export const clampRawRate = (v: number) => clamp(Math.round(v), 1, 1_000_000);
 export const clampPlays = (v: number) => clamp(Math.round(v), 2, 99);
+export const clampBatch = (v: number) => clamp(Math.round(v), 1, 1000);
+export const clampRepSeconds = (v: number) => clamp(Math.round(v * 100) / 100, 0, 60);
 export const clampTopSpeed = (v: number) => clamp(Math.round(v * 100) / 100, 1, 10_000);
 /** The longest a whole cycle lasts (ms): its plays are shortened to fit. */
 export const MAX_CYCLE_MS = 60_000;
@@ -97,6 +104,8 @@ export function defaultSettings(): RehearseSettings {
     plays: 9,
     topSpeed: 9,
     nonstop: false,
+    batch: 1,
+    repSeconds: 0.99,
     wavLoop: true,
     wavVolume: 1,
     picture: true,
@@ -108,7 +117,7 @@ export function defaultSettings(): RehearseSettings {
 }
 
 export function newRehearse(): RehearseState {
-  return { items: [], current: "", settings: defaultSettings() };
+  return { items: [], current: "", settings: defaultSettings(), lastTap: 0 };
 }
 
 /** A saved state, each value checked. */
@@ -131,6 +140,7 @@ export function loadRehearse(data: unknown): RehearseState {
     });
   }
   if (typeof d.current === "string" && seen.has(d.current)) s.current = d.current;
+  s.lastTap = Math.max(0, num(d.lastTap, 0));
   const t = obj(d.settings);
   const u = s.settings;
   if (typeof t.sound === "boolean") u.sound = t.sound;
@@ -141,6 +151,8 @@ export function loadRehearse(data: unknown): RehearseState {
   u.plays = clampPlays(num(t.plays, u.plays));
   u.topSpeed = clampTopSpeed(num(t.topSpeed, u.topSpeed));
   if (typeof t.nonstop === "boolean") u.nonstop = t.nonstop;
+  u.batch = clampBatch(num(t.batch, u.batch));
+  u.repSeconds = clampRepSeconds(num(t.repSeconds, u.repSeconds));
   if (typeof t.wavLoop === "boolean") u.wavLoop = t.wavLoop;
   u.wavVolume = clampAmp(num(t.wavVolume, u.wavVolume));
   if (typeof t.picture === "boolean") u.picture = t.picture;
@@ -195,11 +207,25 @@ export function phrasesOf(text: string, bySentence = true): string[] {
 }
 
 /** One rep for a phrase. */
-export function countRep(s: RehearseState, id: string, now: number): RehearseState {
+export function countRep(s: RehearseState, id: string, now: number, n = 1): RehearseState {
+  const add = Math.max(1, Math.floor(n));
   return {
     ...s,
-    items: s.items.map((i) => (i.id === id ? { ...i, count: i.count + 1, last: now } : i)),
+    lastTap: now,
+    items: s.items.map((i) => (i.id === id ? { ...i, count: i.count + add, last: now } : i)),
   };
+}
+
+/** How long a batch takes (ms): batch x repSeconds, or none for one rep a tap. */
+export function batchWaitMs(settings: Pick<RehearseSettings, "batch" | "repSeconds">): number {
+  return settings.batch > 1 ? Math.round(settings.batch * settings.repSeconds * 1000) : 0;
+}
+
+/** Whether a tap now counts its batch, and how long until it would (ms). */
+export function tapReady(s: RehearseState, now: number): { ready: boolean; leftMs: number } {
+  const wait = batchWaitMs(s.settings);
+  const left = s.lastTap > 0 ? Math.max(0, s.lastTap + wait - now) : 0;
+  return { ready: left <= 0, leftMs: left };
 }
 
 /** A phrase's count back to 0; the phrase stays. */
