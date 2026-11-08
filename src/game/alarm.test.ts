@@ -4,7 +4,7 @@ import { CONFIG } from "./config.ts";
 import {
   ALARM_RATE,
   alarmMs,
-  NAG,
+  nagSteps,
   alarmDb,
   alarmGain,
   alarmSamples,
@@ -17,6 +17,8 @@ import {
 } from "./alarm.ts";
 import { clampAlarmVolume, loadReps, newReps } from "./reps.ts";
 import { defaultSettings, phraseSignal } from "./rehearse.ts";
+
+const NAG = nagSteps([0.3, 0.6, 0.9]);
 
 const peak = (a: Float32Array) => a.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
 
@@ -50,8 +52,8 @@ describe("timed set alarm", () => {
     const huge = { ...defaultSettings(), signalMs: 10_000 };
     assert.equal(
       alarmSamples("x", 1000, huge, { repeats: 3, gapMs: 0 }).length,
-      10_000,
-      "one, even if longer",
+      8000,
+      "one, cut to the most an alarm lasts",
     );
   });
 
@@ -127,5 +129,23 @@ describe("timed set alarm", () => {
     const len = alarmSamples("Oxygenation", rate, sound, spec).length;
     assert.equal(alarmMs(sound, spec), Math.round((len / rate) * 1000));
     assert.equal(alarmMs({ ...sound, signalMs: 5000 }, { repeats: 3, gapMs: 350 }), 5000);
+  });
+
+  it("calls at the levels set in the Reps tab, at 3, 6 and 9 s", () => {
+    assert.deepEqual(
+      nagSteps([0.4, 0.5, 2]).map((n) => [n.waitMs, n.volume]),
+      [
+        [3000, 0.4],
+        [6000, 0.5],
+        [9000, 1],
+      ],
+    );
+    assert.deepEqual(
+      nagSteps([]).map((n) => n.volume),
+      [0.3, 0.6, 0.9],
+      "missing levels start where config.json does",
+    );
+    assert.deepEqual(newReps().alarmCalls, [0.3, 0.6, 0.9]);
+    assert.deepEqual(loadReps({ alarmCalls: [0.2, "x", 5] }).alarmCalls, [0.2, 0.6, 1]);
   });
 });

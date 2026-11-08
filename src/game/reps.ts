@@ -83,9 +83,19 @@ export interface RepsState {
   alarmVolume: number;
   /** Which knob alarmVolume is on: 2, even dB steps (game/alarm.ts); older saves are turned into it. */
   alarmCurve?: number;
+  /** Unanswered, it calls again at these levels (3, 6 and 9 s after each ring), round and round. */
+  alarmCalls: number[];
   active: ActiveSet | null;
   /** Every finished set and reset, newest first, up to reps.historyKeep. Resets do not clear it. */
   log: LogEntry[];
+}
+
+/** The three calls' levels as config.json sets them (0.3, 0.6, 0.9). */
+export function defaultCalls(): number[] {
+  const c = Array.isArray(R.alarm.calls) ? R.alarm.calls : [];
+  return [0, 1, 2].map((i) =>
+    clampAlarmVolume(typeof c[i] === "number" ? c[i]! : [0.3, 0.6, 0.9][i]!),
+  );
 }
 
 /** The alarm's share of the phone's alarm volume: 0.01 to 1, in hundredths. */
@@ -104,6 +114,7 @@ export function newReps(): RepsState {
     alarm: R.alarm.on !== false,
     alarmVolume: clampAlarmVolume(R.alarm.volume),
     alarmCurve: 2,
+    alarmCalls: defaultCalls(),
     active: null,
     log: [],
   };
@@ -590,6 +601,12 @@ export function loadReps(data: unknown): RepsState {
     s.alarmVolume = clampAlarmVolume(
       d.alarmCurve === 2 ? v : 1 + (40 * Math.log10(Math.max(0.001, v))) / 70,
     );
+  }
+  if (Array.isArray(d.alarmCalls)) {
+    s.alarmCalls = s.alarmCalls.map((c, i) => {
+      const v = num((d.alarmCalls as unknown[])[i]);
+      return Number.isFinite(v) ? clampAlarmVolume(v) : c;
+    });
   }
   const seen = new Set<string>();
   for (const raw of Array.isArray(d.items) ? d.items : []) {

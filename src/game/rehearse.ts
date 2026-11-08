@@ -31,6 +31,13 @@ export interface RehearsePhrase {
 /** How long a tap's sound and picture last: as long as it is pressed, or at least the whole signal. */
 export type EmitMode = "press" | "full";
 
+/**
+ * The sound's shape: steady (the phrase fitted to the length, over and over),
+ * or a rising cycle (plays of that length, each faster and higher than the one
+ * before, from x1 to topSpeed, each raised to the peak; then round again).
+ */
+export type SoundMode = "steady" | "cycle";
+
 export interface RehearseSettings {
   /** The phrase's sound on a tap. */
   sound: boolean;
@@ -40,6 +47,12 @@ export interface RehearseSettings {
   amp: number;
   /** Raw samples a second: how long the bytes naturally last. */
   rawRate: number;
+  /** Steady or a rising cycle, its plays and its top speed. */
+  mode: SoundMode;
+  plays: number;
+  topSpeed: number;
+  /** The phrase's sound all the time while Rehearse is open, not only on a tap. */
+  nonstop: boolean;
   /** The phrase's byte picture on a tap, and each layer's opacity. */
   picture: boolean;
   layers: Record<BytesMode, number>;
@@ -61,9 +74,13 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
 const obj = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 
-export const clampSignalMs = (v: number) => clamp(Math.round(v), 50, 10_000);
+export const clampSignalMs = (v: number) => clamp(Math.round(v), 1, 60_000);
 export const clampAmp = (v: number) => clamp(Math.round(v * 100) / 100, 0, 1);
-export const clampRawRate = (v: number) => clamp(Math.round(v), 1000, 48_000);
+export const clampRawRate = (v: number) => clamp(Math.round(v), 1, 1_000_000);
+export const clampPlays = (v: number) => clamp(Math.round(v), 2, 99);
+export const clampTopSpeed = (v: number) => clamp(Math.round(v * 100) / 100, 1, 10_000);
+/** The longest a whole cycle lasts (ms): its plays are shortened to fit. */
+export const MAX_CYCLE_MS = 60_000;
 export const clampLayer = (v: number) => clamp(Math.round(v * 100) / 100, 0, 1);
 export const clampTapHeight = (v: number) => clamp(Math.round(v), 15, 80);
 
@@ -73,6 +90,10 @@ export function defaultSettings(): RehearseSettings {
     signalMs: 900,
     amp: 0.9,
     rawRate: 8000,
+    mode: "steady",
+    plays: 9,
+    topSpeed: 9,
+    nonstop: false,
     picture: true,
     layers: { rgb: 0.36, gray: 0.36, bits: 0.36 },
     pictureOpacity: 1,
@@ -111,6 +132,10 @@ export function loadRehearse(data: unknown): RehearseState {
   u.signalMs = clampSignalMs(num(t.signalMs, u.signalMs));
   u.amp = clampAmp(num(t.amp, u.amp));
   u.rawRate = clampRawRate(num(t.rawRate, u.rawRate));
+  if (t.mode === "steady" || t.mode === "cycle") u.mode = t.mode;
+  u.plays = clampPlays(num(t.plays, u.plays));
+  u.topSpeed = clampTopSpeed(num(t.topSpeed, u.topSpeed));
+  if (typeof t.nonstop === "boolean") u.nonstop = t.nonstop;
   if (typeof t.picture === "boolean") u.picture = t.picture;
   const layers = obj(t.layers);
   for (const m of BYTES_MODES) u.layers[m] = clampLayer(num(layers[m], u.layers[m]));
@@ -251,19 +276,22 @@ export function signalFit(
 
 /**
  * The phrase's sound at a sample rate, signalMs long: its raw samples, repeated
- * or sped up to fit, then raised (or lowered) so the loudest point is amp.
+ * or sped up to fit (and `faster` times faster again, pitch and pace together),
+ * then raised (or lowered) so the loudest point is amp. Past half the sample
+ * rate a sound cannot go higher: faster still folds back down (aliasing).
  */
 export function phraseSignal(
   text: string,
   rate: number,
   opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate">,
+  faster = 1,
 ): Float32Array<ArrayBuffer> {
   const raw = rawSamples(phraseBytes(text));
   const len = raw.length;
   const { speed } = signalFit(len, opts.rawRate, opts.signalMs);
   const out = new Float32Array(Math.max(1, Math.round((rate * opts.signalMs) / 1000)));
   // Raw samples a sample of the output: past the end it starts the phrase again.
-  const stride = (opts.rawRate * speed) / rate;
+  const stride = (opts.rawRate * speed * Math.max(1e-6, faster)) / rate;
   let peak = 0;
   for (let i = 0; i < out.length; i++) {
     const p = i * stride;
@@ -278,4 +306,42 @@ export function phraseSignal(
   const gain = peak > 0 ? opts.amp / peak : 0;
   for (let i = 0; i < out.length; i++) out[i] = out[i]! * gain;
   return out;
+}
+
+/** A rising cycle's speeds: plays of them, evenly from x1 to topSpeed. */
+export function cycleSpeeds(plays: number, topSpeed: number): number[] {
+  const n = clampPlays(plays);
+  const top = clampTopSpeed(topSpeed);
+  return Array.from({ length: n }, (_, k) => 1 + ((top - 1) * k) / (n - 1));
+}
+
+/**
+ * A rising cycle: the phrase's sound played `plays` times, each signalMs long
+ * (shortened so the whole cycle keeps within MAX_CYCLE_MS) and faster and
+ * higher than the one before, from x1 to topSpeed, each raised to the peak.
+ */
+export function cycleSignal(
+  text: string,
+  rate: number,
+  opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate" | "plays" | "topSpeed">,
+): Float32Array<ArrayBuffer> {
+  const speeds = cycleSpeeds(opts.plays, opts.topSpeed);
+  const each = Math.max(1, Math.min(opts.signalMs, MAX_CYCLE_MS / speeds.length));
+  const parts = speeds.map((v) => phraseSignal(text, rate, { ...opts, signalMs: each }, v));
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
+}
+
+/** The phrase's sound as the settings shape it: steady, or the rising cycle. */
+export function soundOf(
+  text: string,
+  rate: number,
+  opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate" | "mode" | "plays" | "topSpeed">,
+): Float32Array<ArrayBuffer> {
+  return opts.mode === "cycle" ? cycleSignal(text, rate, opts) : phraseSignal(text, rate, opts);
 }

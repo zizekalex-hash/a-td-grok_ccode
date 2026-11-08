@@ -837,6 +837,8 @@ export interface GameConfig {
       on: boolean;
       /** The phone's alarm volume while it rings, 0 to 1. */
       volume: number;
+      /** The levels it calls again at, unanswered: 3, 6 and 9 s after each ring. */
+      calls: number[];
       repeats: number;
       gapMs: number;
     };

@@ -46,6 +46,57 @@ const R = CONFIG.reps;
  * can be off); then one tap of Done adds the whole set to the total. Reset sets
  * every total back to 0 and keeps the phrases.
  */
+/** One call's level: − + or typed, 0.01 to 1. */
+function CallLevel({
+  label,
+  value,
+  set,
+}: {
+  label: string;
+  value: number;
+  set: (v: number) => void;
+}) {
+  const [text, setText] = useState<string | null>(null);
+  return (
+    <div className="mt-1 flex items-center justify-between gap-2 text-xs">
+      <span className="text-muted">{label}</span>
+      <span className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          className="btn stepper"
+          onClick={() => set(value - 0.05)}
+          aria-label={`${label}: less`}
+        >
+          <Minus className="size-4" aria-hidden />
+        </button>
+        <input
+          className="w-16 rounded border border-cyan/40 bg-transparent px-1 py-2 text-center text-sm"
+          inputMode="decimal"
+          value={text ?? value.toFixed(2)}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => {
+            const v = Number((text ?? "").replace(",", "."));
+            if (text !== null && Number.isFinite(v)) set(v);
+            setText(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
+          aria-label={label}
+        />
+        <button
+          type="button"
+          className="btn stepper"
+          onClick={() => set(value + 0.05)}
+          aria-label={`${label}: more`}
+        >
+          <Plus className="size-4" aria-hidden />
+        </button>
+      </span>
+    </div>
+  );
+}
+
 export function RepsTab() {
   const [state, setState] = useState<RepsState>(() => readReps());
   const [draft, setDraft] = useState("");
@@ -551,6 +602,30 @@ export function RepsTab() {
               <Plus className="size-4" aria-hidden />
             </button>
           </span>
+        </div>
+      )}
+      {state.alarm && (
+        <div className="mt-2 text-sm">
+          <span>
+            Calls if not answered
+            <span className="block text-xs text-muted">
+              Till Done (or Done and again): 3 s after the ring at the 1st level, 6 s later at the
+              2nd, 9 s later at the 3rd, and round again. Same knob as the Alarm volume.
+            </span>
+          </span>
+          {[0, 1, 2].map((i) => (
+            <CallLevel
+              key={i}
+              label={`${["1st", "2nd", "3rd"][i]} (after ${3 * (i + 1)} s)`}
+              value={state.alarmCalls[i] ?? 0.3 * (i + 1)}
+              set={(v) =>
+                save({
+                  ...state,
+                  alarmCalls: state.alarmCalls.map((c, k) => (k === i ? clampAlarmVolume(v) : c)),
+                })
+              }
+            />
+          ))}
         </div>
       )}
 

@@ -116,6 +116,7 @@ import {
   streamWords,
   wrapWords,
 } from "@/game/readview";
+import { phraseLoop, savedSound, type PhraseLoop } from "@/game/phraseSound";
 import { holdRest } from "@/game/rest";
 import { useGame } from "@/game/store";
 
@@ -1292,6 +1293,18 @@ function Reader({
   // The game behind stops drawing while you read.
   useEffect(() => holdRest(), []);
 
+  // The phrase's sound: its raw bytes, as Rehearse shapes them, all the while it is read.
+  const phraseLoopRef = useRef<PhraseLoop | null>(null);
+  const loopSound = useMemo(() => (reader.phraseSound ? savedSound() : null), [reader.phraseSound]);
+  const reading = heldAt === null && !finished && editing === null;
+  const loopText = units[Math.min(index, total - 1)]?.text ?? "";
+  useEffect(() => {
+    phraseLoopRef.current ??= phraseLoop();
+    if (loopSound && reading && loopText) phraseLoopRef.current.play(loopText, loopSound);
+    else phraseLoopRef.current.stop();
+  }, [loopSound, reading, loopText]);
+  useEffect(() => () => phraseLoopRef.current?.stop(), []);
+
   const ms = wordTime(reader);
   const unit = units[Math.min(index, total - 1)];
   const phrase = unit?.text ?? "";
@@ -1865,6 +1878,9 @@ function Reader({
         <div className="grid grid-cols-2 gap-1.5">
           <Toggle on={reader.bytes} onClick={() => set({ bytes: !reader.bytes })}>
             Bytes background: {reader.bytes ? "on" : "off"}
+          </Toggle>
+          <Toggle on={reader.phraseSound} onClick={() => set({ phraseSound: !reader.phraseSound })}>
+            Phrase sound: {reader.phraseSound ? "on" : "off"}
           </Toggle>
           <Stepper
             label="all bytes (over all)"

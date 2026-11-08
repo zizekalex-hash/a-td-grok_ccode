@@ -85,6 +85,8 @@ export interface ReaderState {
   centered: boolean;
   /** Android: into the mini window (picture in picture) when you leave the app while reading. */
   miniAuto: boolean;
+  /** The current phrase's raw bytes as sound while reading, as Rehearse shapes it (steady or the rising cycle). */
+  phraseSound: boolean;
   /** The whole text's bytes as a picture behind it all: three layers, each at its own opacity, and one over all. */
   bytes: boolean;
   bytesOpacity: number;
@@ -154,6 +156,7 @@ export function newReader(): ReaderState {
     phraseChars: clampPhraseChars(R.phraseChars),
     centered: R.centered !== false,
     miniAuto: R.miniAuto === true,
+    phraseSound: false,
     bytes: R.bytes !== false,
     bytesOpacity: clampOpacity(R.bytesOpacity),
     layers: {
@@ -338,6 +341,7 @@ export function loadReader(data: unknown): ReaderState {
     s.phraseY = clampPlace(num(d.phraseY, s.phraseY));
   }
   if (typeof d.bytes === "boolean") s.bytes = d.bytes;
+  if (typeof d.phraseSound === "boolean") s.phraseSound = d.phraseSound;
   s.phraseChars = clampPhraseChars(num(d.phraseChars, s.phraseChars));
   if (typeof d.centered === "boolean") s.centered = d.centered;
   if (typeof d.miniAuto === "boolean") s.miniAuto = d.miniAuto;

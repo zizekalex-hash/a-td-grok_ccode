@@ -95,18 +95,32 @@ export function RestSet({
       : 0;
   const alarmText = item?.text ?? "";
   const alarmVolume = state.alarmVolume;
+  const [call1, call2, call3] = state.alarmCalls;
   const [alarmStatus, setAlarmStatus] = useState("");
   useEffect(() => {
     if (!state.alarm || !timerEnd) return;
     // Over already (the app opened at time's up): it rings (if it has not) and calls till answered.
+    const calls = [call1 ?? 0.3, call2 ?? 0.6, call3 ?? 0.9];
     if (timerEnd <= Date.now()) {
-      ringAlarmNow(alarmText, timerEnd, alarmVolume);
+      ringAlarmNow(alarmText, timerEnd, alarmVolume, calls);
       return () => stopAlarm(timerEnd);
     }
-    return scheduleAlarm(alarmText, timerEnd, alarmVolume, setAlarmStatus);
-  }, [state.alarm, timerEnd, alarmText, alarmVolume]);
-  const alarm = useRef({ on: state.alarm, text: alarmText, end: timerEnd, volume: alarmVolume });
-  alarm.current = { on: state.alarm, text: alarmText, end: timerEnd, volume: alarmVolume };
+    return scheduleAlarm(alarmText, timerEnd, alarmVolume, setAlarmStatus, calls);
+  }, [state.alarm, timerEnd, alarmText, alarmVolume, call1, call2, call3]);
+  const alarm = useRef({
+    on: state.alarm,
+    text: alarmText,
+    end: timerEnd,
+    volume: alarmVolume,
+    calls: state.alarmCalls,
+  });
+  alarm.current = {
+    on: state.alarm,
+    text: alarmText,
+    end: timerEnd,
+    volume: alarmVolume,
+    calls: state.alarmCalls,
+  };
 
   // Once a second, by the clock; a buzz when Done opens. While blank, nothing
   // updates at all: only the buzz is kept, for the moment Done opens.
@@ -116,7 +130,7 @@ export function RestSet({
     const timeUp = (timer: boolean) => {
       buzz(timer ? 400 : 80);
       const a = alarm.current;
-      if (timer && a.on && a.end) ringAlarmNow(a.text, a.end, a.volume);
+      if (timer && a.on && a.end) ringAlarmNow(a.text, a.end, a.volume, a.calls);
     };
     const left = timeLeft(active, Date.now());
     if (blank) {

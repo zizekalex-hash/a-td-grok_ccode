@@ -10,7 +10,11 @@ import {
   phraseBytes,
   phraseSignal,
   phrasesOf,
+  cycleSignal,
+  cycleSpeeds,
+  loadRehearse as load,
   rawSamples,
+  soundOf,
   removePhrase,
   resetCount,
   resetCounts,
@@ -88,9 +92,11 @@ describe("rehearse: phrases and their counts", () => {
     assert.equal(back.items.length, 1);
     assert.deepEqual(back.items[0], { id: "a", text: "x", count: 4, last: 5, at: 1 });
     assert.equal(back.current, "", "an unknown current is dropped");
-    assert.equal(back.settings.signalMs, 10_000);
+    assert.equal(back.settings.signalMs, 60_000);
     assert.equal(back.settings.amp, 1);
-    assert.equal(back.settings.rawRate, 1000);
+    assert.equal(back.settings.rawRate, 2, "below 1000 too");
+    assert.equal(back.settings.mode, "steady");
+    assert.equal(back.settings.nonstop, false);
     assert.deepEqual(back.settings.layers, { rgb: 0, gray: 0.5, bits: 0.36 });
     assert.equal(back.settings.emit, "full");
     assert.equal(back.settings.tapHeight, 15);
@@ -150,5 +156,37 @@ describe("rehearse: the phrase as sound", () => {
       phraseSignal("abc", 8000, { ...opts, amp: 0 }).every((v) => v === 0),
       true,
     );
+  });
+
+  it("runs a rising cycle: plays from x1 to x9, each at the peak, in one length each", () => {
+    assert.deepEqual(cycleSpeeds(9, 9), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    assert.deepEqual(cycleSpeeds(3, 5), [1, 3, 5]);
+    const opts = { signalMs: 100, amp: 0.9, rawRate: 8000, plays: 9, topSpeed: 9 };
+    const cyc = cycleSignal("Oxygenation", 48_000, opts);
+    const n = 4800;
+    assert.equal(cyc.length, 9 * n, "nine plays of 100 ms");
+    for (let k = 0; k < 9; k++) {
+      const part = cyc.subarray(k * n, (k + 1) * n);
+      const peak = part.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+      assert.ok(Math.abs(peak - 0.9) < 1e-6, `play ${k + 1} at the peak (${peak})`);
+    }
+    // Each play higher: the ninth crosses zero far more often than the first.
+    const crossings = (a: Float32Array) =>
+      a.reduce((m, v, i) => m + (i && Math.sign(v) !== Math.sign(a[i - 1]!) ? 1 : 0), 0);
+    assert.ok(crossings(cyc.subarray(8 * n)) > crossings(cyc.subarray(0, n)) * 3);
+    // Steady is the plain signal; a long cycle keeps within a minute.
+    assert.deepEqual(
+      soundOf("ab", 8000, { ...opts, mode: "steady" }),
+      phraseSignal("ab", 8000, opts),
+    );
+    assert.equal(
+      soundOf("ab", 100, { ...opts, mode: "cycle", signalMs: 60_000, plays: 10 }).length,
+      10 * 600,
+    );
+    const back = load({ settings: { mode: "cycle", plays: 500, topSpeed: 0, nonstop: true } });
+    assert.equal(back.settings.mode, "cycle");
+    assert.equal(back.settings.plays, 99);
+    assert.equal(back.settings.topSpeed, 1);
+    assert.equal(back.settings.nonstop, true);
   });
 });

@@ -16,11 +16,16 @@ import { wordsOf } from "@/game/reps";
 import { bytesPicture } from "@/game/readview";
 import { BYTES_MODES, type BytesMode } from "@/game/readtext";
 import { useGame } from "@/game/store";
+import { phraseLoop, type PhraseLoop } from "@/game/phraseSound";
 import {
   addPhrases,
   clampAmp,
   clampLayer,
+  clampPlays,
   clampRawRate,
+  clampTopSpeed,
+  cycleSpeeds,
+  MAX_CYCLE_MS,
   clampSignalMs,
   clampTapHeight,
   countRep,
@@ -28,7 +33,7 @@ import {
   loadRehearse,
   newRehearse,
   phraseBytes,
-  phraseSignal,
+  soundOf,
   phrasesOf,
   rawSamples,
   REHEARSE_KEY,
@@ -149,9 +154,18 @@ function useEmitter(text: string, settings: RehearseSettings) {
   };
 
   const signal = (ctx: AudioContext) => {
-    const key = `${ctx.sampleRate}|${settings.signalMs}|${settings.amp}|${settings.rawRate}|${text}`;
+    const key = JSON.stringify([
+      ctx.sampleRate,
+      settings.signalMs,
+      settings.amp,
+      settings.rawRate,
+      settings.mode,
+      settings.plays,
+      settings.topSpeed,
+      text,
+    ]);
     if (made.current?.key !== key) {
-      const data = phraseSignal(text, ctx.sampleRate, settings);
+      const data = soundOf(text, ctx.sampleRate, settings);
       const buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
       buf.copyToChannel(data, 0);
       made.current = { key, buf };
@@ -164,7 +178,8 @@ function useEmitter(text: string, settings: RehearseSettings) {
     held.current = true;
     until.current = performance.now() + (settings.emit === "full" ? settings.signalMs : 0);
     if (settings.picture && canvas.current) canvas.current.style.visibility = "visible";
-    if (!settings.sound || settings.amp <= 0) return;
+    // With Nonstop the sound plays already: a tap shows the picture.
+    if (!settings.sound || settings.amp <= 0 || settings.nonstop) return;
     const ctx = audioContext();
     if (!ctx) return;
     try {
@@ -305,6 +320,20 @@ export function RehearseTab() {
   const set = st.settings;
   const emitter = useEmitter(item?.text ?? "", set);
   const index = item ? st.items.indexOf(item) : -1;
+
+  // Nonstop: the current phrase's sound all the time while this tab is open.
+  const loop = useRef<PhraseLoop | null>(null);
+  const phraseText = item?.text ?? "";
+  const { nonstop, sound, signalMs, amp, rawRate, mode, plays, topSpeed } = set;
+  useEffect(() => {
+    loop.current ??= phraseLoop();
+    if (nonstop && sound && phraseText) {
+      loop.current.play(phraseText, { signalMs, amp, rawRate, mode, plays, topSpeed });
+    } else {
+      loop.current.stop();
+    }
+  }, [nonstop, sound, phraseText, signalMs, amp, rawRate, mode, plays, topSpeed]);
+  useEffect(() => () => loop.current?.stop(), []);
 
   const update = (fn: (s: RehearseState) => RehearseState) =>
     setSt((prev) => {
@@ -462,6 +491,13 @@ export function RehearseTab() {
               <Settings2 className="size-4" aria-hidden /> Sound and picture
             </button>
           </div>
+          <div className="mt-2">
+            <Toggle
+              label={`Nonstop: its sound all the time${mode === "cycle" ? " (rising cycle)" : ""}`}
+              on={nonstop}
+              flip={() => setOpt({ nonstop: !nonstop, sound: true })}
+            />
+          </div>
         </>
       ) : (
         <p className="glass mt-3 p-4 text-sm text-muted">
@@ -475,10 +511,47 @@ export function RehearseTab() {
             THE SOUND: THE PHRASE'S OWN BYTES
           </p>
           <Toggle
-            label="Sound on a tap"
+            label="Sound (on a tap, or nonstop)"
             on={set.sound}
             flip={() => setOpt({ sound: !set.sound })}
           />
+          <div className="grid grid-cols-2 gap-1">
+            <button
+              type="button"
+              className="btn tracking-normal normal-case"
+              data-on={set.mode === "steady"}
+              aria-pressed={set.mode === "steady"}
+              onClick={() => setOpt({ mode: "steady" })}
+            >
+              Steady
+            </button>
+            <button
+              type="button"
+              className="btn tracking-normal normal-case"
+              data-on={set.mode === "cycle"}
+              aria-pressed={set.mode === "cycle"}
+              onClick={() => setOpt({ mode: "cycle" })}
+            >
+              Rising cycle
+            </button>
+          </div>
+          {set.mode === "cycle" && (
+            <>
+              <Num
+                label="Plays a cycle"
+                value={set.plays}
+                step={1}
+                set={(v) => setOpt({ plays: clampPlays(v) })}
+              />
+              <Num
+                label="Top speed (×, pitch and pace)"
+                value={set.topSpeed}
+                step={1}
+                digits={set.topSpeed % 1 ? 2 : 0}
+                set={(v) => setOpt({ topSpeed: clampTopSpeed(v) })}
+              />
+            </>
+          )}
           <Num
             label="Length (ms)"
             value={set.signalMs}
@@ -498,6 +571,18 @@ export function RehearseTab() {
             step={1000}
             set={(v) => setOpt({ rawRate: clampRawRate(v) })}
           />
+          {set.mode === "cycle" && (
+            <p className="text-[0.65rem] leading-snug text-muted">
+              A cycle: {set.plays} plays of{" "}
+              {Math.round(Math.min(set.signalMs, MAX_CYCLE_MS / set.plays))} ms, from ×1 to ×
+              {set.topSpeed} (×
+              {cycleSpeeds(set.plays, set.topSpeed)
+                .map((v) => +v.toFixed(2))
+                .join(", ×")}
+              ), each at the peak, then round again. A phone plays up to about 24,000 Hz: faster
+              than that folds back down.
+            </p>
+          )}
           {fit && (
             <p className="text-[0.65rem] leading-snug text-muted">
               This phrase: {bytes} bytes, {fit.naturalMs.toFixed(1)} ms raw →{" "}

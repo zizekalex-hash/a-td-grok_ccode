@@ -3114,9 +3114,10 @@
       "fill": 0.85
     },
     "alarm": {
-      "_about": "When a timed set's timer is up, the alarm sounds: the phrase itself as sound, made the way Rehearse sounds a phrase (its raw UTF-8 bytes as a wave, fitted to Rehearse's length and raised to its peak loudness, both set in the Rehearse tab), repeats times with gapMs between (at most 8 s in all). In the Android app it is set with the phone's own alarm clock, so it rings on time with the screen off or the app away, on the alarm sound (not media), with the phone's alarm volume set to volume (0 to 1) while it rings and put back after. on is where the Reps tab's Alarm switch starts; volume is where its alarm volume starts.",
+      "_about": "When a timed set's timer is up, the alarm sounds: the phrase itself as sound, made the way Rehearse sounds a phrase (its raw UTF-8 bytes as a wave, fitted to Rehearse's length and raised to its peak loudness, both set in the Rehearse tab), repeats times with gapMs between (at most 8 s in all). In the Android app it is set with the phone's own alarm clock, so it rings on time with the screen off or the app away, on the alarm sound (not media), with the phone's alarm volume set to volume (0 to 1) while it rings and put back after. on is where the Reps tab's Alarm switch starts; volume is where its alarm volume starts; calls are where its three calls start (the levels it calls again at, 3, 6 and 9 s after each ring, round and round, till the set is answered).",
       "on": true,
       "volume": 0.36,
+      "calls": [0.3, 0.6, 0.9],
       "repeats": 3,
       "gapMs": 350
     }

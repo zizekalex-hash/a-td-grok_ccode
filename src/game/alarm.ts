@@ -18,7 +18,8 @@
  * After that first ring, until the set is answered (Done, Done and again, the
  * next part, or the set cancelled), it keeps calling, louder each time and
  * whatever the phone's volume: 3 s, then at 0.3; 6 s, then at 0.6; 9 s, then at
- * 0.9; and round again (NAG; hardcoded, the same in AlarmRun.java). On the phone
+ * 0.9; and round again (NAG_WAITS, the same in AlarmRun.java; the three levels are
+ * set in the Reps tab, 0.3, 0.6 and 0.9 to start). On the phone
  * the app stays in the foreground with a notification meanwhile, so it calls
  * with the screen off too. The sound itself is pure (alarmSamples, pcm16,
  * alarmMs), so the tests can load it; playing it needs a page.
@@ -69,7 +70,11 @@ export function alarmSamples(
   sound: AlarmSound,
   spec: AlarmSpec,
 ): Float32Array<ArrayBuffer> {
-  const one = phraseSignal(text, rate, sound);
+  // One play at most as long as the whole alarm may be.
+  const one = phraseSignal(text, rate, {
+    ...sound,
+    signalMs: Math.min(sound.signalMs, MAX_ALARM_MS),
+  });
   const gap = Math.round((rate * spec.gapMs) / 1000);
   const most = Math.round((rate * MAX_ALARM_MS) / 1000);
   let repeats = Math.max(1, spec.repeats);
@@ -79,20 +84,23 @@ export function alarmSamples(
   return out;
 }
 
-/**
- * After the first ring, till the set is answered: the wait before each call (ms,
- * from the end of the ring before) and its volume (the same knob as the
- * setting), round and round. Hardcoded on purpose, as in AlarmRun.java.
- */
-export const NAG: readonly { waitMs: number; volume: number }[] = [
-  { waitMs: 3000, volume: 0.3 },
-  { waitMs: 6000, volume: 0.6 },
-  { waitMs: 9000, volume: 0.9 },
-];
+/** After the first ring, till the set is answered: the wait before each call (ms, from the end of the ring before), as in AlarmRun.java. */
+export const NAG_WAITS: readonly number[] = [3000, 6000, 9000];
+
+/** The calls, round and round: each one's wait and its level (the same knob as the setting). */
+export function nagSteps(calls: readonly number[]): { waitMs: number; volume: number }[] {
+  return NAG_WAITS.map((waitMs, i) => ({
+    waitMs,
+    volume: clamp(calls[i] ?? [0.3, 0.6, 0.9][i]!, 0.01, 1),
+  }));
+}
+
+/** The calls' levels as config.json starts them (0.3, 0.6, 0.9). */
+const CALLS: readonly number[] = CONFIG.reps.alarm.calls ?? [0.3, 0.6, 0.9];
 
 /** How long one ring lasts (ms): its plays and the gaps between, as alarmSamples makes them. */
 export function alarmMs(sound: AlarmSound, spec: AlarmSpec): number {
-  const one = sound.signalMs;
+  const one = Math.min(sound.signalMs, MAX_ALARM_MS);
   let repeats = Math.max(1, spec.repeats);
   while (repeats > 1 && repeats * one + (repeats - 1) * spec.gapMs > MAX_ALARM_MS) repeats--;
   return repeats * one + (repeats - 1) * spec.gapMs;
@@ -136,10 +144,21 @@ interface PhraseAlarmApi {
     volume: number;
     pcm: string;
     title: string;
+    call1: number;
+    call2: number;
+    call3: number;
   }): Promise<{ at: string; way: string; error: string }>;
   cancel(o: { id: string }): Promise<void>;
   stopAll(): Promise<void>;
-  fire(o: { id: string; rate: number; volume: number; pcm: string }): Promise<{ rang: boolean }>;
+  fire(o: {
+    id: string;
+    rate: number;
+    volume: number;
+    pcm: string;
+    call1: number;
+    call2: number;
+    call3: number;
+  }): Promise<{ rang: boolean }>;
   play(o: { rate: number; volume: number; pcm: string }): Promise<Rung>;
   log(): Promise<{ log: string }>;
 }
@@ -257,14 +276,21 @@ function phonePcm(text: string): string {
   return toBase64(pcm16(alarmSamples(text, ALARM_RATE, rehearseSound(), alarmSpec())));
 }
 
+/** The calls' levels for the phone: call1, call2, call3. */
+function callsOf(calls: readonly number[]) {
+  const [call1, call2, call3] = nagSteps(calls).map((n) => n.volume);
+  return { call1: call1!, call2: call2!, call3: call3! };
+}
+
 /** An alarm's id: its moment. */
 const alarmId = (atMs: number) => `t${Math.round(atMs)}`;
 
 /** The page's own calls after the first ring (no phone), by alarm id: what stops them. */
 const pageNags = new Map<string, () => void>();
 
-/** Without the phone: the page calls again as NAG says, till stopped. The first ring is the one at atMs. */
-function startPageNag(text: string, atMs: number) {
+/** Without the phone: the page calls again (nagSteps), till stopped. The first ring is the one at atMs. */
+function startPageNag(text: string, atMs: number, calls: readonly number[]) {
+  const NAG = nagSteps(calls);
   const id = alarmId(atMs);
   if (pageNags.has(id)) return;
   const ring = alarmMs(rehearseSound(), alarmSpec());
@@ -303,6 +329,7 @@ export function scheduleAlarm(
   atMs: number,
   volume = CONFIG.reps.alarm.volume,
   onStatus?: (note: string) => void,
+  calls: readonly number[] = CALLS,
 ): () => void {
   let cancelled = false;
   let stop: () => void = () => {};
@@ -327,6 +354,7 @@ export function scheduleAlarm(
         volume: clamp(volume, 0.01, 1),
         pcm: phonePcm(text),
         title: text.slice(0, 80),
+        ...callsOf(calls),
       })
       .then((r) => {
         if (!cancelled) onStatus?.(setNote(r));
@@ -347,15 +375,21 @@ export function scheduleAlarm(
  * Without the phone the page has the ring on its audio clock, and starts its
  * own calls after it.
  */
-export function ringAlarmNow(text: string, atMs: number, volume = CONFIG.reps.alarm.volume) {
+export function ringAlarmNow(
+  text: string,
+  atMs: number,
+  volume = CONFIG.reps.alarm.volume,
+  calls: readonly number[] = CALLS,
+) {
   void phoneAlarm().then((phone) => {
-    if (!phone) return startPageNag(text, atMs);
+    if (!phone) return startPageNag(text, atMs, calls);
     void phone.api
       .fire({
         id: alarmId(atMs),
         rate: ALARM_RATE,
         volume: clamp(volume, 0.01, 1),
         pcm: phonePcm(text),
+        ...callsOf(calls),
       })
       .catch(() => {});
   });
