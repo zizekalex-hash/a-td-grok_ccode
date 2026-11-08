@@ -18,6 +18,7 @@ import { CFG_STATUS, RESTORED } from "@/game/config";
 import { flashToast } from "@/game/engine";
 import { onEscape } from "@/game/menu";
 import { settleAlarms } from "@/game/alarm";
+import { autoSaveToFolder } from "@/game/folderBackup";
 import { readReps } from "@/game/reps";
 import { useGame } from "@/game/store";
 
@@ -57,10 +58,18 @@ export function Stage() {
   useEffect(() => {
     // An alarm still calling with no set running is stale: it stops.
     settleAlarms(!!readReps().active);
+    // Leaving the app: everything saved into the azs-folder, if one is chosen.
+    const away = () => {
+      if (document.hidden) autoSaveToFolder();
+    };
+    document.addEventListener("visibilitychange", away);
     if (RESTORED) flashToast("Backup loaded: everything is as it was on the other device.");
     else if (CFG_STATUS.paused) flashToast("Cfg changes are off: the last start failed. See Options → Advanced.");
     const id = window.setTimeout(bootDone, 3000);
-    return () => window.clearTimeout(id);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("visibilitychange", away);
+    };
   }, []);
 
   const td = gameMode === "td";

@@ -10,6 +10,7 @@ import {
   loadRehearse,
   REHEARSE_KEY,
   soundOf,
+  wavSampleRate,
   type RehearseSettings,
 } from "./rehearse.ts";
 
@@ -49,6 +50,28 @@ function context(): AudioContext | null {
     return audio;
   } catch {
     return null;
+  }
+}
+
+/** Players at a file's own sample rate, so its sound is played as it is (not resampled). */
+const atRate = new Map<number, AudioContext>();
+
+function contextAt(rate: number | null): AudioContext | null {
+  if (!rate) return context();
+  try {
+    let c = atRate.get(rate);
+    if (!c) {
+      const AC =
+        globalThis.AudioContext ??
+        (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AC) return null;
+      c = new AC({ sampleRate: rate });
+      atRate.set(rate, c);
+    }
+    if (c.state === "suspended") void c.resume();
+    return c;
+  } catch {
+    return context();
   }
 }
 
@@ -118,6 +141,89 @@ export function phraseLoop(): PhraseLoop {
       }
     },
     stop() {
+      fadeOut(now);
+      now = null;
+    },
+  };
+}
+
+/** A sound file looping as it is (a phrase's own .wav): nothing cut or changed, only its gain. */
+export interface FileLoop {
+  /** Plays the file at this address over and over (the same address again: only the gain changes). */
+  play(url: string, gain: number): Promise<boolean>;
+  gain(gain: number): void;
+  stop(): void;
+}
+
+export function fileLoop(): FileLoop {
+  let now: { src: AudioBufferSourceNode; gain: GainNode; url: string } | null = null;
+  const made = new Map<string, { buf: AudioBuffer; ctx: AudioContext }>();
+  let asked = "";
+
+  const fadeOut = (n: typeof now) => {
+    if (!n) return;
+    try {
+      const t = n.gain.context.currentTime;
+      n.gain.gain.cancelScheduledValues(t);
+      n.gain.gain.setValueAtTime(n.gain.gain.value, t);
+      n.gain.gain.linearRampToValueAtTime(0, t + FADE);
+      n.src.stop(t + FADE + 0.01);
+    } catch {
+      /* over already */
+    }
+  };
+
+  return {
+    async play(url, gain) {
+      asked = url;
+      if (now?.url === url) {
+        now.gain.gain.setTargetAtTime(
+          Math.max(0, Math.min(1, gain)),
+          now.gain.context.currentTime,
+          0.02,
+        );
+        return true;
+      }
+      let got = made.get(url);
+      if (!got) {
+        try {
+          const bytes = await (await fetch(url)).arrayBuffer();
+          const ctx = contextAt(wavSampleRate(new Uint8Array(bytes)));
+          if (!ctx) return false;
+          got = { buf: await ctx.decodeAudioData(bytes), ctx };
+        } catch {
+          return false;
+        }
+        made.set(url, got);
+        if (made.size > 4) made.delete(made.keys().next().value!);
+      }
+      const { buf, ctx } = got;
+      if (ctx.state === "suspended") void ctx.resume();
+      // Asked for another (or stopped) meanwhile.
+      if (asked !== url) return false;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const g = ctx.createGain();
+      const t = ctx.currentTime;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(Math.max(0, Math.min(1, gain)), t + FADE);
+      src.connect(g).connect(ctx.destination);
+      src.start(t);
+      fadeOut(now);
+      now = { src, gain: g, url };
+      return true;
+    },
+    gain(gain) {
+      if (now)
+        now.gain.gain.setTargetAtTime(
+          Math.max(0, Math.min(1, gain)),
+          now.gain.context.currentTime,
+          0.02,
+        );
+    },
+    stop() {
+      asked = "";
       fadeOut(now);
       now = null;
     },

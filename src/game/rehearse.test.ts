@@ -11,6 +11,9 @@ import {
   phraseSignal,
   phrasesOf,
   cycleSignal,
+  fileBase,
+  phraseFileNames,
+  wavSampleRate,
   cycleSpeeds,
   loadRehearse as load,
   rawSamples,
@@ -188,5 +191,42 @@ describe("rehearse: the phrase as sound", () => {
     assert.equal(back.settings.plays, 99);
     assert.equal(back.settings.topSpeed, 1);
     assert.equal(back.settings.nonstop, true);
+  });
+});
+
+describe("rehearse: phrases as files", () => {
+  it("names each phrase's .txt (and its .wav) after the phrase, safely and once each", () => {
+    assert.equal(fileBase("Oxygenation"), "Oxygenation");
+    assert.equal(fileBase("Stay with the cyan."), "Stay with the cyan");
+    assert.equal(fileBase('a/b\\c: "d"?'), "a-b-c- -d-");
+    assert.equal(fileBase("   "), "phrase");
+    assert.equal(fileBase("x".repeat(200)).length, 80);
+    assert.deepEqual(phraseFileNames(["Hold.", "hold", "Other", "HOLD!?"]), [
+      "Hold",
+      "hold (2)",
+      "Other",
+      "HOLD!-",
+    ]);
+    const d = defaultSettings();
+    assert.equal(d.wavLoop, true);
+    assert.equal(d.wavVolume, 1);
+    assert.equal(
+      loadRehearse({ settings: { wavVolume: 3, wavLoop: false } }).settings.wavVolume,
+      1,
+    );
+    assert.equal(loadRehearse({ settings: { wavLoop: false } }).settings.wavLoop, false);
+  });
+
+  it("reads a .wav's sample rate from its header", () => {
+    const head = new Uint8Array(44);
+    const v = new DataView(head.buffer);
+    head.set([...new TextEncoder().encode("RIFF")], 0);
+    head.set([...new TextEncoder().encode("WAVE")], 8);
+    head.set([...new TextEncoder().encode("fmt ")], 12);
+    v.setUint32(16, 16, true);
+    v.setUint16(20, 3, true);
+    v.setUint32(24, 48_000, true);
+    assert.equal(wavSampleRate(head), 48_000);
+    assert.equal(wavSampleRate(new Uint8Array(44)), null, "not a wav");
   });
 });

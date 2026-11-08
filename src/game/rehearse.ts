@@ -53,6 +53,9 @@ export interface RehearseSettings {
   topSpeed: number;
   /** The phrase's sound all the time while Rehearse is open, not only on a tap. */
   nonstop: boolean;
+  /** The phrase's own .wav (made outside, next to its .txt in azs-folder/input_perphrase) looped as it is, at this gain. */
+  wavLoop: boolean;
+  wavVolume: number;
   /** The phrase's byte picture on a tap, and each layer's opacity. */
   picture: boolean;
   layers: Record<BytesMode, number>;
@@ -94,6 +97,8 @@ export function defaultSettings(): RehearseSettings {
     plays: 9,
     topSpeed: 9,
     nonstop: false,
+    wavLoop: true,
+    wavVolume: 1,
     picture: true,
     layers: { rgb: 0.36, gray: 0.36, bits: 0.36 },
     pictureOpacity: 1,
@@ -136,6 +141,8 @@ export function loadRehearse(data: unknown): RehearseState {
   u.plays = clampPlays(num(t.plays, u.plays));
   u.topSpeed = clampTopSpeed(num(t.topSpeed, u.topSpeed));
   if (typeof t.nonstop === "boolean") u.nonstop = t.nonstop;
+  if (typeof t.wavLoop === "boolean") u.wavLoop = t.wavLoop;
+  u.wavVolume = clampAmp(num(t.wavVolume, u.wavVolume));
   if (typeof t.picture === "boolean") u.picture = t.picture;
   const layers = obj(t.layers);
   for (const m of BYTES_MODES) u.layers[m] = clampLayer(num(layers[m], u.layers[m]));
@@ -344,4 +351,48 @@ export function soundOf(
   opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate" | "mode" | "plays" | "topSpeed">,
 ): Float32Array<ArrayBuffer> {
   return opts.mode === "cycle" ? cycleSignal(text, rate, opts) : phraseSignal(text, rate, opts);
+}
+
+// ---- Files: a phrase's .txt and .wav in azs-folder/input_perphrase ----
+
+/** The folder (inside azs-folder) where each phrase is a .txt, and its .wav goes next to it. */
+export const PHRASE_FOLDER = "input_perphrase";
+
+/** A phrase as a file name (no extension): characters files cannot have made "-", spaces single, at most 80 long. */
+export function fileBase(text: string): string {
+  const clean = text
+    .replace(/[\p{Cc}]+/gu, "-")
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s.]+|[\s.]+$/g, "")
+    .slice(0, 80)
+    .replace(/[\s.]+$/g, "");
+  return clean || "phrase";
+}
+
+/** Each phrase's file name (no extension), in order: the same name twice gets " (2)", " (3)"… */
+export function phraseFileNames(texts: string[]): string[] {
+  const used = new Map<string, number>();
+  return texts.map((t) => {
+    const base = fileBase(t);
+    const key = base.toLowerCase();
+    const n = (used.get(key) ?? 0) + 1;
+    used.set(key, n);
+    return n === 1 ? base : `${base} (${n})`;
+  });
+}
+
+/** A .wav file's sample rate, from its header (null if it is not a .wav). */
+export function wavSampleRate(bytes: Uint8Array): number | null {
+  if (bytes.length < 44) return null;
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const tag = (at: number) => String.fromCharCode(...bytes.subarray(at, at + 4));
+  if (tag(0) !== "RIFF" || tag(8) !== "WAVE") return null;
+  let p = 12;
+  while (p + 8 <= bytes.length) {
+    const size = v.getUint32(p + 4, true);
+    if (tag(p) === "fmt " && p + 16 <= bytes.length) return v.getUint32(p + 12, true) || null;
+    p += 8 + size + (size & 1);
+  }
+  return null;
 }

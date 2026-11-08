@@ -18,6 +18,8 @@ import {
   type Backup,
 } from "@/game/backup";
 import { flashToast, saveAllNow } from "@/game/engine";
+import { folderName, pickFolder } from "@/game/azsFolder";
+import { folderAuto, loadFromFolder, saveToFolder, setFolderAuto } from "@/game/folderBackup";
 
 /** On the phone app, rather than in a browser. */
 async function isNative(): Promise<boolean> {
@@ -68,14 +70,47 @@ export function BackupPanel() {
   const [pending, setPending] = useState<Backup | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [folder, setFolder] = useState<string | null>(null);
+  const [auto, setAuto] = useState(folderAuto);
 
   useEffect(() => {
     let live = true;
     void isNative().then((n) => live && setNative(n));
+    void folderName().then((n) => live && setFolder(n));
     return () => {
       live = false;
     };
   }, []);
+
+  /** Phone app: the azs-folder, everything in it. */
+  const chooseFolder = () =>
+    run(async () => {
+      try {
+        const n = await pickFolder();
+        if (n) setFolder(n);
+      } catch (e) {
+        setError(String((e as Error)?.message ?? e));
+      }
+    });
+  const toFolder = () =>
+    run(async () => {
+      try {
+        const n = await saveToFolder();
+        flashToast(`Everything saved in ${n}/azs-backup.json`);
+      } catch (e) {
+        setError(String((e as Error)?.message ?? e));
+      }
+    });
+  const fromFolder = () =>
+    run(async () => {
+      try {
+        setError("");
+        setPending(await loadFromFolder());
+      } catch (e) {
+        setPending(null);
+        setError(`No backup to load in the folder yet (${String((e as Error)?.message ?? e)}).`);
+      }
+    });
 
   const run = async (job: () => Promise<void>) => {
     if (busy) return;
@@ -227,6 +262,47 @@ export function BackupPanel() {
         in Options → Backup. If you set a narrator API key, it is in the file too, so send it only
         to yourself.
       </p>
+
+      {native && (
+        <>
+          <h3 className="mt-4 font-display text-xs tracking-[0.16em] text-violet uppercase">
+            azs-folder: everything in one folder
+          </h3>
+          <p className="mt-1 text-xs text-muted">
+            Choose a folder once (e.g. Documents/azs-folder). Everything is saved in it as
+            azs-backup.json, beside input_perphrase (the Rehearse phrases and their .wav files). On
+            another phone: copy the folder over, install the app, choose the folder, load
+            everything.
+          </p>
+          <button type="button" className="btn mt-2 w-full" disabled={busy} onClick={chooseFolder}>
+            {folder ? `azs-folder: ${folder} (change)` : "Choose azs-folder"}
+          </button>
+          {folder && (
+            <>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button type="button" className="btn min-h-12" disabled={busy} onClick={toFolder}>
+                  Save everything to it
+                </button>
+                <button type="button" className="btn min-h-12" disabled={busy} onClick={fromFolder}>
+                  Load everything from it
+                </button>
+              </div>
+              <button
+                type="button"
+                className="btn mt-2 w-full"
+                data-on={auto}
+                aria-pressed={auto}
+                onClick={() => {
+                  setFolderAuto(!auto);
+                  setAuto(!auto);
+                }}
+              >
+                Save to it by itself when leaving the app: {auto ? "on" : "off"}
+              </button>
+            </>
+          )}
+        </>
+      )}
 
       <h3 className="mt-4 font-display text-xs tracking-[0.16em] text-violet uppercase">
         Save a backup

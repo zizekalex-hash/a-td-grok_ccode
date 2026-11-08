@@ -110,6 +110,12 @@ A tap also **sounds the phrase** and **shows it**, for as long as it is pressed 
 
 Every number is set in the tab (⚙ Sound and picture), with − and + or typed exactly.
 
+### azs-folder: each phrase a .txt, its own .wav next to it
+
+In the Android app, **Choose azs-folder** (Rehearse, or Options → Backup) once, with Android's folder picker: make or pick a folder such as Documents/azs-folder. The app may then read and write everything in it, also files other apps made there. **Save phrases to input_perphrase** writes every phrase as `input_perphrase/<phrase>.txt` (the phrase as the name, characters files cannot have made "-", at most 80 long; the same name twice gets " (2)"). Make each phrase's sound outside the app (Termux) and put it next to it as `<phrase>.wav`, the same name. **Look for .wav files** finds them (♪ in the list); picking a phrase that has one then loops it **as it is**, at its own sample rate, nothing cut or changed, only the **WAV volume** (0 to 1); **Its .wav in a loop** turns that off. In Termux, after `termux-setup-storage`, the folder is `~/storage/shared/Documents/azs-folder/input_perphrase`: a script can read the .txt files there and write each .wav straight next to its .txt, with nothing to move by hand. In a browser there is no such folder: **Load .wav files** (named like the phrases) plays them for that visit.
+
+The folder also holds **everything else**: Options → Backup → **Save everything to it** writes `azs-backup.json` (the same file as a backup), and with **Save to it by itself when leaving the app** (on to start) it is kept up to date whenever you leave the app. To move to another phone: copy the whole folder over, install the app, choose the folder, **Load everything from it**; the .wav files are read from the folder as they are.
+
 ## Read (a whole text, phrase by phrase)
 
 **Phrase sound** (Bytes tab, off to start): while reading, the current phrase's raw bytes sound all the time, shaped as in Rehearse (its length, peak loudness, samples a second, steady or the rising cycle); each new phrase takes over with a short fade, and Hold stops it.

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeft,
   ChevronRight,
+  FolderOpen,
   Minus,
   Plus,
   RotateCcw,
@@ -16,7 +17,15 @@ import { wordsOf } from "@/game/reps";
 import { bytesPicture } from "@/game/readview";
 import { BYTES_MODES, type BytesMode } from "@/game/readtext";
 import { useGame } from "@/game/store";
-import { phraseLoop, type PhraseLoop } from "@/game/phraseSound";
+import { fileLoop, phraseLoop, type FileLoop, type PhraseLoop } from "@/game/phraseSound";
+import {
+  folderFileUrl,
+  folderName,
+  hasFolder,
+  listFolder,
+  pickFolder,
+  writeFolderText,
+} from "@/game/azsFolder";
 import {
   addPhrases,
   clampAmp,
@@ -29,6 +38,8 @@ import {
   clampSignalMs,
   clampTapHeight,
   countRep,
+  PHRASE_FOLDER,
+  phraseFileNames,
   currentPhrase,
   loadRehearse,
   newRehearse,
@@ -335,6 +346,113 @@ export function RehearseTab() {
   }, [nonstop, sound, phraseText, signalMs, amp, rawRate, mode, plays, topSpeed]);
   useEffect(() => () => loop.current?.stop(), []);
 
+  // azs-folder: each phrase as input_perphrase/<name>.txt, its own .wav next to it (made outside, by Termux).
+  const names = useMemo(() => phraseFileNames(st.items.map((i) => i.text)), [st.items]);
+  const name = index >= 0 ? (names[index] ?? "") : "";
+  const [phone, setPhone] = useState(false);
+  const [folder, setFolder] = useState<string | null>(null);
+  const [wavs, setWavs] = useState<Set<string>>(() => new Set());
+  /** In a browser: .wav files picked by hand, by name (lower case), for this visit. */
+  const [picked, setPicked] = useState<Map<string, string>>(() => new Map());
+  const [folderNote, setFolderNote] = useState("");
+  const wavPick = useRef<HTMLInputElement>(null);
+  const lookForWavs = async () => {
+    const files = await listFolder(PHRASE_FOLDER);
+    const found = new Set(
+      files.filter((f) => /\.wav$/i.test(f.name)).map((f) => f.name.toLowerCase()),
+    );
+    setWavs(found);
+    return found.size;
+  };
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const ok = await hasFolder();
+      if (!live) return;
+      setPhone(ok);
+      const n = ok ? await folderName() : null;
+      if (!live) return;
+      setFolder(n);
+      if (n) await lookForWavs();
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
+  const hasWav = (base: string) => {
+    const key = `${base}.wav`.toLowerCase();
+    return wavs.has(key) || picked.has(key);
+  };
+  const choose = async () => {
+    try {
+      const n = await pickFolder();
+      if (!n) return;
+      setFolder(n);
+      const count = await lookForWavs();
+      setFolderNote(
+        `azs-folder: ${n}. ${count} .wav file${count === 1 ? "" : "s"} in ${PHRASE_FOLDER}.`,
+      );
+    } catch (e) {
+      setFolderNote(String((e as Error)?.message ?? e));
+    }
+  };
+  const exportAll = async () => {
+    const list = st.items;
+    try {
+      for (let i = 0; i < list.length; i++) {
+        setFolderNote(`Saving ${i + 1} of ${list.length}…`);
+        await writeFolderText(`${PHRASE_FOLDER}/${names[i]}.txt`, list[i]!.text);
+      }
+      setFolderNote(
+        `${list.length} phrase${list.length === 1 ? "" : "s"} saved in ${folder}/${PHRASE_FOLDER} as .txt.`,
+      );
+    } catch (e) {
+      setFolderNote(String((e as Error)?.message ?? e));
+    }
+  };
+  const pickWavs = (files: FileList | null) => {
+    if (!files?.length) return;
+    setPicked((old) => {
+      const next = new Map(old);
+      for (const f of Array.from(files)) next.set(f.name.toLowerCase(), URL.createObjectURL(f));
+      return next;
+    });
+    setFolderNote(
+      `${files.length} .wav file${files.length === 1 ? "" : "s"} loaded for this visit.`,
+    );
+    if (wavPick.current) wavPick.current.value = "";
+  };
+
+  // The current phrase's own .wav, looped as it is, at its gain.
+  const wav = useRef<FileLoop | null>(null);
+  const { wavLoop, wavVolume } = set;
+  const wavHere = !!name && hasWav(name);
+  const [wavPlaying, setWavPlaying] = useState(false);
+  useEffect(() => {
+    wav.current ??= fileLoop();
+    const w = wav.current;
+    if (!wavLoop || !wavHere || !name) {
+      w.stop();
+      setWavPlaying(false);
+      return;
+    }
+    let live = true;
+    void (async () => {
+      const key = `${name}.wav`.toLowerCase();
+      const url = picked.get(key) ?? (await folderFileUrl(`${PHRASE_FOLDER}/${name}.wav`));
+      if (!live) return;
+      const ok = url ? await w.play(url, wavVolume) : false;
+      if (live) setWavPlaying(ok);
+    })();
+    return () => {
+      live = false;
+    };
+    // The gain alone changes without restarting it (below).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wavLoop, wavHere, name, picked]);
+  useEffect(() => wav.current?.gain(wavVolume), [wavVolume]);
+  useEffect(() => () => wav.current?.stop(), []);
+
   const update = (fn: (s: RehearseState) => RehearseState) =>
     setSt((prev) => {
       const next = fn(prev);
@@ -447,6 +565,16 @@ export function RehearseTab() {
             <span className="font-display text-3xl text-cyan" aria-live="polite">
               {item.count.toLocaleString()}
             </span>
+            {wavHere && (
+              <span className="text-[0.65rem] text-violet">
+                ♪ {name}.wav{" "}
+                {wavLoop
+                  ? wavPlaying
+                    ? `looping at ${Math.round(wavVolume * 100)}%`
+                    : "loading…"
+                  : "(off)"}
+              </span>
+            )}
           </button>
           <div className="mt-2 flex items-center gap-1">
             <button
@@ -498,6 +626,22 @@ export function RehearseTab() {
               flip={() => setOpt({ nonstop: !nonstop, sound: true })}
             />
           </div>
+          {wavHere && (
+            <div className="mt-2 space-y-1.5">
+              <Toggle
+                label={`Its .wav in a loop (${name}.wav)`}
+                on={wavLoop}
+                flip={() => setOpt({ wavLoop: !wavLoop })}
+              />
+              <Num
+                label="WAV volume (0 to 1, the file as it is)"
+                value={wavVolume}
+                step={0.05}
+                digits={2}
+                set={(v) => setOpt({ wavVolume: clampAmp(v) })}
+              />
+            </div>
+          )}
         </>
       ) : (
         <p className="glass mt-3 p-4 text-sm text-muted">
@@ -692,6 +836,81 @@ export function RehearseTab() {
         )}
       </div>
 
+      <div className="glass mt-4 space-y-2 p-3">
+        <p className="font-display text-[0.6rem] tracking-[0.14em] text-violet">
+          AZS-FOLDER · EACH PHRASE A .TXT, ITS .WAV NEXT TO IT
+        </p>
+        {phone ? (
+          <>
+            <button
+              type="button"
+              className="btn w-full tracking-normal normal-case"
+              onClick={() => void choose()}
+            >
+              <FolderOpen className="size-4" aria-hidden />
+              {folder
+                ? `azs-folder: ${folder} (change)`
+                : "Choose azs-folder (e.g. Documents/azs-folder)"}
+            </button>
+            {folder && (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className="btn tracking-normal normal-case"
+                  onClick={() => void exportAll()}
+                  disabled={!st.items.length}
+                >
+                  Save phrases to {PHRASE_FOLDER}
+                </button>
+                <button
+                  type="button"
+                  className="btn tracking-normal normal-case"
+                  onClick={() =>
+                    void lookForWavs().then((n) =>
+                      setFolderNote(`${n} .wav file${n === 1 ? "" : "s"} in ${PHRASE_FOLDER}.`),
+                    )
+                  }
+                >
+                  Look for .wav files
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted">
+              The azs-folder is in the Android app. Here, load .wav files named like the phrases.
+            </p>
+            <button
+              type="button"
+              className="btn w-full tracking-normal normal-case"
+              onClick={() => wavPick.current?.click()}
+            >
+              <Upload className="size-4" aria-hidden /> Load .wav files
+            </button>
+            <input
+              ref={wavPick}
+              type="file"
+              accept=".wav,audio/wav,audio/x-wav"
+              multiple
+              className="hidden"
+              aria-label="Load .wav files"
+              onChange={(e) => pickWavs(e.target.files)}
+            />
+          </>
+        )}
+        <p className="text-[0.65rem] leading-snug text-muted">
+          A phrase is saved as {PHRASE_FOLDER}/&lt;phrase&gt;.txt. Make its sound outside (Termux)
+          and put it next to it with the same name, .wav: picking the phrase here then loops it, as
+          it is, at the WAV volume.
+        </p>
+        {folderNote && (
+          <p className="text-xs text-gold" role="status">
+            {folderNote}
+          </p>
+        )}
+      </div>
+
       {st.items.length > 0 && (
         <>
           <ul className="mt-4 max-h-[45dvh] overflow-y-auto" aria-label="Phrases and their reps">
@@ -706,7 +925,8 @@ export function RehearseTab() {
                   onClick={() => update((s) => select(s, it.id))}
                   aria-current={it.id === item?.id}
                 >
-                  <span className="text-muted">{i + 1}.</span> {it.text}
+                  <span className="text-muted">{i + 1}.</span> {hasWav(names[i] ?? "") ? "♪ " : ""}
+                  {it.text}
                 </button>
                 <span className="w-12 text-right font-display text-xs text-cyan">
                   {it.count.toLocaleString()}
