@@ -352,16 +352,20 @@ export function RehearseTab() {
   const [phone, setPhone] = useState(false);
   const [folder, setFolder] = useState<string | null>(null);
   const [wavs, setWavs] = useState<Set<string>>(() => new Set());
+  /** The .txt files in input_perphrase (lower case), once looked at: each phrase is saved there by itself. */
+  const [txts, setTxts] = useState<Set<string> | null>(null);
+  /** Back in the app (Termux may have made .wav files meanwhile): the current phrase looked at again. */
+  const [tick, setTick] = useState(0);
   /** In a browser: .wav files picked by hand, by name (lower case), for this visit. */
   const [picked, setPicked] = useState<Map<string, string>>(() => new Map());
   const [folderNote, setFolderNote] = useState("");
   const wavPick = useRef<HTMLInputElement>(null);
   const lookForWavs = async () => {
     const files = await listFolder(PHRASE_FOLDER);
-    const found = new Set(
-      files.filter((f) => /\.wav$/i.test(f.name)).map((f) => f.name.toLowerCase()),
-    );
+    const lower = files.map((f) => f.name.toLowerCase());
+    const found = new Set(lower.filter((f) => f.endsWith(".wav")));
     setWavs(found);
+    setTxts(new Set(lower.filter((f) => f.endsWith(".txt"))));
     return found.size;
   };
   useEffect(() => {
@@ -375,10 +379,51 @@ export function RehearseTab() {
       setFolder(n);
       if (n) await lookForWavs();
     })();
+    // Back in the app: the folder looked at again, for .wav files made meanwhile.
+    const back = () => {
+      if (document.hidden) return;
+      void folderName().then((n) => {
+        if (!live || !n) return;
+        void lookForWavs();
+        setTick((t) => t + 1);
+      });
+    };
+    document.addEventListener("visibilitychange", back);
     return () => {
       live = false;
+      document.removeEventListener("visibilitychange", back);
     };
   }, []);
+
+  // Each phrase saved by itself as input_perphrase/<name>.txt (those not there yet).
+  const saving = useRef(false);
+  useEffect(() => {
+    if (!folder || !txts || saving.current) return;
+    const missing = st.items
+      .map((it, i) => ({ text: it.text, file: `${names[i]}.txt` }))
+      .filter((p) => !txts.has(p.file.toLowerCase()));
+    if (!missing.length) return;
+    saving.current = true;
+    void (async () => {
+      const done: string[] = [];
+      for (const p of missing) {
+        try {
+          await writeFolderText(`${PHRASE_FOLDER}/${p.file}`, p.text);
+          done.push(p.file.toLowerCase());
+        } catch (e) {
+          setFolderNote(String((e as Error)?.message ?? e));
+          break;
+        }
+      }
+      saving.current = false;
+      setTxts((old) => new Set([...(old ?? []), ...done]));
+      if (done.length) {
+        setFolderNote(
+          `${done.length === 1 ? `“${missing[0]!.file}”` : `${done.length} phrases`} saved in ${PHRASE_FOLDER}.`,
+        );
+      }
+    })();
+  }, [folder, txts, names, st.items]);
   const hasWav = (base: string) => {
     const key = `${base}.wav`.toLowerCase();
     return wavs.has(key) || picked.has(key);
@@ -388,6 +433,7 @@ export function RehearseTab() {
       const n = await pickFolder();
       if (!n) return;
       setFolder(n);
+      setTick((t) => t + 1);
       const count = await lookForWavs();
       setFolderNote(
         `azs-folder: ${n}. ${count} .wav file${count === 1 ? "" : "s"} in ${PHRASE_FOLDER}.`,
@@ -423,7 +469,7 @@ export function RehearseTab() {
     if (wavPick.current) wavPick.current.value = "";
   };
 
-  // The current phrase's own .wav, looped as it is, at its gain.
+  // Choosing a phrase: its own .wav (next to its .txt) looked for right then, and looped as it is, at its gain.
   const wav = useRef<FileLoop | null>(null);
   const { wavLoop, wavVolume } = set;
   const wavHere = !!name && hasWav(name);
@@ -431,7 +477,7 @@ export function RehearseTab() {
   useEffect(() => {
     wav.current ??= fileLoop();
     const w = wav.current;
-    if (!wavLoop || !wavHere || !name) {
+    if (!name) {
       w.stop();
       setWavPlaying(false);
       return;
@@ -439,9 +485,23 @@ export function RehearseTab() {
     let live = true;
     void (async () => {
       const key = `${name}.wav`.toLowerCase();
-      const url = picked.get(key) ?? (await folderFileUrl(`${PHRASE_FOLDER}/${name}.wav`));
+      const url =
+        picked.get(key) ?? (folder ? await folderFileUrl(`${PHRASE_FOLDER}/${name}.wav`) : null);
       if (!live) return;
-      const ok = url ? await w.play(url, wavVolume) : false;
+      // Found or not: the ♪ follows what is there now.
+      setWavs((old) => {
+        if (old.has(key) === !!url) return old;
+        const next = new Set(old);
+        if (url) next.add(key);
+        else next.delete(key);
+        return next;
+      });
+      if (!url || !wavLoop) {
+        w.stop();
+        setWavPlaying(false);
+        return;
+      }
+      const ok = await w.play(url, wavVolume);
       if (live) setWavPlaying(ok);
     })();
     return () => {
@@ -449,7 +509,7 @@ export function RehearseTab() {
     };
     // The gain alone changes without restarting it (below).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wavLoop, wavHere, name, picked]);
+  }, [wavLoop, name, picked, folder, tick]);
   useEffect(() => wav.current?.gain(wavVolume), [wavVolume]);
   useEffect(() => () => wav.current?.stop(), []);
 
@@ -860,7 +920,7 @@ export function RehearseTab() {
                   onClick={() => void exportAll()}
                   disabled={!st.items.length}
                 >
-                  Save phrases to {PHRASE_FOLDER}
+                  Save all phrases again
                 </button>
                 <button
                   type="button"
@@ -900,9 +960,10 @@ export function RehearseTab() {
           </>
         )}
         <p className="text-[0.65rem] leading-snug text-muted">
-          A phrase is saved as {PHRASE_FOLDER}/&lt;phrase&gt;.txt. Make its sound outside (Termux)
-          and put it next to it with the same name, .wav: picking the phrase here then loops it, as
-          it is, at the WAV volume.
+          Each phrase is saved by itself as {PHRASE_FOLDER}/&lt;phrase&gt;.txt (all of them when the
+          folder is chosen, and each new one as it is added). Make its sound outside (Termux) and
+          put it next to it with the same name, .wav: choosing the phrase here looks for it right
+          then and loops it, as it is, at the WAV volume (also when you come back to the app).
         </p>
         {folderNote && (
           <p className="text-xs text-gold" role="status">
