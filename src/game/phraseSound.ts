@@ -6,12 +6,17 @@
  * Each player plays one phrase at a time. Needs a page.
  */
 import {
+  curvePoints,
   defaultSettings,
+  levelOf,
   loadRehearse,
   REHEARSE_KEY,
   soundOf,
+  steadyGain,
+  wavCurve,
   wavSampleRate,
   type RehearseSettings,
+  type WavStyle,
 } from "./rehearse.ts";
 
 export type LoopSound = Pick<
@@ -147,41 +152,186 @@ export function phraseLoop(): PhraseLoop {
   };
 }
 
-/** A sound file looping as it is (a phrase's own .wav): nothing cut or changed, only its gain. */
+/**
+ * A sound file looping as it is (a phrase's or a text's own .wav): nothing cut
+ * or changed, only its loudness. Its style (game/rehearse.ts WavStyle) shapes
+ * that loudness within each loop and gives each loop its level in turn. The
+ * file plays as one seamless loop; the shape runs on a gain of its own, each
+ * loop's curve set to start right on that loop's start, some loops ahead.
+ */
 export interface FileLoop {
-  /** Plays the file at this address over and over (the same address again: only the gain changes). */
-  play(url: string, gain: number): Promise<boolean>;
+  /** Plays the file at this address over and over (the same address again: only the gain and style change). */
+  play(url: string, gain: number, style?: WavStyle): Promise<boolean>;
   gain(gain: number): void;
+  /** A new style: from the next loop if it starts soon, else the file starts again in it. */
+  style(style: WavStyle): void;
   stop(): void;
 }
 
+/** How far ahead the loops' curves are set (s), so a slow timer (the app in the background) keeps up. */
+const AHEAD = 40;
+/** The most loops set ahead at once (a very short file). */
+const MAX_AHEAD_LOOPS = 2000;
+
+interface Playing {
+  src: AudioBufferSourceNode;
+  /** The fade in and out and the volume. */
+  vol: GainNode;
+  /** The style's loudness, loop by loop. */
+  shape: GainNode;
+  url: string;
+  ctx: AudioContext;
+  /** The volume asked for. */
+  level: number;
+  /** When its first loop started (s, the context's time), and a loop's length. */
+  t0: number;
+  dur: number;
+  style: WavStyle;
+  /** The loop the style's levels start from, and the next loop not yet set. */
+  from: number;
+  next: number;
+  timer: number;
+}
+
+const flat: WavStyle = {
+  shape: "flat",
+  fadeIn: 0,
+  fadeOut: 0,
+  cycles: 1,
+  depth: 0,
+  levels: [1],
+};
+
+/** Sets the style's curves for the loops up to AHEAD seconds from now. */
+function fillAhead(n: Playing) {
+  const steady = steadyGain(n.style);
+  const p = n.shape.gain;
+  if (steady !== null) {
+    if (n.next >= 0) {
+      try {
+        p.setValueAtTime(steady, Math.max(n.ctx.currentTime, n.t0 + n.next * n.dur));
+      } catch {
+        p.value = steady;
+      }
+      // Set once: nothing more to set ahead.
+      n.next = -1;
+    }
+    return;
+  }
+  if (n.next < 0) return;
+  const until = n.ctx.currentTime + Math.max(AHEAD, 3 * n.dur);
+  const points = curvePoints(n.style, n.dur);
+  const base = wavCurve(n.style, points);
+  let set = 0;
+  while (n.t0 + n.next * n.dur < until && set < MAX_AHEAD_LOOPS) {
+    const at = n.t0 + n.next * n.dur;
+    const end = n.t0 + (n.next + 1) * n.dur;
+    if (end > n.ctx.currentTime) {
+      const level = levelOf(n.style, n.next - n.from);
+      const curve = level === 1 ? base : base.map((v) => v * level);
+      try {
+        // Just short of the next loop's start, so two curves never meet.
+        p.setValueCurveAtTime(
+          curve,
+          Math.max(at, n.ctx.currentTime),
+          (end - Math.max(at, n.ctx.currentTime)) * 0.999999,
+        );
+      } catch {
+        /* that loop keeps the loudness before it */
+      }
+    }
+    n.next++;
+    set++;
+  }
+}
+
 export function fileLoop(): FileLoop {
-  let now: { src: AudioBufferSourceNode; gain: GainNode; url: string } | null = null;
+  let now: Playing | null = null;
   const made = new Map<string, { buf: AudioBuffer; ctx: AudioContext }>();
   let asked = "";
 
-  const fadeOut = (n: typeof now) => {
+  const fadeOut = (n: Playing | null) => {
     if (!n) return;
+    window.clearInterval(n.timer);
     try {
-      const t = n.gain.context.currentTime;
-      n.gain.gain.cancelScheduledValues(t);
-      n.gain.gain.setValueAtTime(n.gain.gain.value, t);
-      n.gain.gain.linearRampToValueAtTime(0, t + FADE);
+      const t = n.ctx.currentTime;
+      n.vol.gain.cancelScheduledValues(t);
+      n.vol.gain.setValueAtTime(n.vol.gain.value, t);
+      n.vol.gain.linearRampToValueAtTime(0, t + FADE);
       n.src.stop(t + FADE + 0.01);
     } catch {
       /* over already */
     }
   };
 
+  const start = (
+    url: string,
+    buf: AudioBuffer,
+    ctx: AudioContext,
+    gain: number,
+    style: WavStyle,
+  ) => {
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    const shape = ctx.createGain();
+    const vol = ctx.createGain();
+    const t = ctx.currentTime;
+    vol.gain.setValueAtTime(0, t);
+    vol.gain.linearRampToValueAtTime(Math.max(0, Math.min(1, gain)), t + FADE);
+    src.connect(shape).connect(vol).connect(ctx.destination);
+    src.start(t);
+    const n: Playing = {
+      src,
+      vol,
+      shape,
+      url,
+      ctx,
+      level: Math.max(0, Math.min(1, gain)),
+      t0: t,
+      dur: Math.max(1e-4, buf.length / buf.sampleRate),
+      style,
+      from: 0,
+      next: 0,
+      timer: 0,
+    };
+    fillAhead(n);
+    n.timer = window.setInterval(() => fillAhead(n), 1000);
+    fadeOut(now);
+    now = n;
+  };
+
+  const restyle = (style: WavStyle) => {
+    const n = now;
+    if (!n) return;
+    if (JSON.stringify(n.style) === JSON.stringify(style)) return;
+    const t = n.ctx.currentTime;
+    // The next loop's start: from there in the new style if it is soon, else the file again from its start.
+    const k = Math.max(0, Math.ceil((t - n.t0) / n.dur - 1e-9));
+    const at = n.t0 + k * n.dur;
+    if (at - t > 2) {
+      const got = made.get(n.url);
+      if (got) start(n.url, got.buf, got.ctx, n.level, style);
+      return;
+    }
+    try {
+      n.shape.gain.cancelScheduledValues(at);
+    } catch {
+      /* nothing set */
+    }
+    n.style = style;
+    n.from = k;
+    n.next = k;
+    fillAhead(n);
+  };
+
   return {
-    async play(url, gain) {
+    async play(url, gain, style = flat) {
       asked = url;
       if (now?.url === url) {
-        now.gain.gain.setTargetAtTime(
-          Math.max(0, Math.min(1, gain)),
-          now.gain.context.currentTime,
-          0.02,
-        );
+        now.level = Math.max(0, Math.min(1, gain));
+        now.vol.gain.setTargetAtTime(now.level, now.ctx.currentTime, 0.02);
+        restyle(style);
         return true;
       }
       let got = made.get(url);
@@ -201,26 +351,20 @@ export function fileLoop(): FileLoop {
       if (ctx.state === "suspended") void ctx.resume();
       // Asked for another (or stopped) meanwhile.
       if (asked !== url) return false;
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      src.loop = true;
-      const g = ctx.createGain();
-      const t = ctx.currentTime;
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(Math.max(0, Math.min(1, gain)), t + FADE);
-      src.connect(g).connect(ctx.destination);
-      src.start(t);
-      fadeOut(now);
-      now = { src, gain: g, url };
+      try {
+        start(url, buf, ctx, gain, style);
+      } catch {
+        return false;
+      }
       return true;
     },
     gain(gain) {
-      if (now)
-        now.gain.gain.setTargetAtTime(
-          Math.max(0, Math.min(1, gain)),
-          now.gain.context.currentTime,
-          0.02,
-        );
+      if (!now) return;
+      now.level = Math.max(0, Math.min(1, gain));
+      now.vol.gain.setTargetAtTime(now.level, now.ctx.currentTime, 0.02);
+    },
+    style(style) {
+      restyle(style);
     },
     stop() {
       asked = "";

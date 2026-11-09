@@ -1,7 +1,8 @@
 /**
  * Rehearse's floating window over other apps (RepBubblePlugin.java, the Android
  * app only): the phrase, its count and the batch; a tap on it counts the batch
- * (with the same wait), and those reps wait there till the app takes them.
+ * (with the same wait), and those reps wait there till the app takes them. For
+ * a whole text, a tap does the phrase and moves to the next.
  * In a browser there is none: every call says so (false, or nothing).
  */
 
@@ -17,6 +18,10 @@ export interface BubbleSetup {
   batch: number;
   waitMs: number;
   lastTap: number;
+  /** A text: a tap does the phrase and goes to the next (after the last, a pass); its name on top. */
+  advance: boolean;
+  title: string;
+  passes: number;
 }
 
 export interface BubbleReps {

@@ -26,6 +26,27 @@ import {
   signalFit,
   step,
   totalReps,
+  textTap,
+  textStep,
+  textGo,
+  textAt,
+  textProgress,
+  resetText,
+  textFileBase,
+  textFileNames,
+  TEXT_FOLDER,
+  wavGainAt,
+  wavCurve,
+  curvePoints,
+  levelOf,
+  steadyGain,
+  parseLevels,
+  levelsText,
+  presetOf,
+  WAV_PRESETS,
+  wavStyleOf,
+  wavSettingsOf,
+  type WavStyle,
 } from "./rehearse.ts";
 
 const ids = (i: number) => `p${i}`;
@@ -251,5 +272,127 @@ describe("rehearse: phrases as files", () => {
     assert.equal(back.lastTap, 10_900);
     assert.equal(back.settings.batch, 1);
     assert.equal(back.settings.repSeconds, 60);
+  });
+});
+
+describe("rehearse: whole texts, phrase after phrase", () => {
+  it("a tap does the phrase and goes to the next; past the last it counts a pass", () => {
+    let s = newRehearse();
+    assert.equal(s.view, "phrases");
+    const key = "Book/One";
+    s = textTap(s, key, 3, 100);
+    assert.equal(textProgress(s, key).at, 1);
+    s = textTap(s, key, 3, 200, 10);
+    s = textTap(s, key, 3, 300);
+    assert.deepEqual(textProgress(s, key), { at: 0, passes: 1, reps: 12, last: 300 });
+    assert.equal(s.lastTap, 300, "a batch waits from a text's tap too");
+    // Moving round it counts nothing.
+    s = textStep(s, key, 3, -1);
+    assert.equal(textAt(s, key, 3), 2);
+    s = textGo(s, key, 99, 3);
+    assert.equal(textAt(s, key, 3), 2);
+    assert.equal(textProgress(s, key).reps, 12);
+    // Edited shorter: back to its first phrase.
+    assert.equal(textAt(s, key, 2), 0);
+    // A tap at a given phrase (the floating window's), the last one: a pass.
+    s = textTap(s, key, 3, 400, 1, 2);
+    assert.equal(textProgress(s, key).passes, 2);
+    assert.equal(textProgress(s, key).at, 0);
+    s = resetText(s, key);
+    assert.deepEqual(textProgress(s, key), { at: 0, passes: 0, reps: 0, last: 0 });
+    const back = loadRehearse({
+      view: "texts",
+      text: key,
+      progress: { [key]: { at: 2.5, passes: -1, reps: 7, last: 9 }, "": { at: 1 } },
+    });
+    assert.equal(back.view, "texts");
+    assert.equal(back.text, key);
+    assert.deepEqual(back.progress, { [key]: { at: 2, passes: 0, reps: 7, last: 9 } });
+    assert.equal(loadRehearse({ view: "nope" }).view, "phrases");
+  });
+
+  it("names each text's .txt after it (and its folder), once each", () => {
+    assert.equal(TEXT_FOLDER, "input_pertext");
+    assert.equal(textFileBase("Chapter 1.txt"), "Chapter 1");
+    assert.equal(textFileBase("a/b", "Zip"), "Zip - a-b");
+    assert.deepEqual(
+      textFileNames([{ name: "One" }, { name: "one.txt" }, { name: "One", folder: "F" }]),
+      ["One", "one (2)", "F - One"],
+    );
+  });
+
+  it("is locked to start: the tap counts, the settings wait", () => {
+    assert.equal(defaultSettings().locked, true);
+    assert.equal(loadRehearse({ settings: { locked: false } }).settings.locked, false);
+  });
+});
+
+describe("rehearse: how the .wav plays", () => {
+  const style = (o: Partial<WavStyle>): WavStyle => ({ ...WAV_PRESETS[0]!.style, ...o });
+
+  it("is flat to start: the file as it is, one level", () => {
+    const d = wavStyleOf(defaultSettings());
+    assert.equal(presetOf(d), "flat");
+    assert.equal(steadyGain(d), 1);
+    assert.equal(curvePoints(d, 3), 2);
+    assert.deepEqual([...wavCurve(d, 2)], [1, 1]);
+  });
+
+  it("fades in, holds and fades out within each loop", () => {
+    const f = style({ shape: "fade", fadeIn: 0.11, fadeOut: 0.1 });
+    assert.equal(presetOf(f), "fade");
+    assert.equal(wavGainAt(f, 0), 0);
+    assert.ok(Math.abs(wavGainAt(f, 0.055) - 0.5) < 1e-9);
+    assert.equal(wavGainAt(f, 0.5), 1);
+    assert.ok(Math.abs(wavGainAt(f, 0.95) - 0.5) < 1e-9);
+    assert.equal(wavGainAt(f, 1), 0);
+    assert.equal(steadyGain(f), null);
+    // Fades over the whole: shortened to fit it.
+    const over = style({ shape: "fade", fadeIn: 0.8, fadeOut: 0.8 });
+    assert.ok(Math.abs(wavGainAt(over, 0.5) - 1) < 1e-9);
+  });
+
+  it("makes sine, saw and square of the loudness, as deep and as often as set", () => {
+    const sine = style({ shape: "sine" });
+    assert.equal(wavGainAt(sine, 0), 0);
+    assert.ok(Math.abs(wavGainAt(sine, 0.5) - 1) < 1e-9);
+    const saw = style({ shape: "saw", cycles: 2 });
+    assert.ok(Math.abs(wavGainAt(saw, 0.25) - 0.5) < 1e-9);
+    assert.ok(Math.abs(wavGainAt(saw, 0.75) - 0.5) < 1e-9);
+    assert.equal(wavGainAt(saw, 1), 1, "the loop ends at the top of its last rise");
+    const sq = style({ shape: "square", cycles: 4, depth: 0.5 });
+    assert.equal(wavGainAt(sq, 0.1), 1);
+    assert.equal(wavGainAt(sq, 0.2), 0.5, "half deep: down to half");
+    assert.equal(presetOf(style({ shape: "square", cycles: 4 })), "square");
+    assert.equal(presetOf(sq), "custom");
+    const c = wavCurve(sq, curvePoints(sq, 2), 2);
+    assert.equal(c.length, 4 * 128 + 1);
+    assert.equal(Math.max(...c), 2, "at its level");
+    assert.equal(curvePoints(sq, 0.001), 4 * 8 + 1, "a short loop: fewer points");
+  });
+
+  it("plays each loop at the next level, round again", () => {
+    assert.deepEqual(parseLevels("0.5, 0.5 2;1"), [0.5, 0.5, 2, 1]);
+    assert.deepEqual(parseLevels("9, -1, x"), [4, 0]);
+    assert.equal(parseLevels(" , "), null);
+    const w = style({ levels: [0.5, 0.5, 2, 1] });
+    assert.equal(presetOf(w), "waves");
+    assert.deepEqual(
+      [0, 1, 2, 3, 4, 7].map((k) => levelOf(w, k)),
+      [0.5, 0.5, 2, 1, 0.5, 1],
+    );
+    assert.equal(steadyGain(w), null);
+    assert.equal(steadyGain(style({ levels: [0.4] })), 0.4);
+    assert.equal(levelsText([0.1, 0.2]), "0.1, 0.2");
+    const back = loadRehearse({
+      settings: { ...wavSettingsOf(w), wavShape: "zigzag", wavCycles: 500, wavLevels: [] },
+    });
+    assert.equal(back.settings.wavShape, "flat");
+    assert.equal(back.settings.wavCycles, 64);
+    assert.deepEqual(back.settings.wavLevels, [1], "none: as it is");
+    assert.deepEqual(
+      loadRehearse({ settings: wavSettingsOf(w) }).settings.wavLevels,
+      [0.5, 0.5, 2, 1],
+    );
   });
 });

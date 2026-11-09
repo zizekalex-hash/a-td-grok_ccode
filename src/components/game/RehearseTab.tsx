@@ -3,7 +3,11 @@ import { createPortal } from "react-dom";
 import {
   ChevronLeft,
   ChevronRight,
+  CircleCheck,
   FolderOpen,
+  Lock,
+  LockOpen,
+  Pencil,
   PictureInPicture2,
   Minus,
   Plus,
@@ -12,11 +16,30 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { flashToast, grantSkillXp } from "@/game/engine";
+import {
+  flashToast,
+  grantSkillXp,
+  loadCodexTexts,
+  loadTextFolder,
+  updateText,
+} from "@/game/engine";
+import { unzipTexts } from "@/game/unzip";
+import { saveConfirmed } from "@/game/textFiles";
 import { levelForXp, repXp } from "@/game/recite";
 import { wordsOf } from "@/game/reps";
 import { bytesPicture } from "@/game/readview";
-import { BYTES_MODES, type BytesMode } from "@/game/readtext";
+import {
+  BYTES_MODES,
+  checkState,
+  editPhrase,
+  markChecked,
+  readReader,
+  readUnits,
+  textKey,
+  textSum,
+  writeReader,
+  type BytesMode,
+} from "@/game/readtext";
 import { useGame } from "@/game/store";
 import { fileLoop, phraseLoop, type FileLoop, type PhraseLoop } from "@/game/phraseSound";
 import {
@@ -34,6 +57,7 @@ import {
   hasFolder,
   listFolder,
   pickFolder,
+  readFolderText,
   writeFolderText,
 } from "@/game/azsFolder";
 import {
@@ -69,9 +93,73 @@ import {
   signalFit,
   step,
   totalReps,
+  clampCycles,
+  clampFade,
+  levelsText,
+  parseLevels,
+  presetOf,
+  resetText,
+  TEXT_FOLDER,
+  textAt,
+  textFileNames,
+  textGo,
+  textProgress,
+  textStep,
+  textTap,
+  WAV_PRESETS,
+  WAV_SHAPES,
+  wavSettingsOf,
+  wavStyleOf,
   type RehearseSettings,
   type RehearseState,
+  type WavShape,
 } from "@/game/rehearse";
+
+/** A text of the Read tab's (its own, or one from a .zip folder), with its key. */
+interface LibText {
+  name: string;
+  lines: string[];
+  folder?: string;
+  key: string;
+  /** The text the app comes with (not saved as a file). */
+  builtIn?: boolean;
+}
+
+/** What each text's .txt in input_pertext was last saved as (its fingerprint), so an edited text is saved again. */
+const PERTEXT_SUMS = "azshara-pertext-sums";
+
+function readSums(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(PERTEXT_SUMS);
+    const v: unknown = raw ? JSON.parse(raw) : null;
+    return v && typeof v === "object" ? (v as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSums(sums: Record<string, string>) {
+  try {
+    localStorage.setItem(PERTEXT_SUMS, JSON.stringify(sums));
+  } catch {
+    /* private mode or full */
+  }
+}
+
+/** A floating-window id for a text's phrase: its place, then the text's key. */
+const bubbleId = (at: number, key: string) => `T${at}:${key}`;
+const fromBubbleId = (id: string) => {
+  const m = /^T(\d+):([\s\S]*)$/.exec(id);
+  return m ? { at: Number(m[1]), key: m[2]! } : null;
+};
+
+const SHAPE_NAMES: Record<WavShape, string> = {
+  flat: "Flat",
+  fade: "Fade",
+  sine: "Sine",
+  saw: "Saw",
+  square: "Square",
+};
 
 function readRehearse(): RehearseState {
   try {
@@ -310,17 +398,6 @@ function Num({
   );
 }
 
-/** A batch's wait filling up, from the last tap that counted (set once, when the wait shows). */
-function WaitBar({ lastTap, wait }: { lastTap: number; wait: number }) {
-  const [delay] = useState(() => Math.min(0, lastTap - Date.now()));
-  return (
-    <span
-      className="block h-full bg-violet"
-      style={{ animation: `rep-fill ${wait}ms linear ${delay}ms forwards` }}
-    />
-  );
-}
-
 function Toggle({ label, on, flip }: { label: string; on: boolean; flip: () => void }) {
   return (
     <button
@@ -345,24 +422,70 @@ function Toggle({ label, on, flip }: { label: string; on: boolean; flip: () => v
  */
 export function RehearseTab() {
   const lines = useGame((s) => s.lines);
+  const texts = useGame((s) => s.texts);
+  const custom = useGame((s) => s.custom);
+  const folders = useGame((s) => s.folders);
   const [st, setSt] = useState<RehearseState>(readRehearse);
   const [tune, setTune] = useState(false);
+  const [wavTune, setWavTune] = useState(false);
   const [draft, setDraft] = useState("");
   const [bySentence, setBySentence] = useState(false);
   const [armed, setArmed] = useState("");
   const [note, setNote] = useState("");
   const file = useRef<HTMLInputElement>(null);
+  const textFile = useRef<HTMLInputElement>(null);
   const item = currentPhrase(st);
   const set = st.settings;
-  const emitter = useEmitter(item?.text ?? "", set);
+  const locked = set.locked;
   const index = item ? st.items.indexOf(item) : -1;
+
+  // Texts: the Read tab's own (the same ones, edited and checked the same way), whole, phrase after phrase.
+  const textsView = st.view === "texts";
+  const library = useMemo<LibText[]>(
+    () => [
+      ...(custom && texts.length
+        ? texts.map((t) => ({ name: t.name, lines: t.lines, key: textKey(t.name) }))
+        : [{ name: "Built-in text", lines, key: textKey("Built-in text"), builtIn: true }]),
+      ...folders.flatMap((f) =>
+        f.texts.map((t) => ({
+          name: t.name,
+          lines: t.lines,
+          folder: f.name,
+          key: textKey(t.name, f.name),
+        })),
+      ),
+    ],
+    [custom, texts, lines, folders],
+  );
+  const textNow = library.find((t) => t.key === st.text) ?? library[0];
+  const textIndex = textNow ? library.indexOf(textNow) : -1;
+  const units = useMemo(() => (textNow ? readUnits(textNow.lines) : []), [textNow]);
+  const phraseCounts = useMemo(() => library.map((t) => readUnits(t.lines).length), [library]);
+  const total = units.length;
+  const textKeyNow = textNow?.key ?? "";
+  const at = textAt(st, textKeyNow, total);
+  const unit = units[at];
+  const prog = textProgress(st, textKeyNow);
+  const textSumNow = useMemo(() => (textNow ? textSum(textNow.lines) : ""), [textNow]);
+  /** The phrase being repped now: a single phrase, or the text's phrase it is at. */
+  const activeText = textsView ? (unit?.text ?? "") : (item?.text ?? "");
+  const emitter = useEmitter(activeText, set);
+  /** The phrase being rewritten (texts), and the check (read with the Read tab's, after a change). */
+  const [editing, setEditing] = useState<string | null>(null);
+  const [checkTick, setCheckTick] = useState(0);
+  const checked = useMemo(
+    () =>
+      textNow ? checkState(readReader(), textNow.name, textNow.lines, textNow.folder) : "unchecked",
+    // checkTick: read again after this tab checks one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [textNow, checkTick],
+  );
 
   // Reps a tap: above 1, a tap counts once batch x repSeconds have passed since the last that counted.
   const batchWait = batchWaitMs(set);
-  const [clock, setClock] = useState(() => Date.now());
+  const [, setClock] = useState(() => Date.now());
   const [tapNote, setTapNote] = useState("");
   const gateAt = st.lastTap + batchWait;
-  const waiting = batchWait > 0 && st.lastTap > 0 && clock < gateAt;
   useEffect(() => {
     const t0 = Date.now();
     setClock(t0);
@@ -379,7 +502,7 @@ export function RehearseTab() {
 
   // Nonstop: the current phrase's sound all the time while this tab is open.
   const loop = useRef<PhraseLoop | null>(null);
-  const phraseText = item?.text ?? "";
+  const phraseText = activeText;
   const { nonstop, sound, signalMs, amp, rawRate, mode, plays, topSpeed } = set;
   useEffect(() => {
     loop.current ??= phraseLoop();
@@ -392,26 +515,46 @@ export function RehearseTab() {
   useEffect(() => () => loop.current?.stop(), []);
 
   // azs-folder: each phrase as input_perphrase/<name>.txt, its own .wav next to it (made outside, by Termux).
+  // And each text as input_pertext/<name>.txt, its own .wav next to it.
   const names = useMemo(() => phraseFileNames(st.items.map((i) => i.text)), [st.items]);
-  const name = index >= 0 ? (names[index] ?? "") : "";
+  const textNames = useMemo(() => textFileNames(library), [library]);
+  const dir = textsView ? TEXT_FOLDER : PHRASE_FOLDER;
+  const name = textsView
+    ? textIndex >= 0
+      ? (textNames[textIndex] ?? "")
+      : ""
+    : index >= 0
+      ? (names[index] ?? "")
+      : "";
   const [phone, setPhone] = useState(false);
   const [folder, setFolder] = useState<string | null>(null);
+  /** The .wav files found, as "<folder>/<file>" (lower case). */
   const [wavs, setWavs] = useState<Set<string>>(() => new Set());
   /** The .txt files in input_perphrase (lower case), once looked at: each phrase is saved there by itself. */
   const [txts, setTxts] = useState<Set<string> | null>(null);
+  /** The .txt files in input_pertext (as named), once looked at: each text is saved there by itself. */
+  const [textTxts, setTextTxts] = useState<string[] | null>(null);
   /** Back in the app (Termux may have made .wav files meanwhile): the current phrase looked at again. */
   const [tick, setTick] = useState(0);
   /** In a browser: .wav files picked by hand, by name (lower case), for this visit. */
   const [picked, setPicked] = useState<Map<string, string>>(() => new Map());
   const [folderNote, setFolderNote] = useState("");
   const wavPick = useRef<HTMLInputElement>(null);
+  /** Both folders looked at: the number of .wav files in each. */
   const lookForWavs = async () => {
-    const files = await listFolder(PHRASE_FOLDER);
-    const lower = files.map((f) => f.name.toLowerCase());
-    const found = new Set(lower.filter((f) => f.endsWith(".wav")));
+    const [ph, tx] = await Promise.all([listFolder(PHRASE_FOLDER), listFolder(TEXT_FOLDER)]);
+    const lower = ph.map((f) => f.name.toLowerCase());
+    const lowerT = tx.map((f) => f.name.toLowerCase());
+    const wavOf = (d: string, list: string[]) =>
+      list.filter((f) => f.endsWith(".wav")).map((f) => `${d}/${f}`);
+    const found = new Set([...wavOf(PHRASE_FOLDER, lower), ...wavOf(TEXT_FOLDER, lowerT)]);
     setWavs(found);
     setTxts(new Set(lower.filter((f) => f.endsWith(".txt"))));
-    return found.size;
+    setTextTxts(tx.map((f) => f.name).filter((f) => /\.txt$/i.test(f)));
+    return {
+      [PHRASE_FOLDER]: wavOf(PHRASE_FOLDER, lower).length,
+      [TEXT_FOLDER]: wavOf(TEXT_FOLDER, lowerT).length,
+    } as Record<string, number>;
   };
   useEffect(() => {
     let live = true;
@@ -469,9 +612,72 @@ export function RehearseTab() {
       }
     })();
   }, [folder, txts, names, st.items]);
-  const hasWav = (base: string) => {
+  // Each text saved by itself as input_pertext/<name>.txt: those not there yet, and again once edited.
+  const savingTexts = useRef(false);
+  useEffect(() => {
+    if (!folder || !textTxts || savingTexts.current) return;
+    const have = new Set(textTxts.map((f) => f.toLowerCase()));
+    const sums = readSums();
+    let adopted = false;
+    const todo: { file: string; body: string; sum: string }[] = [];
+    library.forEach((t, i) => {
+      if (t.builtIn) return;
+      const file = `${textNames[i]}.txt`;
+      const k = file.toLowerCase();
+      const sum = textSum(t.lines);
+      const there = have.has(k);
+      // A file there already, not saved from here: kept as it is (from now on, saved when the text changes).
+      if (there && !sums[k]) {
+        sums[k] = sum;
+        adopted = true;
+        return;
+      }
+      if (!there || sums[k] !== sum) todo.push({ file, body: `${t.lines.join("\n")}\n`, sum });
+    });
+    if (adopted) writeSums(sums);
+    if (!todo.length) return;
+    savingTexts.current = true;
+    void (async () => {
+      const done: string[] = [];
+      for (const f of todo) {
+        try {
+          await writeFolderText(`${TEXT_FOLDER}/${f.file}`, f.body);
+          sums[f.file.toLowerCase()] = f.sum;
+          done.push(f.file);
+        } catch (e) {
+          setFolderNote(String((e as Error)?.message ?? e));
+          break;
+        }
+      }
+      writeSums(sums);
+      savingTexts.current = false;
+      if (!done.length) return;
+      const low = new Set(done.map((d) => d.toLowerCase()));
+      setTextTxts((old) => [...(old ?? []).filter((f) => !low.has(f.toLowerCase())), ...done]);
+      setFolderNote(
+        `${done.length === 1 ? `“${done[0]}”` : `${done.length} texts`} saved in ${TEXT_FOLDER}.`,
+      );
+    })();
+  }, [folder, textTxts, textNames, library]);
+  /** .txt files in input_pertext that are not one of the texts yet (put there from outside). */
+  const newTextFiles = useMemo(() => {
+    const mine = new Set(textNames.map((n) => `${n}.txt`.toLowerCase()));
+    return (textTxts ?? []).filter((f) => !mine.has(f.toLowerCase()));
+  }, [textTxts, textNames]);
+  const loadNewTexts = async () => {
+    const files: { name: string; raw: string }[] = [];
+    for (const f of newTextFiles) {
+      try {
+        files.push({ name: f, raw: await readFolderText(`${TEXT_FOLDER}/${f}`) });
+      } catch (e) {
+        setFolderNote(String((e as Error)?.message ?? e));
+      }
+    }
+    if (files.length) loadCodexTexts(files);
+  };
+  const hasWav = (base: string, d = dir) => {
     const key = `${base}.wav`.toLowerCase();
-    return wavs.has(key) || picked.has(key);
+    return wavs.has(`${d}/${key}`) || picked.has(key);
   };
   const choose = async () => {
     try {
@@ -479,33 +685,42 @@ export function RehearseTab() {
       if (!n) return;
       setFolder(n);
       setTick((t) => t + 1);
-      const count = await lookForWavs();
-      setFolderNote(
-        `azs-folder: ${n}. ${count} .wav file${count === 1 ? "" : "s"} in ${PHRASE_FOLDER}.`,
-      );
+      const count = (await lookForWavs())[dir] ?? 0;
+      setFolderNote(`azs-folder: ${n}. ${count} .wav file${count === 1 ? "" : "s"} in ${dir}.`);
     } catch (e) {
       setFolderNote(String((e as Error)?.message ?? e));
     }
   };
   const exportAll = async () => {
-    const list = st.items;
+    const list = textsView
+      ? library.flatMap((t, i) =>
+          t.builtIn ? [] : [{ file: textNames[i]!, body: `${t.lines.join("\n")}\n`, t }],
+        )
+      : st.items.map((it, i) => ({ file: names[i]!, body: it.text, t: null }));
+    const sums = readSums();
     try {
       for (let i = 0; i < list.length; i++) {
         setFolderNote(`Saving ${i + 1} of ${list.length}…`);
-        await writeFolderText(`${PHRASE_FOLDER}/${names[i]}.txt`, list[i]!.text);
+        const f = list[i]!;
+        await writeFolderText(`${dir}/${f.file}.txt`, f.body);
+        if (f.t) sums[`${f.file}.txt`.toLowerCase()] = textSum(f.t.lines);
       }
+      if (textsView) writeSums(sums);
+      const what = textsView ? "text" : "phrase";
       setFolderNote(
-        `${list.length} phrase${list.length === 1 ? "" : "s"} saved in ${folder}/${PHRASE_FOLDER} as .txt.`,
+        `${list.length} ${what}${list.length === 1 ? "" : "s"} saved in ${folder}/${dir} as .txt.`,
       );
     } catch (e) {
       setFolderNote(String((e as Error)?.message ?? e));
     }
   };
-  const pickWavs = (files: FileList | null) => {
-    if (!files?.length) return;
+  const pickWavs = (list: FileList | null) => {
+    // Taken out of the picker now: clearing it below empties its list.
+    const files = Array.from(list ?? []).map((f) => [f.name.toLowerCase(), URL.createObjectURL(f)]);
+    if (!files.length) return;
     setPicked((old) => {
       const next = new Map(old);
-      for (const f of Array.from(files)) next.set(f.name.toLowerCase(), URL.createObjectURL(f));
+      for (const [k, url] of files) next.set(k!, url!);
       return next;
     });
     setFolderNote(
@@ -517,6 +732,10 @@ export function RehearseTab() {
   // Choosing a phrase: its own .wav (next to its .txt) looked for right then, and looped as it is, at its gain.
   const wav = useRef<FileLoop | null>(null);
   const { wavLoop, wavVolume } = set;
+  const wavStyle = wavStyleOf(set);
+  const styleKey = JSON.stringify(wavStyle);
+  const styleNow = useRef(wavStyle);
+  styleNow.current = wavStyle;
   const wavHere = !!name && hasWav(name);
   const [wavPlaying, setWavPlaying] = useState(false);
   useEffect(() => {
@@ -529,13 +748,13 @@ export function RehearseTab() {
     }
     let live = true;
     void (async () => {
-      const key = `${name}.wav`.toLowerCase();
-      const url =
-        picked.get(key) ?? (folder ? await folderFileUrl(`${PHRASE_FOLDER}/${name}.wav`) : null);
+      const file = `${name}.wav`.toLowerCase();
+      const key = `${dir}/${file}`;
+      const url = picked.get(file) ?? (folder ? await folderFileUrl(`${dir}/${name}.wav`) : null);
       if (!live) return;
       // Found or not: the ♪ follows what is there now.
       setWavs((old) => {
-        if (old.has(key) === !!url) return old;
+        if (old.has(key) === !!url || picked.has(file)) return old;
         const next = new Set(old);
         if (url) next.add(key);
         else next.delete(key);
@@ -546,7 +765,8 @@ export function RehearseTab() {
         setWavPlaying(false);
         return;
       }
-      const ok = await w.play(url, wavVolume);
+      const ok = await w.play(url, wavVolume, styleNow.current);
+      if (live && ok) w.style(styleNow.current);
       if (live) setWavPlaying(ok);
     })();
     return () => {
@@ -554,8 +774,10 @@ export function RehearseTab() {
     };
     // The gain alone changes without restarting it (below).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wavLoop, name, picked, folder, tick]);
+  }, [wavLoop, name, dir, picked, folder, tick]);
   useEffect(() => wav.current?.gain(wavVolume), [wavVolume]);
+  // A new style: from the next loop (or the file again from its start, if that is far off).
+  useEffect(() => wav.current?.style(styleNow.current), [styleKey]);
   useEffect(() => () => wav.current?.stop(), []);
 
   const update = (fn: (s: RehearseState) => RehearseState) =>
@@ -578,7 +800,8 @@ export function RehearseTab() {
   };
 
   const rep = () => {
-    if (!item) return;
+    const text = activeText;
+    if (!text) return;
     const t = Date.now();
     setClock(t);
     // A batch counts once its time has passed since the last tap that counted.
@@ -592,9 +815,20 @@ export function RehearseTab() {
     setTapNote("");
     const n = set.batch;
     const before = levelForXp(useGame.getState().skills.recitation);
-    grantSkillXp("recitation", repXp(wordsOf(item.text), n));
+    grantSkillXp("recitation", repXp(wordsOf(text), n));
     const after = levelForXp(useGame.getState().skills.recitation);
     if (after > before) flashToast(`Recitation level ${after}`);
+    if (textsView) {
+      // The phrase done: on to the next; after the last, a pass through the whole text.
+      const key = textKeyNow;
+      const count = total;
+      const here = at;
+      if (here + 1 >= count && textNow)
+        flashToast(`“${textNow.name}”: pass ${prog.passes + 1} through it ✓`);
+      update((s) => textTap(s, key, count, t, n, here));
+      return;
+    }
+    if (!item) return;
     const id = item.id;
     update((s) => countRep(s, id, t, n));
   };
@@ -606,18 +840,39 @@ export function RehearseTab() {
     const r = await takeBubbleReps();
     if (!r) return;
     setBubbleOn(r.shown);
+    const xp = (text: string, n: number) => {
+      const before = levelForXp(useGame.getState().skills.recitation);
+      grantSkillXp("recitation", repXp(wordsOf(text), n));
+      const after = levelForXp(useGame.getState().skills.recitation);
+      if (after > before) flashToast(`Recitation level ${after}`);
+    };
     if (r.reps.length) {
+      // A text's phrase (done there, on to the next), or a single phrase.
+      const steps: ((s: RehearseState) => RehearseState)[] = [];
       for (const t of r.reps) {
+        const tid = fromBubbleId(t.id);
+        if (tid) {
+          const tx = library.find((x) => x.key === tid.key);
+          const us = tx ? readUnits(tx.lines) : [];
+          const u = us[tid.at];
+          if (!tx || !u) continue;
+          xp(u.text, t.n);
+          steps.push((s) => textTap(s, tx.key, us.length, t.at, t.n, tid.at));
+          continue;
+        }
         const it = st.items.find((i) => i.id === t.id);
         if (!it) continue;
-        const before = levelForXp(useGame.getState().skills.recitation);
-        grantSkillXp("recitation", repXp(wordsOf(it.text), t.n));
-        const after = levelForXp(useGame.getState().skills.recitation);
-        if (after > before) flashToast(`Recitation level ${after}`);
+        xp(it.text, t.n);
+        steps.push((s) => countRep(s, t.id, t.at, t.n));
       }
-      update((s) => r.reps.reduce((acc, t) => countRep(acc, t.id, t.at, t.n), s));
+      if (steps.length) update((s) => steps.reduce((acc, f) => f(acc), s));
     }
-    if (r.current && r.current !== item?.id) update((s) => select(s, r.current));
+    const cur = fromBubbleId(r.current);
+    if (cur) {
+      const tx = library.find((x) => x.key === cur.key);
+      const count = tx ? readUnits(tx.lines).length : 0;
+      if (tx) update((s) => textGo(s, tx.key, cur.at, count));
+    } else if (r.current && r.current !== item?.id) update((s) => select(s, r.current));
   };
   useEffect(() => {
     let live = true;
@@ -642,21 +897,38 @@ export function RehearseTab() {
       document.removeEventListener("visibilitychange", back);
     };
   }, []);
-  const bubbleSetup = (): BubbleSetup => ({
-    phrases: st.items.map((i) => ({ id: i.id, text: i.text, count: i.count })),
-    current: item?.id ?? "",
-    batch: set.batch,
-    waitMs: batchWait,
-    lastTap: st.lastTap,
-  });
-  // The window shows what is here: the phrases, their counts, the batch and its wait.
-  const bubbleKey = JSON.stringify([
-    st.items.map((i) => [i.id, i.count]),
-    item?.id,
-    set.batch,
-    batchWait,
-    st.lastTap,
-  ]);
+  const bubbleSetup = (): BubbleSetup =>
+    textsView
+      ? {
+          phrases: units.map((u, i) => ({
+            id: bubbleId(i, textKeyNow),
+            text: u.text,
+            count: prog.reps,
+          })),
+          current: bubbleId(at, textKeyNow),
+          batch: set.batch,
+          waitMs: batchWait,
+          lastTap: st.lastTap,
+          advance: true,
+          title: textNow?.name ?? "",
+          passes: prog.passes,
+        }
+      : {
+          phrases: st.items.map((i) => ({ id: i.id, text: i.text, count: i.count })),
+          current: item?.id ?? "",
+          batch: set.batch,
+          waitMs: batchWait,
+          lastTap: st.lastTap,
+          advance: false,
+          title: "",
+          passes: 0,
+        };
+  // The window shows what is here: the phrases (or the text's), their counts, the batch and its wait.
+  const bubbleKey = JSON.stringify(
+    textsView
+      ? [textKeyNow, textSumNow, at, prog.passes, prog.reps, set.batch, batchWait, st.lastTap]
+      : [st.items.map((i) => [i.id, i.count]), item?.id, set.batch, batchWait, st.lastTap],
+  );
   useEffect(() => {
     if (!bubbleOn) return;
     const id = window.setTimeout(() => void updateBubble(bubbleSetup()), 250);
@@ -676,7 +948,12 @@ export function RehearseTab() {
   };
 
   const press = (count: boolean) => {
-    if (!item) return;
+    if (!activeText) return;
+    // Unlocked: the settings work, and a tap does not count (nor sound).
+    if (count && !locked) {
+      setTapNote("Unlocked: taps don't count. Lock it to count them.");
+      return;
+    }
     emitter.start();
     if (count) rep();
   };
@@ -704,8 +981,8 @@ export function RehearseTab() {
     onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
   });
 
-  const add = (texts: string[], from: string) => {
-    const r = addPhrases(st, texts, Date.now());
+  const add = (list: string[], from: string) => {
+    const r = addPhrases(st, list, Date.now());
     if (r.added) update(() => r.state);
     setNote(
       r.added
@@ -714,32 +991,122 @@ export function RehearseTab() {
     );
   };
   const addDraft = () => {
-    const texts = phrasesOf(draft, bySentence);
-    if (!texts.length) return;
-    add(texts, "what you wrote");
+    const list = phrasesOf(draft, bySentence);
+    if (!list.length) return;
+    add(list, "what you wrote");
     setDraft("");
   };
   const importFiles = async (files: FileList | null) => {
     if (!files?.length) return;
-    const texts: string[] = [];
-    for (const f of Array.from(files)) texts.push(...phrasesOf(await f.text(), bySentence));
-    add(texts, files.length > 1 ? `${files.length} files` : (files[0]?.name ?? "the file"));
+    const list: string[] = [];
+    for (const f of Array.from(files)) list.push(...phrasesOf(await f.text(), bySentence));
+    add(list, files.length > 1 ? `${files.length} files` : (files[0]?.name ?? "the file"));
     if (file.current) file.current.value = "";
   };
+  /** Texts picked: each .zip a folder of its own, .txt files join the texts (the Read tab's, the same). */
+  const importTexts = (files: FileList | null) => {
+    const all = Array.from(files ?? []);
+    for (const z of all.filter((f) => /\.zip$/i.test(f.name))) {
+      void z
+        .arrayBuffer()
+        .then((buf) => unzipTexts(new Uint8Array(buf)))
+        .then(
+          (found) =>
+            found.length
+              ? loadTextFolder(
+                  z.name,
+                  found.map((f) => ({ name: f.name, raw: f.text })),
+                )
+              : flashToast(`No .txt files in ${z.name}`),
+          (e: unknown) => flashToast(`${z.name}: ${String((e as Error)?.message ?? e)}`),
+        );
+    }
+    const txt = all.filter((f) => !/\.zip$/i.test(f.name));
+    if (txt.length)
+      void Promise.all(txt.map(async (f) => ({ name: f.name, raw: await f.text() }))).then(
+        (loaded) => loadCodexTexts(loaded),
+        () => flashToast("Could not read that file"),
+      );
+    if (textFile.current) textFile.current.value = "";
+  };
 
-  const fit = item
-    ? signalFit(rawSamples(phraseBytes(item.text)).length, set.rawRate, set.signalMs)
+  // A text's phrase rewritten, into the text itself (the Read tab's too); and the text checked.
+  useEffect(() => setEditing(null), [textKeyNow, at]);
+  const saveEdit = () => {
+    if (editing === null || !textNow || !unit) return;
+    const next = editPhrase(textNow.lines, unit, editing);
+    if (next.join("\n") !== textNow.lines.join("\n")) {
+      if (!next.length) {
+        flashToast("A text keeps at least one phrase: not saved");
+        return;
+      }
+      updateText(textNow.name, next, textNow.folder);
+      flashToast("Saved into the text (in the Read tab too)");
+    }
+    setEditing(null);
+  };
+  const confirmText = () => {
+    if (!textNow) return;
+    writeReader(markChecked(readReader(), textNow.name, textNow.lines, Date.now(), textNow.folder));
+    setCheckTick((t) => t + 1);
+    void saveConfirmed(textNow.name, textNow.lines, textNow.folder);
+  };
+  const rowChecks = useMemo(() => {
+    const reader = readReader();
+    return library.map((t) => checkState(reader, t.name, t.lines, t.folder));
+    // checkTick: read again after this tab checks one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [library, checkTick]);
+
+  const fit = activeText
+    ? signalFit(rawSamples(phraseBytes(activeText)).length, set.rawRate, set.signalMs)
     : null;
-  const bytes = item ? phraseBytes(item.text).length : 0;
+  const bytes = activeText ? phraseBytes(activeText).length : 0;
+  const presetNow = presetOf(wavStyle);
+  const presetName = WAV_PRESETS.find((p) => p.id === presetNow)?.name ?? "Custom";
+  const tapHead = !locked
+    ? "UNLOCKED · TAPS DON'T COUNT"
+    : textsView
+      ? set.batch > 1
+        ? `TAP = ${set.batch} REPS DONE → NEXT · ONCE EVERY ${+(batchWait / 1000).toFixed(2)} S`
+        : "TAP = DONE → NEXT PHRASE"
+      : set.batch > 1
+        ? `TAP = ${set.batch} REPS · ONCE EVERY ${+(batchWait / 1000).toFixed(2)} S`
+        : "TAP = 1 REP · HOLD TO KEEP IT ON";
 
   return (
     <div>
       {emitter.picture}
       <p className="text-sm leading-relaxed text-muted">
-        A tap is one rep of the whole phrase (a word is a phrase of one). Each tap can sound the
-        phrase's own bytes and show them as a picture, as long as you hold it.
+        {textsView
+          ? "A whole text, phrase after phrase: a tap does the phrase it is at and goes to the next. After the last, it counts a pass through the text and starts again."
+          : "A tap is one rep of the whole phrase (a word is a phrase of one). Each tap can sound the phrase's own bytes and show them as a picture, as long as you hold it."}
       </p>
-      {item ? (
+      <fieldset disabled={locked} className="mt-3 min-w-0">
+        <div className="grid grid-cols-2 gap-1" role="radiogroup" aria-label="Rehearse">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!textsView}
+            data-on={!textsView}
+            className="btn tracking-normal normal-case"
+            onClick={() => update((s) => ({ ...s, view: "phrases" }))}
+          >
+            Single phrases ({st.items.length})
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={textsView}
+            data-on={textsView}
+            className="btn tracking-normal normal-case"
+            onClick={() => update((s) => ({ ...s, view: "texts" }))}
+          >
+            Whole texts ({library.length})
+          </button>
+        </div>
+      </fieldset>
+      {activeText ? (
         <>
           <button
             type="button"
@@ -750,24 +1117,31 @@ export function RehearseTab() {
               WebkitTouchCallout: "none",
             }}
             {...holdProps(true)}
-            aria-label={`Rep${set.batch > 1 ? ` ×${set.batch}` : ""}: ${item.text}. ${item.count} so far`}
+            aria-label={
+              textsView
+                ? `Done${set.batch > 1 ? ` ×${set.batch}` : ""}, next: ${activeText}. Phrase ${at + 1} of ${total}`
+                : `Rep${set.batch > 1 ? ` ×${set.batch}` : ""}: ${activeText}. ${item?.count ?? 0} so far`
+            }
           >
-            <span className="font-display text-[0.65rem] tracking-[0.14em] text-violet">
-              {set.batch > 1
-                ? `TAP = ${set.batch} REPS · ONCE EVERY ${+(batchWait / 1000).toFixed(2)} S`
-                : "TAP = 1 REP · HOLD TO KEEP IT ON"}
+            <span
+              className={`font-display text-[0.65rem] tracking-[0.14em] ${locked ? "text-violet" : "text-gold"}`}
+            >
+              {tapHead}
             </span>
-            <span className="line-clamp-5 text-lg leading-snug text-fg">{item.text}</span>
+            {textsView && textNow && (
+              <span className="max-w-full truncate text-[0.65rem] text-muted">
+                {textNow.folder ? `${textNow.folder} / ` : ""}
+                {textNow.name}
+              </span>
+            )}
+            <span className="line-clamp-5 text-lg leading-snug text-fg">{activeText}</span>
             <span className="font-display text-3xl text-cyan" aria-live="polite">
-              {item.count.toLocaleString()}
+              {textsView ? `${at + 1} / ${total}` : (item?.count ?? 0).toLocaleString()}
             </span>
-            {batchWait > 0 && (
-              <span className="block h-1 w-2/3 overflow-hidden rounded bg-violet/15" aria-hidden>
-                {waiting ? (
-                  <WaitBar key={st.lastTap} lastTap={st.lastTap} wait={batchWait} />
-                ) : (
-                  <span className="block h-full w-full bg-gold" />
-                )}
+            {textsView && (
+              <span className="text-xs text-muted">
+                {prog.passes.toLocaleString()} pass{prog.passes === 1 ? "" : "es"} ·{" "}
+                {prog.reps.toLocaleString()} reps
               </span>
             )}
             {tapNote && (
@@ -780,7 +1154,7 @@ export function RehearseTab() {
                 ♪ {name}.wav{" "}
                 {wavLoop
                   ? wavPlaying
-                    ? `looping at ${Math.round(wavVolume * 100)}%`
+                    ? `looping at ${Math.round(wavVolume * 100)}%${presetNow === "flat" ? "" : ` · ${presetName}`}`
                     : "loading…"
                   : "(off)"}
               </span>
@@ -790,46 +1164,139 @@ export function RehearseTab() {
             <button
               type="button"
               className="btn stepper"
-              onClick={() => update((s) => step(s, -1))}
-              disabled={st.items.length < 2}
+              onClick={() =>
+                update((s) => (textsView ? textStep(s, textKeyNow, total, -1) : step(s, -1)))
+              }
+              disabled={(textsView ? total : st.items.length) < 2}
               aria-label="Previous phrase"
             >
               <ChevronLeft className="size-4" aria-hidden />
             </button>
             <p className="min-w-0 flex-1 text-center text-xs text-muted">
-              Phrase {index + 1} of {st.items.length} · {totalReps(st).toLocaleString()} reps in all
-              · +{repXp(wordsOf(item.text), 1)} XP a rep
+              {textsView
+                ? `Text ${textIndex + 1} of ${library.length} · phrase ${at + 1} of ${total}`
+                : `Phrase ${index + 1} of ${st.items.length} · ${totalReps(st).toLocaleString()} reps in all`}{" "}
+              · +{repXp(wordsOf(activeText), 1)} XP a rep
             </p>
             <button
               type="button"
               className="btn stepper"
-              onClick={() => update((s) => step(s, 1))}
-              disabled={st.items.length < 2}
+              onClick={() =>
+                update((s) => (textsView ? textStep(s, textKeyNow, total, 1) : step(s, 1)))
+              }
+              disabled={(textsView ? total : st.items.length) < 2}
               aria-label="Next phrase"
             >
               <ChevronRight className="size-4" aria-hidden />
             </button>
           </div>
-          <div
-            className="mt-2 grid grid-cols-5 items-center gap-1"
-            role="radiogroup"
-            aria-label="Reps a tap"
-          >
-            <span className="text-[0.65rem] leading-tight text-muted">Reps a tap</span>
-            {[1, 10, 20, 30].map((b) => (
-              <button
-                key={b}
-                type="button"
-                role="radio"
-                aria-checked={set.batch === b}
-                data-on={set.batch === b}
-                className="btn px-1"
-                onClick={() => setOpt({ batch: b })}
-              >
-                ×{b}
-              </button>
-            ))}
-          </div>
+        </>
+      ) : (
+        <p className="glass mt-3 p-4 text-sm text-muted">
+          {textsView
+            ? "No phrases in this text. Choose another below, or edit it in the Read tab."
+            : `No phrases yet. ${locked ? "Unlock below, then write" : "Write"} one, import a .txt, or add the loaded text's phrases.`}
+        </p>
+      )}
+      <button
+        type="button"
+        className="btn mt-2 w-full tracking-normal normal-case"
+        data-on={locked}
+        aria-pressed={locked}
+        onClick={() => {
+          setOpt({ locked: !locked });
+          setTapNote("");
+        }}
+      >
+        {locked ? (
+          <Lock className="size-4" aria-hidden />
+        ) : (
+          <LockOpen className="size-4" aria-hidden />
+        )}
+        {locked
+          ? "Locked: the tap counts, settings wait (tap to unlock)"
+          : "Unlocked: settings work, taps don't count (tap to lock)"}
+      </button>
+      {activeText && (
+        <>
+          <fieldset disabled={locked} className="min-w-0">
+            {textsView && unit && (
+              <div className="mt-2">
+                {editing === null ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      className="btn tracking-normal normal-case"
+                      onClick={() => setEditing(unit.text)}
+                    >
+                      <Pencil className="size-4" aria-hidden /> Edit this phrase
+                    </button>
+                    <button
+                      type="button"
+                      className="btn tracking-normal normal-case"
+                      style={
+                        checked === "checked" ? { color: "#4ade80", borderColor: "#4ade80" } : {}
+                      }
+                      data-on={armed === "check"}
+                      disabled={checked === "checked"}
+                      onClick={() => arm("check", confirmText)}
+                    >
+                      <CircleCheck className="size-4" aria-hidden />
+                      {checked === "checked"
+                        ? "Checked ✓ (in confirmed_txt)"
+                        : armed === "check"
+                          ? "Tap again: save to confirmed_txt"
+                          : checked === "changed"
+                            ? "Checked again: save the new version"
+                            : "Checked, all written right"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <textarea
+                      className="w-full rounded border border-cyan/40 bg-transparent p-2 text-sm text-fg"
+                      rows={3}
+                      value={editing}
+                      onChange={(e) => setEditing(e.target.value)}
+                      aria-label="This phrase, rewritten"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" className="btn btn-gold" onClick={saveEdit}>
+                        Save into the text
+                      </button>
+                      <button type="button" className="btn" onClick={() => setEditing(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-[0.65rem] leading-snug text-muted">
+                      Saved into the text in its place, the Read tab's too (empty takes the phrase
+                      out). Check it again after, to save the new version to confirmed_txt.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+            <div
+              className="mt-2 grid grid-cols-5 items-center gap-1"
+              role="radiogroup"
+              aria-label="Reps a tap"
+            >
+              <span className="text-[0.65rem] leading-tight text-muted">Reps a tap</span>
+              {[1, 10, 20, 30].map((b) => (
+                <button
+                  key={b}
+                  type="button"
+                  role="radio"
+                  aria-checked={set.batch === b}
+                  data-on={set.batch === b}
+                  className="btn px-1"
+                  onClick={() => setOpt({ batch: b })}
+                >
+                  ×{b}
+                </button>
+              ))}
+            </div>
+          </fieldset>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -844,6 +1311,7 @@ export function RehearseTab() {
               className="btn"
               data-on={tune}
               aria-pressed={tune}
+              disabled={locked}
               onClick={() => setTune((t) => !t)}
             >
               <Settings2 className="size-4" aria-hidden /> Sound and picture
@@ -863,38 +1331,147 @@ export function RehearseTab() {
                 : "Floating window over other apps: tap it to count reps"}
             </button>
           )}
-          <div className="mt-2">
-            <Toggle
-              label={`Nonstop: its sound all the time${mode === "cycle" ? " (rising cycle)" : ""}`}
-              on={nonstop}
-              flip={() => setOpt({ nonstop: !nonstop, sound: true })}
-            />
-          </div>
-          {wavHere && (
-            <div className="mt-2 space-y-1.5">
+          <fieldset disabled={locked} className="min-w-0">
+            <div className="mt-2">
               <Toggle
-                label={`Its .wav in a loop (${name}.wav)`}
-                on={wavLoop}
-                flip={() => setOpt({ wavLoop: !wavLoop })}
-              />
-              <Num
-                label="WAV volume (0 to 1, the file as it is)"
-                value={wavVolume}
-                step={0.05}
-                digits={2}
-                set={(v) => setOpt({ wavVolume: clampAmp(v) })}
+                label={`Nonstop: its sound all the time${mode === "cycle" ? " (rising cycle)" : ""}`}
+                on={nonstop}
+                flip={() => setOpt({ nonstop: !nonstop, sound: true })}
               />
             </div>
-          )}
+            {wavHere && (
+              <div className="mt-2 space-y-1.5">
+                <Toggle
+                  label={`Its .wav in a loop (${name}.wav)`}
+                  on={wavLoop}
+                  flip={() => setOpt({ wavLoop: !wavLoop })}
+                />
+                <Num
+                  label="WAV volume (0 to 1, the file as it is)"
+                  value={wavVolume}
+                  step={0.05}
+                  digits={2}
+                  set={(v) => setOpt({ wavVolume: clampAmp(v) })}
+                />
+                <button
+                  type="button"
+                  className="btn w-full justify-between px-2 tracking-normal normal-case"
+                  data-on={wavTune}
+                  aria-pressed={wavTune}
+                  onClick={() => setWavTune((v) => !v)}
+                >
+                  <span>WAV style: {presetName}</span>
+                  <span className="font-display text-[0.6rem] tracking-wider uppercase">
+                    {wavTune ? "Close" : "Change"}
+                  </span>
+                </button>
+                {wavTune && (
+                  <div className="glass space-y-1.5 p-2">
+                    <div
+                      className="grid grid-cols-2 gap-1"
+                      role="radiogroup"
+                      aria-label="WAV style presets"
+                    >
+                      {WAV_PRESETS.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={presetNow === p.id}
+                          data-on={presetNow === p.id}
+                          className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+                          onClick={() => setOpt(wavSettingsOf(p.style))}
+                        >
+                          {p.name}
+                        </button>
+                      ))}
+                      <span
+                        className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+                        data-on={presetNow === "custom"}
+                        aria-hidden
+                      >
+                        Custom (set below)
+                      </span>
+                    </div>
+                    <p className="pt-1 text-[0.65rem] text-muted">Within each loop:</p>
+                    <div
+                      className="grid grid-cols-5 gap-1"
+                      role="radiogroup"
+                      aria-label="Shape within each loop"
+                    >
+                      {WAV_SHAPES.map((sh) => (
+                        <button
+                          key={sh}
+                          type="button"
+                          role="radio"
+                          aria-checked={set.wavShape === sh}
+                          data-on={set.wavShape === sh}
+                          className="btn px-0.5 text-[0.6rem] tracking-normal normal-case"
+                          onClick={() => setOpt({ wavShape: sh })}
+                        >
+                          {SHAPE_NAMES[sh]}
+                        </button>
+                      ))}
+                    </div>
+                    {set.wavShape === "fade" && (
+                      <>
+                        <Num
+                          label="Fade in (share of a cycle)"
+                          value={set.wavFadeIn}
+                          step={0.01}
+                          digits={2}
+                          set={(v) => setOpt({ wavFadeIn: clampFade(v) })}
+                        />
+                        <Num
+                          label="Fade out (share of a cycle)"
+                          value={set.wavFadeOut}
+                          step={0.01}
+                          digits={2}
+                          set={(v) => setOpt({ wavFadeOut: clampFade(v) })}
+                        />
+                        <p className="text-[0.65rem] text-muted">
+                          Middle: {Math.max(0, 1 - set.wavFadeIn - set.wavFadeOut).toFixed(2)} (the
+                          rest)
+                        </p>
+                      </>
+                    )}
+                    {set.wavShape !== "flat" && (
+                      <>
+                        <Num
+                          label="Cycles a loop"
+                          value={set.wavCycles}
+                          step={1}
+                          set={(v) => setOpt({ wavCycles: clampCycles(v) })}
+                        />
+                        <Num
+                          label="Depth (1: down to silence)"
+                          value={set.wavDepth}
+                          step={0.05}
+                          digits={2}
+                          set={(v) => setOpt({ wavDepth: clampFade(v) })}
+                        />
+                      </>
+                    )}
+                    <LevelsField
+                      levels={set.wavLevels}
+                      set={(wavLevels) => setOpt({ wavLevels })}
+                    />
+                    <p className="text-[0.65rem] leading-snug text-muted">
+                      Only the loudness changes, on playback: the file's sound itself plays as it
+                      is. Levels are each loop's in turn, then round again, times the WAV volume (1
+                      is the file as it is; above 1 is louder, and a file already at full loudness
+                      then clips).
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </fieldset>
         </>
-      ) : (
-        <p className="glass mt-3 p-4 text-sm text-muted">
-          No phrases yet. Write one below, import a .txt, or add the loaded text's phrases.
-        </p>
       )}
 
       {tune && (
-        <div className="glass mt-2 space-y-1.5 p-3">
+        <fieldset disabled={locked} className="glass mt-2 min-w-0 space-y-1.5 p-3">
           <p className="font-display text-[0.6rem] tracking-[0.14em] text-violet">
             THE SOUND: THE PHRASE'S OWN BYTES
           </p>
@@ -1045,196 +1622,338 @@ export function RehearseTab() {
             step={5}
             set={(v) => setOpt({ tapHeight: clampTapHeight(v) })}
           />
-        </div>
+        </fieldset>
       )}
 
-      <div className="mt-4 space-y-2">
-        <textarea
-          className="w-full rounded border border-cyan/40 bg-transparent p-2 text-sm text-fg"
-          rows={2}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Write a phrase or a word (one a line for several)"
-          aria-label="New phrase"
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <button type="button" className="btn" onClick={addDraft} disabled={!draft.trim()}>
-            <Plus className="size-4" aria-hidden /> Add
-          </button>
-          <button type="button" className="btn" onClick={() => file.current?.click()}>
-            <Upload className="size-4" aria-hidden /> Import .txt
-          </button>
-        </div>
-        <input
-          ref={file}
-          type="file"
-          accept=".txt,text/plain"
-          multiple
-          className="hidden"
-          onChange={(e) => void importFiles(e.target.files)}
-        />
-        <button
-          type="button"
-          className="btn w-full tracking-normal normal-case"
-          onClick={() => add(lines, "the loaded text")}
-          disabled={!lines.length}
-        >
-          Add the loaded text's phrases ({lines.length})
-        </button>
-        <Toggle
-          label="Split lines into sentences"
-          on={bySentence}
-          flip={() => setBySentence((b) => !b)}
-        />
-        {note && (
-          <p className="text-xs text-gold" role="status">
-            {note}
-          </p>
-        )}
-      </div>
-
-      <div className="glass mt-4 space-y-2 p-3">
-        <p className="font-display text-[0.6rem] tracking-[0.14em] text-violet">
-          AZS-FOLDER · EACH PHRASE A .TXT, ITS .WAV NEXT TO IT
-        </p>
-        {phone ? (
-          <>
+      <fieldset disabled={locked} className="min-w-0">
+        {textsView ? (
+          <div className="mt-4 space-y-2">
             <button
               type="button"
               className="btn w-full tracking-normal normal-case"
-              onClick={() => void choose()}
+              onClick={() => textFile.current?.click()}
             >
-              <FolderOpen className="size-4" aria-hidden />
-              {folder
-                ? `azs-folder: ${folder} (change)`
-                : "Choose azs-folder (e.g. Documents/azs-folder)"}
-            </button>
-            {folder && (
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  className="btn tracking-normal normal-case"
-                  onClick={() => void exportAll()}
-                  disabled={!st.items.length}
-                >
-                  Save all phrases again
-                </button>
-                <button
-                  type="button"
-                  className="btn tracking-normal normal-case"
-                  onClick={() =>
-                    void lookForWavs().then((n) =>
-                      setFolderNote(`${n} .wav file${n === 1 ? "" : "s"} in ${PHRASE_FOLDER}.`),
-                    )
-                  }
-                >
-                  Look for .wav files
-                </button>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <p className="text-xs text-muted">
-              The azs-folder is in the Android app. Here, load .wav files named like the phrases.
-            </p>
-            <button
-              type="button"
-              className="btn w-full tracking-normal normal-case"
-              onClick={() => wavPick.current?.click()}
-            >
-              <Upload className="size-4" aria-hidden /> Load .wav files
+              <Upload className="size-4" aria-hidden /> Import .txt or .zip (joins the Read tab's
+              texts)
             </button>
             <input
-              ref={wavPick}
+              ref={textFile}
               type="file"
-              accept=".wav,audio/wav,audio/x-wav"
+              accept=".txt,.zip,text/plain,application/zip"
               multiple
               className="hidden"
-              aria-label="Load .wav files"
-              onChange={(e) => pickWavs(e.target.files)}
+              aria-label="Import texts"
+              onChange={(e) => importTexts(e.target.files)}
             />
-          </>
+            <p className="text-[0.65rem] leading-snug text-muted">
+              The same texts as the Read tab: edited or checked here, they are edited or checked
+              there too. Each text keeps its own place, passes and reps here.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-2">
+            <textarea
+              className="w-full rounded border border-cyan/40 bg-transparent p-2 text-sm text-fg"
+              rows={2}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Write a phrase or a word (one a line for several)"
+              aria-label="New phrase"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="btn" onClick={addDraft} disabled={!draft.trim()}>
+                <Plus className="size-4" aria-hidden /> Add
+              </button>
+              <button type="button" className="btn" onClick={() => file.current?.click()}>
+                <Upload className="size-4" aria-hidden /> Import .txt
+              </button>
+            </div>
+            <input
+              ref={file}
+              type="file"
+              accept=".txt,text/plain"
+              multiple
+              className="hidden"
+              onChange={(e) => void importFiles(e.target.files)}
+            />
+            <button
+              type="button"
+              className="btn w-full tracking-normal normal-case"
+              onClick={() => add(lines, "the loaded text")}
+              disabled={!lines.length}
+            >
+              Add the loaded text's phrases ({lines.length})
+            </button>
+            <Toggle
+              label="Split lines into sentences"
+              on={bySentence}
+              flip={() => setBySentence((b) => !b)}
+            />
+            {note && (
+              <p className="text-xs text-gold" role="status">
+                {note}
+              </p>
+            )}
+          </div>
         )}
-        <p className="text-[0.65rem] leading-snug text-muted">
-          Each phrase is saved by itself as {PHRASE_FOLDER}/&lt;phrase&gt;.txt (all of them when the
-          folder is chosen, and each new one as it is added). Make its sound outside (Termux) and
-          put it next to it with the same name, .wav: choosing the phrase here looks for it right
-          then and loops it, as it is, at the WAV volume (also when you come back to the app).
-        </p>
-        {folderNote && (
-          <p className="text-xs text-gold" role="status">
-            {folderNote}
-          </p>
-        )}
-      </div>
 
-      {st.items.length > 0 && (
-        <>
-          <ul className="mt-4 max-h-[45dvh] overflow-y-auto" aria-label="Phrases and their reps">
-            {st.items.map((it, i) => (
-              <li
-                key={it.id}
-                className={`flex items-center gap-1 border-b border-cyan/10 py-1 ${it.id === item?.id ? "bg-violet/15" : ""}`}
+        <div className="glass mt-4 space-y-2 p-3">
+          <p className="font-display text-[0.6rem] tracking-[0.14em] text-violet">
+            {textsView
+              ? "AZS-FOLDER · EACH TEXT A .TXT, ITS .WAV NEXT TO IT"
+              : "AZS-FOLDER · EACH PHRASE A .TXT, ITS .WAV NEXT TO IT"}
+          </p>
+          {phone ? (
+            <>
+              <button
+                type="button"
+                className="btn w-full tracking-normal normal-case"
+                onClick={() => void choose()}
               >
+                <FolderOpen className="size-4" aria-hidden />
+                {folder
+                  ? `azs-folder: ${folder} (change)`
+                  : "Choose azs-folder (e.g. Documents/azs-folder)"}
+              </button>
+              {folder && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    className="btn tracking-normal normal-case"
+                    onClick={() => void exportAll()}
+                    disabled={textsView ? !library.length : !st.items.length}
+                  >
+                    {textsView ? "Save all texts again" : "Save all phrases again"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn tracking-normal normal-case"
+                    onClick={() =>
+                      void lookForWavs().then((found) => {
+                        const n = found[dir] ?? 0;
+                        setFolderNote(`${n} .wav file${n === 1 ? "" : "s"} in ${dir}.`);
+                      })
+                    }
+                  >
+                    Look for .wav files
+                  </button>
+                </div>
+              )}
+              {folder && textsView && newTextFiles.length > 0 && (
                 <button
                   type="button"
-                  className="min-w-0 flex-1 truncate py-2 text-left text-sm text-fg"
-                  onClick={() => update((s) => select(s, it.id))}
-                  aria-current={it.id === item?.id}
+                  className="btn w-full tracking-normal normal-case"
+                  onClick={() => void loadNewTexts()}
                 >
-                  <span className="text-muted">{i + 1}.</span> {hasWav(names[i] ?? "") ? "♪ " : ""}
-                  {it.text}
+                  Load {newTextFiles.length} new text{newTextFiles.length === 1 ? "" : "s"} from{" "}
+                  {TEXT_FOLDER}
                 </button>
-                <span className="w-12 text-right font-display text-xs text-cyan">
-                  {it.count.toLocaleString()}
-                </span>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-muted">
+                The azs-folder is in the Android app. Here, load .wav files named like the{" "}
+                {textsView ? "texts" : "phrases"}.
+              </p>
+              <button
+                type="button"
+                className="btn w-full tracking-normal normal-case"
+                onClick={() => wavPick.current?.click()}
+              >
+                <Upload className="size-4" aria-hidden /> Load .wav files
+              </button>
+              <input
+                ref={wavPick}
+                type="file"
+                accept=".wav,audio/wav,audio/x-wav"
+                multiple
+                className="hidden"
+                aria-label="Load .wav files"
+                onChange={(e) => pickWavs(e.target.files)}
+              />
+            </>
+          )}
+          <p className="text-[0.65rem] leading-snug text-muted">
+            {textsView
+              ? `Each text is saved by itself as ${TEXT_FOLDER}/<text>.txt (again when it is edited), a text from a .zip as “<folder> - <text>”. Put its sound next to it with the same name, .wav: choosing the text here loops it, in the WAV style. A .txt you put there yourself can be loaded as a new text.`
+              : `Each phrase is saved by itself as ${PHRASE_FOLDER}/<phrase>.txt (all of them when the folder is chosen, and each new one as it is added). Make its sound outside (Termux) and put it next to it with the same name, .wav: choosing the phrase here looks for it right then and loops it, as it is, at the WAV volume (also when you come back to the app).`}
+          </p>
+          {folderNote && (
+            <p className="text-xs text-gold" role="status">
+              {folderNote}
+            </p>
+          )}
+        </div>
+
+        {textsView ? (
+          <>
+            <ul className="mt-4 max-h-[45dvh] overflow-y-auto" aria-label="Texts and their passes">
+              {library.map((t, i) => {
+                const p = textProgress(st, t.key);
+                const n = phraseCounts[i] ?? 0;
+                return (
+                  <li
+                    key={t.key}
+                    className={`flex items-center gap-1 border-b border-cyan/10 py-1 ${t.key === textKeyNow ? "bg-violet/15" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 py-1 text-left text-sm text-fg"
+                      onClick={() => update((s) => ({ ...s, text: t.key }))}
+                      aria-current={t.key === textKeyNow}
+                    >
+                      <span className="block truncate">
+                        <span className="text-muted">{i + 1}.</span>{" "}
+                        {hasWav(textNames[i] ?? "", TEXT_FOLDER) ? "♪ " : ""}
+                        {rowChecks[i] === "checked" ? "✓ " : ""}
+                        {t.folder ? <span className="text-muted">{t.folder} / </span> : null}
+                        {t.name}
+                      </span>
+                      <span className="block text-[0.65rem] text-muted">
+                        phrase {Math.min(p.at, Math.max(0, n - 1)) + 1} of {n} · {p.passes} pass
+                        {p.passes === 1 ? "" : "es"}
+                      </span>
+                    </button>
+                    <span className="w-12 text-right font-display text-xs text-cyan">
+                      {p.reps.toLocaleString()}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn stepper"
+                      data-on={armed === `rt-${t.key}`}
+                      onClick={() => arm(`rt-${t.key}`, () => update((s) => resetText(s, t.key)))}
+                      disabled={!p.reps && !p.at && !p.passes}
+                      aria-label={
+                        armed === `rt-${t.key}`
+                          ? `Tap again to start over: ${t.name}`
+                          : `Start over (place, passes and reps): ${t.name}`
+                      }
+                    >
+                      <RotateCcw className="size-4" aria-hidden />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-2">
+              <button
+                type="button"
+                className="btn w-full tracking-normal normal-case"
+                data-on={armed === "zero-texts"}
+                onClick={() => arm("zero-texts", () => update((s) => ({ ...s, progress: {} })))}
+                disabled={!Object.keys(st.progress).length}
+              >
+                {armed === "zero-texts"
+                  ? "Tap again: every text from the start"
+                  : "Every text from the start (places, passes, reps)"}
+              </button>
+            </div>
+          </>
+        ) : (
+          st.items.length > 0 && (
+            <>
+              <ul
+                className="mt-4 max-h-[45dvh] overflow-y-auto"
+                aria-label="Phrases and their reps"
+              >
+                {st.items.map((it, i) => (
+                  <li
+                    key={it.id}
+                    className={`flex items-center gap-1 border-b border-cyan/10 py-1 ${it.id === item?.id ? "bg-violet/15" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 truncate py-2 text-left text-sm text-fg"
+                      onClick={() => update((s) => select(s, it.id))}
+                      aria-current={it.id === item?.id}
+                    >
+                      <span className="text-muted">{i + 1}.</span>{" "}
+                      {hasWav(names[i] ?? "") ? "♪ " : ""}
+                      {it.text}
+                    </button>
+                    <span className="w-12 text-right font-display text-xs text-cyan">
+                      {it.count.toLocaleString()}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn stepper"
+                      onClick={() => update((s) => resetCount(s, it.id))}
+                      disabled={!it.count}
+                      aria-label={`Reset the count of: ${it.text}`}
+                    >
+                      <RotateCcw className="size-4" aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn stepper"
+                      data-on={armed === `rm-${it.id}`}
+                      onClick={() =>
+                        arm(`rm-${it.id}`, () => update((s) => removePhrase(s, it.id)))
+                      }
+                      aria-label={
+                        armed === `rm-${it.id}`
+                          ? `Tap again to remove: ${it.text}`
+                          : `Remove: ${it.text}`
+                      }
+                    >
+                      <Trash2 className="size-4" aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  className="btn stepper"
-                  onClick={() => update((s) => resetCount(s, it.id))}
-                  disabled={!it.count}
-                  aria-label={`Reset the count of: ${it.text}`}
+                  className="btn tracking-normal normal-case"
+                  data-on={armed === "zero"}
+                  onClick={() => arm("zero", () => update(resetCounts))}
+                  disabled={!totalReps(st)}
                 >
-                  <RotateCcw className="size-4" aria-hidden />
+                  {armed === "zero" ? "Tap again: all counts to 0" : "Reset all counts"}
                 </button>
                 <button
                   type="button"
-                  className="btn stepper"
-                  data-on={armed === `rm-${it.id}`}
-                  onClick={() => arm(`rm-${it.id}`, () => update((s) => removePhrase(s, it.id)))}
-                  aria-label={
-                    armed === `rm-${it.id}`
-                      ? `Tap again to remove: ${it.text}`
-                      : `Remove: ${it.text}`
+                  className="btn tracking-normal normal-case"
+                  data-on={armed === "clear"}
+                  onClick={() =>
+                    arm("clear", () => update((s) => ({ ...s, items: [], current: "" })))
                   }
                 >
-                  <Trash2 className="size-4" aria-hidden />
+                  {armed === "clear" ? "Tap again: remove all" : "Remove all phrases"}
                 </button>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              className="btn tracking-normal normal-case"
-              data-on={armed === "zero"}
-              onClick={() => arm("zero", () => update(resetCounts))}
-              disabled={!totalReps(st)}
-            >
-              {armed === "zero" ? "Tap again: all counts to 0" : "Reset all counts"}
-            </button>
-            <button
-              type="button"
-              className="btn tracking-normal normal-case"
-              data-on={armed === "clear"}
-              onClick={() => arm("clear", () => update((s) => ({ ...s, items: [], current: "" })))}
-            >
-              {armed === "clear" ? "Tap again: remove all" : "Remove all phrases"}
-            </button>
-          </div>
-        </>
-      )}
+              </div>
+            </>
+          )
+        )}
+      </fieldset>
     </div>
+  );
+}
+
+/** Each loop's level in turn, typed as numbers apart ("0.5, 0.5, 2, 1"). */
+function LevelsField({ levels, set }: { levels: number[]; set: (v: number[]) => void }) {
+  const [text, setText] = useState<string | null>(null);
+  const commit = () => {
+    if (text === null) return;
+    const v = parseLevels(text);
+    if (v) set(v);
+    setText(null);
+  };
+  return (
+    <label className="block text-xs">
+      <span className="text-muted">Each loop's level in turn (e.g. 1 · 0.5, 0.5, 2, 1)</span>
+      <input
+        className="mt-1 w-full rounded border border-cyan/40 bg-transparent px-2 py-2 text-fg"
+        inputMode="decimal"
+        value={text ?? levelsText(levels)}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+        }}
+        aria-label="Each loop's level in turn"
+      />
+    </label>
   );
 }

@@ -17,6 +17,8 @@ import { BYTES_MODES, type BytesMode } from "./readtext.ts";
 export const REHEARSE_KEY = "azshara-rehearse-v1";
 /** The most phrases kept. */
 export const MAX_PHRASES = 5000;
+/** The most texts whose place is kept. */
+export const MAX_PROGRESS = 2000;
 
 export interface RehearsePhrase {
   id: string;
@@ -59,6 +61,15 @@ export interface RehearseSettings {
   /** The phrase's own .wav (made outside, next to its .txt in azs-folder/input_perphrase) looped as it is, at this gain. */
   wavLoop: boolean;
   wavVolume: number;
+  /** How the .wav is played (its loudness only, the sound itself as it is): see WavStyle. */
+  wavShape: WavShape;
+  wavFadeIn: number;
+  wavFadeOut: number;
+  wavCycles: number;
+  wavDepth: number;
+  wavLevels: number[];
+  /** Locked: the tap counts and the settings cannot change; unlocked, the other way round. */
+  locked: boolean;
   /** The phrase's byte picture on a tap, and each layer's opacity. */
   picture: boolean;
   layers: Record<BytesMode, number>;
@@ -69,6 +80,20 @@ export interface RehearseSettings {
   tapHeight: number;
 }
 
+/** Single phrases, or whole texts (the Read tab's) phrase after phrase. */
+export type RehearseView = "phrases" | "texts";
+
+/** Where you are in a text, and what it has had. */
+export interface TextProgress {
+  /** The phrase it is at (0 for the first). */
+  at: number;
+  /** Times through the whole text. */
+  passes: number;
+  /** Reps counted on its phrases, and when the last was (ms since 1970; 0 for none). */
+  reps: number;
+  last: number;
+}
+
 export interface RehearseState {
   items: RehearsePhrase[];
   /** The phrase being repped ("" for the first). */
@@ -76,6 +101,11 @@ export interface RehearseState {
   settings: RehearseSettings;
   /** When the last tap counted (ms since 1970; 0 for none): a batch waits from there. */
   lastTap: number;
+  view: RehearseView;
+  /** The text being repped, by its key (readtext textKey; "" for the first). */
+  text: string;
+  /** Each text's place and counts, by its key. */
+  progress: Record<string, TextProgress>;
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -108,6 +138,13 @@ export function defaultSettings(): RehearseSettings {
     repSeconds: 0.99,
     wavLoop: true,
     wavVolume: 1,
+    wavShape: "flat",
+    wavFadeIn: 0.11,
+    wavFadeOut: 0.1,
+    wavCycles: 1,
+    wavDepth: 1,
+    wavLevels: [1],
+    locked: true,
     picture: true,
     layers: { rgb: 0.36, gray: 0.36, bits: 0.36 },
     pictureOpacity: 1,
@@ -117,7 +154,15 @@ export function defaultSettings(): RehearseSettings {
 }
 
 export function newRehearse(): RehearseState {
-  return { items: [], current: "", settings: defaultSettings(), lastTap: 0 };
+  return {
+    items: [],
+    current: "",
+    settings: defaultSettings(),
+    lastTap: 0,
+    view: "phrases",
+    text: "",
+    progress: {},
+  };
 }
 
 /** A saved state, each value checked. */
@@ -141,6 +186,18 @@ export function loadRehearse(data: unknown): RehearseState {
   }
   if (typeof d.current === "string" && seen.has(d.current)) s.current = d.current;
   s.lastTap = Math.max(0, num(d.lastTap, 0));
+  if (d.view === "phrases" || d.view === "texts") s.view = d.view;
+  if (typeof d.text === "string") s.text = d.text.slice(0, 400);
+  for (const [key, raw] of Object.entries(obj(d.progress)).slice(0, MAX_PROGRESS)) {
+    const r = obj(raw);
+    if (!key || key.length > 400) continue;
+    s.progress[key] = {
+      at: Math.max(0, Math.floor(num(r.at, 0))),
+      passes: Math.max(0, Math.floor(num(r.passes, 0))),
+      reps: Math.max(0, Math.floor(num(r.reps, 0))),
+      last: Math.max(0, num(r.last, 0)),
+    };
+  }
   const t = obj(d.settings);
   const u = s.settings;
   if (typeof t.sound === "boolean") u.sound = t.sound;
@@ -155,6 +212,19 @@ export function loadRehearse(data: unknown): RehearseState {
   u.repSeconds = clampRepSeconds(num(t.repSeconds, u.repSeconds));
   if (typeof t.wavLoop === "boolean") u.wavLoop = t.wavLoop;
   u.wavVolume = clampAmp(num(t.wavVolume, u.wavVolume));
+  if (WAV_SHAPES.includes(t.wavShape as WavShape)) u.wavShape = t.wavShape as WavShape;
+  u.wavFadeIn = clampFade(num(t.wavFadeIn, u.wavFadeIn));
+  u.wavFadeOut = clampFade(num(t.wavFadeOut, u.wavFadeOut));
+  u.wavCycles = clampCycles(num(t.wavCycles, u.wavCycles));
+  u.wavDepth = clampFade(num(t.wavDepth, u.wavDepth));
+  if (Array.isArray(t.wavLevels)) {
+    const levels = t.wavLevels
+      .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
+      .slice(0, MAX_LEVELS)
+      .map(clampLevel);
+    if (levels.length) u.wavLevels = levels;
+  }
+  if (typeof t.locked === "boolean") u.locked = t.locked;
   if (typeof t.picture === "boolean") u.picture = t.picture;
   const layers = obj(t.layers);
   for (const m of BYTES_MODES) u.layers[m] = clampLayer(num(layers[m], u.layers[m]));
@@ -396,16 +466,34 @@ export function fileBase(text: string): string {
   return clean || "phrase";
 }
 
-/** Each phrase's file name (no extension), in order: the same name twice gets " (2)", " (3)"… */
-export function phraseFileNames(texts: string[]): string[] {
+/** Names made unique, in order (any case): the same name twice gets " (2)", " (3)"… */
+function uniqueNames(bases: string[]): string[] {
   const used = new Map<string, number>();
-  return texts.map((t) => {
-    const base = fileBase(t);
+  return bases.map((base) => {
     const key = base.toLowerCase();
     const n = (used.get(key) ?? 0) + 1;
     used.set(key, n);
     return n === 1 ? base : `${base} (${n})`;
   });
+}
+
+/** Each phrase's file name (no extension), in order: the same name twice gets " (2)", " (3)"… */
+export function phraseFileNames(texts: string[]): string[] {
+  return uniqueNames(texts.map(fileBase));
+}
+
+/** The folder (inside azs-folder) where each whole text is a .txt, and its .wav goes next to it. */
+export const TEXT_FOLDER = "input_pertext";
+
+/** A text's file name (no extension): its name (".txt" off), after its folder's for a text from a .zip. */
+export function textFileBase(name: string, folder?: string): string {
+  const n = name.replace(/\.txt$/i, "");
+  return fileBase(folder ? `${folder} - ${n}` : n);
+}
+
+/** Each text's file name (no extension), in order, each once. */
+export function textFileNames(texts: { name: string; folder?: string }[]): string[] {
+  return uniqueNames(texts.map((t) => textFileBase(t.name, t.folder)));
 }
 
 /** A .wav file's sample rate, from its header (null if it is not a .wav). */
@@ -421,4 +509,254 @@ export function wavSampleRate(bytes: Uint8Array): number | null {
     p += 8 + size + (size & 1);
   }
   return null;
+}
+
+// ---- Texts: a whole text, phrase after phrase ----
+
+const noProgress = (): TextProgress => ({ at: 0, passes: 0, reps: 0, last: 0 });
+
+/** A text's place and counts (none yet: at the first phrase). */
+export function textProgress(s: RehearseState, key: string): TextProgress {
+  return s.progress[key] ?? noProgress();
+}
+
+/** The phrase a text is at, within its phrases now (it may have been edited shorter). */
+export function textAt(s: RehearseState, key: string, total: number): number {
+  const at = textProgress(s, key).at;
+  return total > 0 && at < total ? at : 0;
+}
+
+const withProgress = (s: RehearseState, key: string, p: TextProgress): RehearseState => ({
+  ...s,
+  progress: { ...s.progress, [key]: p },
+});
+
+/**
+ * A tap on a text: its phrase (the one it is at, or `at`) done, n reps of it,
+ * and on to the next; after the last phrase it starts again from the first and
+ * counts a pass through the whole text.
+ */
+export function textTap(
+  s: RehearseState,
+  key: string,
+  total: number,
+  now: number,
+  n = 1,
+  at = textAt(s, key, total),
+): RehearseState {
+  if (total <= 0) return s;
+  const p = textProgress(s, key);
+  const here = Math.max(0, Math.min(total - 1, Math.floor(at)));
+  const wrap = here + 1 >= total;
+  return {
+    ...withProgress(s, key, {
+      at: wrap ? 0 : here + 1,
+      passes: p.passes + (wrap ? 1 : 0),
+      reps: p.reps + Math.max(1, Math.floor(n)),
+      last: now,
+    }),
+    lastTap: now,
+  };
+}
+
+/** The phrase before or after in a text (round it), nothing counted. */
+export function textStep(s: RehearseState, key: string, total: number, dir: 1 | -1): RehearseState {
+  if (total <= 0) return s;
+  const at = (textAt(s, key, total) + dir + total) % total;
+  return withProgress(s, key, { ...textProgress(s, key), at });
+}
+
+/** Goes to a phrase of a text, nothing counted. */
+export function textGo(s: RehearseState, key: string, at: number, total: number): RehearseState {
+  if (total <= 0) return s;
+  const to = Math.max(0, Math.min(total - 1, Math.floor(at)));
+  return withProgress(s, key, { ...textProgress(s, key), at: to });
+}
+
+/** A text's place and counts back to the start; the text stays. */
+export function resetText(s: RehearseState, key: string): RehearseState {
+  if (!s.progress[key]) return s;
+  const progress = { ...s.progress };
+  delete progress[key];
+  return { ...s, progress };
+}
+
+// ---- How the .wav plays: its loudness shaped, the sound itself as it is ----
+
+/**
+ * The shape of the loudness within each loop of the file: flat (as it is), a
+ * fade in, middle and fade out, or a sine, saw or square wave of it (each
+ * `cycles` times a loop, `depth` deep: 1 down to silence, 0.5 down to half).
+ */
+export type WavShape = "flat" | "fade" | "sine" | "saw" | "square";
+export const WAV_SHAPES: WavShape[] = ["flat", "fade", "sine", "saw", "square"];
+
+export interface WavStyle {
+  shape: WavShape;
+  /** The fade in and out, as shares of a cycle (the middle is the rest). */
+  fadeIn: number;
+  fadeOut: number;
+  cycles: number;
+  depth: number;
+  /** Each loop's level in turn, round again (1, 1, 1… as it is; 0.5, 0.5, 2, 1…). */
+  levels: number[];
+}
+
+/** The most levels in turn. */
+export const MAX_LEVELS = 32;
+export const clampFade = (v: number) => clamp(Math.round(v * 1000) / 1000, 0, 1);
+export const clampCycles = (v: number) => clamp(Math.round(v), 1, 64);
+export const clampLevel = (v: number) => clamp(Math.round(v * 100) / 100, 0, 4);
+
+export function wavStyleOf(
+  s: Pick<
+    RehearseSettings,
+    "wavShape" | "wavFadeIn" | "wavFadeOut" | "wavCycles" | "wavDepth" | "wavLevels"
+  >,
+): WavStyle {
+  return {
+    shape: s.wavShape,
+    fadeIn: s.wavFadeIn,
+    fadeOut: s.wavFadeOut,
+    cycles: s.wavCycles,
+    depth: s.wavDepth,
+    levels: s.wavLevels,
+  };
+}
+
+/** The settings for a style. */
+export function wavSettingsOf(style: WavStyle): Partial<RehearseSettings> {
+  return {
+    wavShape: style.shape,
+    wavFadeIn: style.fadeIn,
+    wavFadeOut: style.fadeOut,
+    wavCycles: style.cycles,
+    wavDepth: style.depth,
+    wavLevels: [...style.levels],
+  };
+}
+
+/** Levels typed as numbers apart ("0.5, 0.5, 2, 1"): null if there are none. */
+export function parseLevels(text: string): number[] | null {
+  const levels = text
+    .split(/[\s,;]+/)
+    .filter(Boolean)
+    .map((t) => Number(t))
+    .filter((v) => Number.isFinite(v))
+    .slice(0, MAX_LEVELS)
+    .map(clampLevel);
+  return levels.length ? levels : null;
+}
+
+export function levelsText(levels: number[]): string {
+  return levels.join(", ");
+}
+
+/** The shape alone at a point of a cycle (0 to 1 through it): 0 to 1. */
+function shapeAt(style: WavStyle, phase: number): number {
+  const p = Math.min(1, Math.max(0, phase));
+  switch (style.shape) {
+    case "flat":
+      return 1;
+    case "fade": {
+      let fi = clampFade(style.fadeIn);
+      let fo = clampFade(style.fadeOut);
+      if (fi + fo > 1) {
+        const k = 1 / (fi + fo);
+        fi *= k;
+        fo *= k;
+      }
+      if (fi > 0 && p < fi) return p / fi;
+      if (fo > 0 && p > 1 - fo) return (1 - p) / fo;
+      return 1;
+    }
+    case "sine":
+      return 0.5 - 0.5 * Math.cos(2 * Math.PI * p);
+    case "saw":
+      return p;
+    case "square":
+      return p < 0.5 ? 1 : 0;
+  }
+}
+
+/** The loudness at a point of a loop (0 to 1 through it), before its level: the shape, `depth` deep. */
+export function wavGainAt(style: WavStyle, t: number): number {
+  const u = Math.min(1, Math.max(0, t));
+  const c = clampCycles(style.cycles);
+  // The loop's very end is its last cycle's end, not a new one's start.
+  const phase = u >= 1 ? 1 : (u * c) % 1;
+  const depth = clampFade(style.depth);
+  return 1 - depth * (1 - shapeAt(style, phase));
+}
+
+/** How many points a loop's loudness curve takes: enough for its cycles, fewer for a short loop. */
+export function curvePoints(style: WavStyle, loopSeconds: number): number {
+  if (style.shape === "flat" || style.depth <= 0) return 2;
+  const c = clampCycles(style.cycles);
+  const want = Math.min(c * 128 + 1, Math.ceil(Math.max(0, loopSeconds) * 4000) + 1);
+  return Math.min(4097, Math.max(c * 8 + 1, want));
+}
+
+/** One loop's loudness curve (evenly over it, its first point at its start and its last at its end), at a level. */
+export function wavCurve(style: WavStyle, points: number, level = 1): Float32Array<ArrayBuffer> {
+  const n = Math.max(2, Math.floor(points));
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = wavGainAt(style, i / (n - 1)) * level;
+  return out;
+}
+
+/** A loop's level: the levels in turn, round again. */
+export function levelOf(style: WavStyle, loop: number): number {
+  const l = style.levels.length ? style.levels : [1];
+  return l[((Math.floor(loop) % l.length) + l.length) % l.length] ?? 1;
+}
+
+/** The loudness of a style that does not change (flat, one level): that, or null. */
+export function steadyGain(style: WavStyle): number | null {
+  const flat = style.shape === "flat" || style.depth <= 0;
+  const l = style.levels.length ? style.levels : [1];
+  return flat && l.every((v) => v === l[0]) ? (l[0] ?? 1) : null;
+}
+
+export interface WavPreset {
+  id: string;
+  name: string;
+  style: WavStyle;
+}
+
+const preset = (id: string, name: string, style: Partial<WavStyle>): WavPreset => ({
+  id,
+  name,
+  style: { shape: "flat", fadeIn: 0.11, fadeOut: 0.1, cycles: 1, depth: 1, levels: [1], ...style },
+});
+
+export const WAV_PRESETS: WavPreset[] = [
+  preset("flat", "Flat: as it is", {}),
+  preset("fade", "Fade 0.11 · 0.8 · 0.1", { shape: "fade" }),
+  preset("soft", "Soft fade 0.25 · 0.5 · 0.25", { shape: "fade", fadeIn: 0.25, fadeOut: 0.25 }),
+  preset("sine", "Sine swell", { shape: "sine" }),
+  preset("saw", "Saw rise", { shape: "saw" }),
+  preset("square", "Square pulse ×4", { shape: "square", cycles: 4 }),
+  preset("tremolo", "Sine tremolo ×8, half deep", { shape: "sine", cycles: 8, depth: 0.5 }),
+  preset("steps", "Steps 0.1 · 0.2 · 0.3 · 0.4 · 0.5", { levels: [0.1, 0.2, 0.3, 0.4, 0.5] }),
+  preset("waves", "Loops 0.5 · 0.5 · 2 · 1", { levels: [0.5, 0.5, 2, 1] }),
+];
+
+/** Whether two styles play the same (what a flat shape does not use is not compared). */
+export function sameStyle(a: WavStyle, b: WavStyle): boolean {
+  const key = (s: WavStyle) => {
+    const flat = s.shape === "flat" || s.depth <= 0;
+    return JSON.stringify([
+      flat ? "flat" : s.shape,
+      !flat && s.shape === "fade" ? [s.fadeIn, s.fadeOut] : 0,
+      flat ? 0 : [s.cycles, s.depth],
+      s.levels,
+    ]);
+  };
+  return key(a) === key(b);
+}
+
+/** The preset a style is, or "custom". */
+export function presetOf(style: WavStyle): string {
+  return WAV_PRESETS.find((p) => sameStyle(p.style, style))?.id ?? "custom";
 }
