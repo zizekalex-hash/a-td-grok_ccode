@@ -37,6 +37,7 @@ interface RepBubbleApi {
   update(o: BubbleSetup): Promise<void>;
   hide(): Promise<void>;
   takeReps(): Promise<BubbleReps>;
+  keepAlive(o: { on: boolean }): Promise<void>;
   addListener(event: "reps", fn: () => void): Promise<{ remove: () => Promise<void> }>;
 }
 
@@ -117,4 +118,10 @@ export async function onBubble(fn: () => void): Promise<() => void> {
   } catch {
     return () => {};
   }
+}
+
+/** Keeps the app running in the background (with a notification) while Rehearse plays, or lets it rest. */
+export async function keepAlive(on: boolean) {
+  const b = await bubble();
+  if (b) await b.api.keepAlive({ on }).catch(() => {});
 }

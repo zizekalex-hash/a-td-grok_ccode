@@ -47,6 +47,11 @@ import {
   wavStyleOf,
   wavSettingsOf,
   type WavStyle,
+  libraryOf,
+  currentText,
+  applyBubble,
+  bubbleId,
+  activeOf,
 } from "./rehearse.ts";
 
 const ids = (i: number) => `p${i}`;
@@ -394,5 +399,84 @@ describe("rehearse: how the .wav plays", () => {
       loadRehearse({ settings: wavSettingsOf(w) }).settings.wavLevels,
       [0.5, 0.5, 2, 1],
     );
+  });
+});
+
+describe("rehearse: the floating window and the background", () => {
+  const lib = libraryOf(
+    [{ name: "Long", lines: ["One here now. Two here now. Three here now."] }],
+    true,
+    [],
+    [{ name: "Zip", texts: [{ name: "In", lines: ["Only this one here."] }] }],
+  );
+
+  it("lists the Read tab's texts, the built-in one when there are none of your own", () => {
+    assert.deepEqual(
+      lib.map((t) => t.key),
+      ["Long", "Zip/In"],
+    );
+    assert.equal(libraryOf([], false, ["x y z"], [])[0]!.builtIn, true);
+    assert.equal(currentText({ ...newRehearse(), text: "Zip/In" }, lib)?.name, "In");
+    assert.equal(currentText(newRehearse(), lib)?.name, "Long", "none chosen: the first");
+    assert.equal(defaultSettings().background, true);
+    assert.equal(loadRehearse({ settings: { background: false } }).settings.background, false);
+  });
+
+  it("never puts a text back to its start from a closed window, or from what it was sent", () => {
+    let s = textTap(newRehearse(), "Long", 3, 1);
+    s = textTap(s, "Long", 3, 2);
+    assert.equal(textAt(s, "Long", 3), 2);
+    const stale = { reps: [], current: bubbleId(0, "Long"), shown: false };
+    assert.equal(
+      textAt(applyBubble(s, stale, lib, "").state, "Long", 3),
+      2,
+      "closed: not followed",
+    );
+    const same = { reps: [], current: bubbleId(0, "Long"), shown: true };
+    assert.equal(
+      textAt(applyBubble(s, same, lib, bubbleId(0, "Long")).state, "Long", 3),
+      2,
+      "what this side sent it: not followed",
+    );
+    assert.equal(
+      textAt(applyBubble(s, same, lib, bubbleId(2, "Long")).state, "Long", 3),
+      0,
+      "moved there: followed",
+    );
+  });
+
+  it("knows what plays now, and its file", () => {
+    let s = addPhrases(newRehearse(), ["Hold it.", "hold it"], 1, ids).state;
+    assert.deepEqual(activeOf(s, lib), {
+      text: "Hold it.",
+      dir: "input_perphrase",
+      name: "Hold it",
+    });
+    s = { ...s, view: "texts", text: "Zip/In" };
+    assert.deepEqual(activeOf(s, lib), {
+      text: "Only this one here.",
+      dir: "input_pertext",
+      name: "Zip - In",
+    });
+  });
+
+  it("counts the window's taps, a text's moving on, with their XP", () => {
+    const s = addPhrases(newRehearse(), ["Hold it"], 1, ids).state;
+    const take = {
+      reps: [
+        { id: bubbleId(2, "Long"), n: 10, at: 50 },
+        { id: "p0", n: 1, at: 60 },
+        { id: "gone", n: 1, at: 70 },
+      ],
+      current: bubbleId(0, "Long"),
+      shown: true,
+    };
+    const r = applyBubble(s, take, lib, bubbleId(0, "Long"));
+    assert.deepEqual(textProgress(r.state, "Long"), { at: 0, passes: 1, reps: 10, last: 50 });
+    assert.equal(r.state.items[0]!.count, 1);
+    assert.deepEqual(r.xp, [
+      { text: "Three here now.", n: 10 },
+      { text: "Hold it", n: 1 },
+    ]);
   });
 });

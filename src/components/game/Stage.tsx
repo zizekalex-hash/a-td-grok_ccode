@@ -20,6 +20,7 @@ import { onEscape } from "@/game/menu";
 import { settleAlarms } from "@/game/alarm";
 import { autoSaveToFolder } from "@/game/folderBackup";
 import { readReps } from "@/game/reps";
+import { startRehearseBackground } from "@/game/rehearseRun";
 import { useGame } from "@/game/store";
 
 export function Stage() {
@@ -58,6 +59,8 @@ export function Stage() {
   useEffect(() => {
     // An alarm still calling with no set running is stale: it stops.
     settleAlarms(!!readReps().active);
+    // Rehearse's floating window: its taps counted as they come, Rehearse open or not.
+    startRehearseBackground();
     // Leaving the app: everything saved into the azs-folder, if one is chosen.
     const away = () => {
       if (document.hidden) autoSaveToFolder();

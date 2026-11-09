@@ -12,7 +12,7 @@
  * Read tab's three layers. Pure, with relative imports, so the tests can load it.
  */
 import { phraseKey, phrasesFromText } from "./reps.ts";
-import { BYTES_MODES, type BytesMode } from "./readtext.ts";
+import { BYTES_MODES, readUnits, textKey, type BytesMode } from "./readtext.ts";
 
 export const REHEARSE_KEY = "azshara-rehearse-v1";
 /** The most phrases kept. */
@@ -70,6 +70,8 @@ export interface RehearseSettings {
   wavLevels: number[];
   /** Locked: the tap counts and the settings cannot change; unlocked, the other way round. */
   locked: boolean;
+  /** Keeps going away from the tab (other tabs, the game, other apps): its sound, and the floating window's taps counted at once. */
+  background: boolean;
   /** The phrase's byte picture on a tap, and each layer's opacity. */
   picture: boolean;
   layers: Record<BytesMode, number>;
@@ -145,6 +147,7 @@ export function defaultSettings(): RehearseSettings {
     wavDepth: 1,
     wavLevels: [1],
     locked: true,
+    background: true,
     picture: true,
     layers: { rgb: 0.36, gray: 0.36, bits: 0.36 },
     pictureOpacity: 1,
@@ -225,6 +228,7 @@ export function loadRehearse(data: unknown): RehearseState {
     if (levels.length) u.wavLevels = levels;
   }
   if (typeof t.locked === "boolean") u.locked = t.locked;
+  if (typeof t.background === "boolean") u.background = t.background;
   if (typeof t.picture === "boolean") u.picture = t.picture;
   const layers = obj(t.layers);
   for (const m of BYTES_MODES) u.layers[m] = clampLayer(num(layers[m], u.layers[m]));
@@ -513,6 +517,66 @@ export function wavSampleRate(bytes: Uint8Array): number | null {
 
 // ---- Texts: a whole text, phrase after phrase ----
 
+/** A text of the Read tab's (its own, or one from a .zip folder), with its key. */
+export interface LibText {
+  name: string;
+  lines: string[];
+  folder?: string;
+  key: string;
+  /** The text the app comes with (not saved as a file). */
+  builtIn?: boolean;
+}
+
+/** The Read tab's texts, in its order: your own (or the built-in one), then each .zip folder's. */
+export function libraryOf(
+  texts: { name: string; lines: string[] }[],
+  custom: boolean,
+  lines: string[],
+  folders: { name: string; texts: { name: string; lines: string[] }[] }[],
+): LibText[] {
+  return [
+    ...(custom && texts.length
+      ? texts.map((t) => ({ name: t.name, lines: t.lines, key: textKey(t.name) }))
+      : [{ name: "Built-in text", lines, key: textKey("Built-in text"), builtIn: true }]),
+    ...folders.flatMap((f) =>
+      f.texts.map((t) => ({
+        name: t.name,
+        lines: t.lines,
+        folder: f.name,
+        key: textKey(t.name, f.name),
+      })),
+    ),
+  ];
+}
+
+/**
+ * What is being repped now and its file: the current phrase (Single phrases), or
+ * the current text's phrase it is at (Whole texts), with the folder and name
+ * (no extension) of its .txt and .wav in azs-folder.
+ */
+export function activeOf(
+  s: RehearseState,
+  library: LibText[],
+): { text: string; dir: string; name: string } {
+  if (s.view === "texts") {
+    const t = currentText(s, library);
+    if (!t) return { text: "", dir: TEXT_FOLDER, name: "" };
+    const units = readUnits(t.lines);
+    const at = textAt(s, t.key, units.length);
+    const name = textFileNames(library)[library.indexOf(t)] ?? "";
+    return { text: units[at]?.text ?? "", dir: TEXT_FOLDER, name };
+  }
+  const it = currentPhrase(s);
+  if (!it) return { text: "", dir: PHRASE_FOLDER, name: "" };
+  const name = phraseFileNames(s.items.map((i) => i.text))[s.items.indexOf(it)] ?? "";
+  return { text: it.text, dir: PHRASE_FOLDER, name };
+}
+
+/** The text being repped: the current one, or the first. */
+export function currentText(s: RehearseState, library: LibText[]): LibText | undefined {
+  return library.find((t) => t.key === s.text) ?? library[0];
+}
+
 const noProgress = (): TextProgress => ({ at: 0, passes: 0, reps: 0, last: 0 });
 
 /** A text's place and counts (none yet: at the first phrase). */
@@ -571,6 +635,63 @@ export function textGo(s: RehearseState, key: string, at: number, total: number)
   if (total <= 0) return s;
   const to = Math.max(0, Math.min(total - 1, Math.floor(at)));
   return withProgress(s, key, { ...textProgress(s, key), at: to });
+}
+
+// ---- The floating window (repBubble): its reps and the phrase it shows ----
+
+/** A floating-window id for a text's phrase: its place, then the text's key. */
+export const bubbleId = (at: number, key: string) => `T${at}:${key}`;
+
+export function fromBubbleId(id: string): { at: number; key: string } | null {
+  const m = /^T(\d+):([\s\S]*)$/.exec(id);
+  return m ? { at: Number(m[1]), key: m[2]! } : null;
+}
+
+export interface BubbleTake {
+  reps: { id: string; n: number; at: number }[];
+  current: string;
+  shown: boolean;
+}
+
+/**
+ * The floating window's reps and the phrase it shows, into the state. Each rep
+ * counts (a text's phrase done there moves on, as a tap here does), and gives
+ * back what earns XP. The phrase it shows is followed only while it is open and
+ * only if it moved there: not the one this side sent it (`sent`), and never what
+ * a closed window showed last (that put a text back at its start).
+ */
+export function applyBubble(
+  s: RehearseState,
+  take: BubbleTake,
+  library: LibText[],
+  sent: string,
+): { state: RehearseState; xp: { text: string; n: number }[] } {
+  let state = s;
+  const xp: { text: string; n: number }[] = [];
+  for (const t of take.reps) {
+    const tid = fromBubbleId(t.id);
+    if (tid) {
+      const tx = library.find((x) => x.key === tid.key);
+      const us = tx ? readUnits(tx.lines) : [];
+      const u = us[tid.at];
+      if (!tx || !u) continue;
+      xp.push({ text: u.text, n: t.n });
+      state = textTap(state, tx.key, us.length, t.at, t.n, tid.at);
+      continue;
+    }
+    const it = state.items.find((i) => i.id === t.id);
+    if (!it) continue;
+    xp.push({ text: it.text, n: t.n });
+    state = countRep(state, t.id, t.at, t.n);
+  }
+  if (take.shown && take.current && take.current !== sent) {
+    const cur = fromBubbleId(take.current);
+    if (cur) {
+      const tx = library.find((x) => x.key === cur.key);
+      if (tx) state = textGo(state, tx.key, cur.at, readUnits(tx.lines).length);
+    } else state = select(state, take.current);
+  }
+  return { state, xp };
 }
 
 /** A text's place and counts back to the start; the text stays. */

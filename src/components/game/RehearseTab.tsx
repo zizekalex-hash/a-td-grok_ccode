@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeft,
@@ -16,16 +16,10 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import {
-  flashToast,
-  grantSkillXp,
-  loadCodexTexts,
-  loadTextFolder,
-  updateText,
-} from "@/game/engine";
+import { flashToast, loadCodexTexts, loadTextFolder, updateText } from "@/game/engine";
 import { unzipTexts } from "@/game/unzip";
 import { saveConfirmed } from "@/game/textFiles";
-import { levelForXp, repXp } from "@/game/recite";
+import { repXp } from "@/game/recite";
 import { wordsOf } from "@/game/reps";
 import { bytesPicture } from "@/game/readview";
 import {
@@ -35,22 +29,29 @@ import {
   markChecked,
   readReader,
   readUnits,
-  textKey,
   textSum,
   writeReader,
   type BytesMode,
 } from "@/game/readtext";
 import { useGame } from "@/game/store";
-import { fileLoop, phraseLoop, type FileLoop, type PhraseLoop } from "@/game/phraseSound";
+import { bubbleState, type BubbleSetup } from "@/game/repBubble";
 import {
-  bubbleState,
-  closeBubble,
-  onBubble,
-  openBubble,
-  takeBubbleReps,
-  updateBubble,
-  type BubbleSetup,
-} from "@/game/repBubble";
+  bubbleShown,
+  hideBubble,
+  pickedWavs,
+  playNonstop,
+  playWav,
+  rehearseOpen,
+  rehearseState,
+  rehearseUpdate,
+  repXpFor,
+  sendBubble,
+  showBubble,
+  startRehearseBackground,
+  subscribeRehearse,
+  wavGain,
+  wavStyle as setWavStyle,
+} from "@/game/rehearseRun";
 import {
   folderFileUrl,
   folderName,
@@ -79,13 +80,10 @@ import {
   PHRASE_FOLDER,
   phraseFileNames,
   currentPhrase,
-  loadRehearse,
-  newRehearse,
   phraseBytes,
   soundOf,
   phrasesOf,
   rawSamples,
-  REHEARSE_KEY,
   removePhrase,
   resetCount,
   resetCounts,
@@ -102,7 +100,6 @@ import {
   TEXT_FOLDER,
   textAt,
   textFileNames,
-  textGo,
   textProgress,
   textStep,
   textTap,
@@ -110,20 +107,12 @@ import {
   WAV_SHAPES,
   wavSettingsOf,
   wavStyleOf,
+  bubbleId,
+  libraryOf,
   type RehearseSettings,
   type RehearseState,
   type WavShape,
 } from "@/game/rehearse";
-
-/** A text of the Read tab's (its own, or one from a .zip folder), with its key. */
-interface LibText {
-  name: string;
-  lines: string[];
-  folder?: string;
-  key: string;
-  /** The text the app comes with (not saved as a file). */
-  builtIn?: boolean;
-}
 
 /** What each text's .txt in input_pertext was last saved as (its fingerprint), so an edited text is saved again. */
 const PERTEXT_SUMS = "azshara-pertext-sums";
@@ -146,13 +135,6 @@ function writeSums(sums: Record<string, string>) {
   }
 }
 
-/** A floating-window id for a text's phrase: its place, then the text's key. */
-const bubbleId = (at: number, key: string) => `T${at}:${key}`;
-const fromBubbleId = (id: string) => {
-  const m = /^T(\d+):([\s\S]*)$/.exec(id);
-  return m ? { at: Number(m[1]), key: m[2]! } : null;
-};
-
 const SHAPE_NAMES: Record<WavShape, string> = {
   flat: "Flat",
   fade: "Fade",
@@ -160,23 +142,6 @@ const SHAPE_NAMES: Record<WavShape, string> = {
   saw: "Saw",
   square: "Square",
 };
-
-function readRehearse(): RehearseState {
-  try {
-    const raw = localStorage.getItem(REHEARSE_KEY);
-    return loadRehearse(raw ? JSON.parse(raw) : null);
-  } catch {
-    return newRehearse();
-  }
-}
-
-function writeRehearse(s: RehearseState) {
-  try {
-    localStorage.setItem(REHEARSE_KEY, JSON.stringify(s));
-  } catch {
-    /* private mode or full */
-  }
-}
 
 // ---- The tap's sound and picture ----
 
@@ -425,7 +390,8 @@ export function RehearseTab() {
   const texts = useGame((s) => s.texts);
   const custom = useGame((s) => s.custom);
   const folders = useGame((s) => s.folders);
-  const [st, setSt] = useState<RehearseState>(readRehearse);
+  // One copy of the state, shared with the background (the floating window's taps come in there).
+  const st = useSyncExternalStore(subscribeRehearse, rehearseState, rehearseState);
   const [tune, setTune] = useState(false);
   const [wavTune, setWavTune] = useState(false);
   const [draft, setDraft] = useState("");
@@ -441,20 +407,8 @@ export function RehearseTab() {
 
   // Texts: the Read tab's own (the same ones, edited and checked the same way), whole, phrase after phrase.
   const textsView = st.view === "texts";
-  const library = useMemo<LibText[]>(
-    () => [
-      ...(custom && texts.length
-        ? texts.map((t) => ({ name: t.name, lines: t.lines, key: textKey(t.name) }))
-        : [{ name: "Built-in text", lines, key: textKey("Built-in text"), builtIn: true }]),
-      ...folders.flatMap((f) =>
-        f.texts.map((t) => ({
-          name: t.name,
-          lines: t.lines,
-          folder: f.name,
-          key: textKey(t.name, f.name),
-        })),
-      ),
-    ],
+  const library = useMemo(
+    () => libraryOf(texts, custom, lines, folders),
     [custom, texts, lines, folders],
   );
   const textNow = library.find((t) => t.key === st.text) ?? library[0];
@@ -500,19 +454,22 @@ export function RehearseTab() {
     return () => window.clearTimeout(id);
   }, [gateAt, batchWait]);
 
-  // Nonstop: the current phrase's sound all the time while this tab is open.
-  const loop = useRef<PhraseLoop | null>(null);
+  // Nonstop: the current phrase's sound all the time (on after the tab closes too, with Background on).
   const phraseText = activeText;
   const { nonstop, sound, signalMs, amp, rawRate, mode, plays, topSpeed } = set;
   useEffect(() => {
-    loop.current ??= phraseLoop();
     if (nonstop && sound && phraseText) {
-      loop.current.play(phraseText, { signalMs, amp, rawRate, mode, plays, topSpeed });
+      playNonstop(phraseText, { signalMs, amp, rawRate, mode, plays, topSpeed });
     } else {
-      loop.current.stop();
+      playNonstop(null);
     }
   }, [nonstop, sound, phraseText, signalMs, amp, rawRate, mode, plays, topSpeed]);
-  useEffect(() => () => loop.current?.stop(), []);
+  // Open here; closed, the background takes over (or the sound stops, with Background off).
+  useEffect(() => {
+    startRehearseBackground();
+    rehearseOpen(true);
+    return () => rehearseOpen(false);
+  }, []);
 
   // azs-folder: each phrase as input_perphrase/<name>.txt, its own .wav next to it (made outside, by Termux).
   // And each text as input_pertext/<name>.txt, its own .wav next to it.
@@ -536,8 +493,8 @@ export function RehearseTab() {
   const [textTxts, setTextTxts] = useState<string[] | null>(null);
   /** Back in the app (Termux may have made .wav files meanwhile): the current phrase looked at again. */
   const [tick, setTick] = useState(0);
-  /** In a browser: .wav files picked by hand, by name (lower case), for this visit. */
-  const [picked, setPicked] = useState<Map<string, string>>(() => new Map());
+  /** In a browser: .wav files picked by hand, by name (lower case), for this visit (kept while the page is). */
+  const [picked, setPicked] = useState<Map<string, string>>(() => new Map(pickedWavs));
   const [folderNote, setFolderNote] = useState("");
   const wavPick = useRef<HTMLInputElement>(null);
   /** Both folders looked at: the number of .wav files in each. */
@@ -718,11 +675,8 @@ export function RehearseTab() {
     // Taken out of the picker now: clearing it below empties its list.
     const files = Array.from(list ?? []).map((f) => [f.name.toLowerCase(), URL.createObjectURL(f)]);
     if (!files.length) return;
-    setPicked((old) => {
-      const next = new Map(old);
-      for (const [k, url] of files) next.set(k!, url!);
-      return next;
-    });
+    for (const [k, url] of files) pickedWavs.set(k!, url!);
+    setPicked(new Map(pickedWavs));
     setFolderNote(
       `${files.length} .wav file${files.length === 1 ? "" : "s"} loaded for this visit.`,
     );
@@ -730,7 +684,6 @@ export function RehearseTab() {
   };
 
   // Choosing a phrase: its own .wav (next to its .txt) looked for right then, and looped as it is, at its gain.
-  const wav = useRef<FileLoop | null>(null);
   const { wavLoop, wavVolume } = set;
   const wavStyle = wavStyleOf(set);
   const styleKey = JSON.stringify(wavStyle);
@@ -739,10 +692,8 @@ export function RehearseTab() {
   const wavHere = !!name && hasWav(name);
   const [wavPlaying, setWavPlaying] = useState(false);
   useEffect(() => {
-    wav.current ??= fileLoop();
-    const w = wav.current;
     if (!name) {
-      w.stop();
+      void playWav(null);
       setWavPlaying(false);
       return;
     }
@@ -761,12 +712,11 @@ export function RehearseTab() {
         return next;
       });
       if (!url || !wavLoop) {
-        w.stop();
+        void playWav(null);
         setWavPlaying(false);
         return;
       }
-      const ok = await w.play(url, wavVolume, styleNow.current);
-      if (live && ok) w.style(styleNow.current);
+      const ok = await playWav(url, wavVolume, styleNow.current);
       if (live) setWavPlaying(ok);
     })();
     return () => {
@@ -775,17 +725,11 @@ export function RehearseTab() {
     // The gain alone changes without restarting it (below).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wavLoop, name, dir, picked, folder, tick]);
-  useEffect(() => wav.current?.gain(wavVolume), [wavVolume]);
+  useEffect(() => wavGain(wavVolume), [wavVolume]);
   // A new style: from the next loop (or the file again from its start, if that is far off).
-  useEffect(() => wav.current?.style(styleNow.current), [styleKey]);
-  useEffect(() => () => wav.current?.stop(), []);
+  useEffect(() => setWavStyle(styleNow.current), [styleKey]);
 
-  const update = (fn: (s: RehearseState) => RehearseState) =>
-    setSt((prev) => {
-      const next = fn(prev);
-      writeRehearse(next);
-      return next;
-    });
+  const update = (fn: (s: RehearseState) => RehearseState) => rehearseUpdate(fn);
   const setOpt = (next: Partial<RehearseSettings>) =>
     update((s) => ({ ...s, settings: { ...s.settings, ...next } }));
   // A second tap within 3 s does it.
@@ -814,10 +758,7 @@ export function RehearseTab() {
     }
     setTapNote("");
     const n = set.batch;
-    const before = levelForXp(useGame.getState().skills.recitation);
-    grantSkillXp("recitation", repXp(wordsOf(text), n));
-    const after = levelForXp(useGame.getState().skills.recitation);
-    if (after > before) flashToast(`Recitation level ${after}`);
+    repXpFor(text, n);
     if (textsView) {
       // The phrase done: on to the next; after the last, a pass through the whole text.
       const key = textKeyNow;
@@ -832,69 +773,16 @@ export function RehearseTab() {
     const id = item.id;
     update((s) => countRep(s, id, t, n));
   };
-  // The floating window over other apps (the phone app): taps there count here when the app takes them.
+  // The floating window over other apps (the phone app): its taps count at once (rehearseRun), here or not.
   const [bubbleHere, setBubbleHere] = useState(false);
-  const [bubbleOn, setBubbleOn] = useState(false);
-  const takeFromBubble = useRef<() => Promise<void>>(async () => {});
-  takeFromBubble.current = async () => {
-    const r = await takeBubbleReps();
-    if (!r) return;
-    setBubbleOn(r.shown);
-    const xp = (text: string, n: number) => {
-      const before = levelForXp(useGame.getState().skills.recitation);
-      grantSkillXp("recitation", repXp(wordsOf(text), n));
-      const after = levelForXp(useGame.getState().skills.recitation);
-      if (after > before) flashToast(`Recitation level ${after}`);
-    };
-    if (r.reps.length) {
-      // A text's phrase (done there, on to the next), or a single phrase.
-      const steps: ((s: RehearseState) => RehearseState)[] = [];
-      for (const t of r.reps) {
-        const tid = fromBubbleId(t.id);
-        if (tid) {
-          const tx = library.find((x) => x.key === tid.key);
-          const us = tx ? readUnits(tx.lines) : [];
-          const u = us[tid.at];
-          if (!tx || !u) continue;
-          xp(u.text, t.n);
-          steps.push((s) => textTap(s, tx.key, us.length, t.at, t.n, tid.at));
-          continue;
-        }
-        const it = st.items.find((i) => i.id === t.id);
-        if (!it) continue;
-        xp(it.text, t.n);
-        steps.push((s) => countRep(s, t.id, t.at, t.n));
-      }
-      if (steps.length) update((s) => steps.reduce((acc, f) => f(acc), s));
-    }
-    const cur = fromBubbleId(r.current);
-    if (cur) {
-      const tx = library.find((x) => x.key === cur.key);
-      const count = tx ? readUnits(tx.lines).length : 0;
-      if (tx) update((s) => textGo(s, tx.key, cur.at, count));
-    } else if (r.current && r.current !== item?.id) update((s) => select(s, r.current));
-  };
+  const bubbleOn = useSyncExternalStore(subscribeRehearse, bubbleShown, bubbleShown);
   useEffect(() => {
     let live = true;
-    let off = () => {};
     void bubbleState().then((b) => {
-      if (!live) return;
-      setBubbleHere(b.here);
-      setBubbleOn(b.shown);
-      void takeFromBubble.current();
+      if (live) setBubbleHere(b.here);
     });
-    void onBubble(() => void takeFromBubble.current()).then((f) => {
-      if (live) off = f;
-      else f();
-    });
-    const back = () => {
-      if (!document.hidden) void takeFromBubble.current();
-    };
-    document.addEventListener("visibilitychange", back);
     return () => {
       live = false;
-      off();
-      document.removeEventListener("visibilitychange", back);
     };
   }, []);
   const bubbleSetup = (): BubbleSetup =>
@@ -931,20 +819,18 @@ export function RehearseTab() {
   );
   useEffect(() => {
     if (!bubbleOn) return;
-    const id = window.setTimeout(() => void updateBubble(bubbleSetup()), 250);
+    const id = window.setTimeout(() => void sendBubble(bubbleSetup()), 250);
     return () => window.clearTimeout(id);
     // bubbleKey holds everything the window shows.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bubbleOn, bubbleKey]);
   const toggleBubble = async () => {
     if (bubbleOn) {
-      await closeBubble();
-      setBubbleOn(false);
+      await hideBubble();
       return;
     }
-    const msg = await openBubble(bubbleSetup());
+    const msg = await showBubble(bubbleSetup());
     if (msg) setTapNote(msg);
-    else setBubbleOn(true);
   };
 
   const press = (count: boolean) => {
@@ -1337,6 +1223,13 @@ export function RehearseTab() {
                 label={`Nonstop: its sound all the time${mode === "cycle" ? " (rising cycle)" : ""}`}
                 on={nonstop}
                 flip={() => setOpt({ nonstop: !nonstop, sound: true })}
+              />
+            </div>
+            <div className="mt-2">
+              <Toggle
+                label="Background: its sound plays on away from here (other tabs, other apps)"
+                on={set.background}
+                flip={() => setOpt({ background: !set.background })}
               />
             </div>
             {wavHere && (
