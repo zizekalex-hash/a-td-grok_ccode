@@ -38,6 +38,8 @@ interface RepBubbleApi {
   hide(): Promise<void>;
   takeReps(): Promise<BubbleReps>;
   keepAlive(o: { on: boolean }): Promise<void>;
+  battery(): Promise<{ unrestricted: boolean }>;
+  unrestrict(): Promise<{ unrestricted: boolean }>;
   addListener(event: "reps", fn: () => void): Promise<{ remove: () => Promise<void> }>;
 }
 
@@ -124,4 +126,30 @@ export async function onBubble(fn: () => void): Promise<() => void> {
 export async function keepAlive(on: boolean) {
   const b = await bubble();
   if (b) await b.api.keepAlive({ on }).catch(() => {});
+}
+
+/** Whether the app's battery use is Unrestricted (null: not the phone app). */
+export async function batteryUnrestricted(): Promise<boolean | null> {
+  const b = await bubble();
+  if (!b) return null;
+  try {
+    return (await b.api.battery()).unrestricted;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Asks Android to let the app always run (battery use Unrestricted); already so,
+ * opens the app's settings (for what the phone's maker adds). Gives back whether
+ * it is now (null: not the phone app, or it could not ask).
+ */
+export async function askUnrestricted(): Promise<boolean | null> {
+  const b = await bubble();
+  if (!b) return null;
+  try {
+    return (await b.api.unrestrict()).unrestricted;
+  } catch {
+    return null;
+  }
 }

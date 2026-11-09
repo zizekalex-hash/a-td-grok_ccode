@@ -34,7 +34,12 @@ import {
   type BytesMode,
 } from "@/game/readtext";
 import { useGame } from "@/game/store";
-import { bubbleState, type BubbleSetup } from "@/game/repBubble";
+import {
+  askUnrestricted,
+  batteryUnrestricted,
+  bubbleState,
+  type BubbleSetup,
+} from "@/game/repBubble";
 import {
   bubbleShown,
   hideBubble,
@@ -776,10 +781,15 @@ export function RehearseTab() {
   // The floating window over other apps (the phone app): its taps count at once (rehearseRun), here or not.
   const [bubbleHere, setBubbleHere] = useState(false);
   const bubbleOn = useSyncExternalStore(subscribeRehearse, bubbleShown, bubbleShown);
+  /** The app's battery use (the phone app): Unrestricted, so the phone never stops it in the background. */
+  const [unrestricted, setUnrestricted] = useState<boolean | null>(null);
   useEffect(() => {
     let live = true;
     void bubbleState().then((b) => {
       if (live) setBubbleHere(b.here);
+    });
+    void batteryUnrestricted().then((u) => {
+      if (live) setUnrestricted(u);
     });
     return () => {
       live = false;
@@ -1232,6 +1242,20 @@ export function RehearseTab() {
                 flip={() => setOpt({ background: !set.background })}
               />
             </div>
+            {unrestricted !== null && (
+              <button
+                type="button"
+                className="btn mt-2 w-full tracking-normal normal-case"
+                data-on={unrestricted}
+                onClick={() =>
+                  void askUnrestricted().then((u) => setUnrestricted(u ?? unrestricted))
+                }
+              >
+                {unrestricted
+                  ? "Battery: Unrestricted ✓, the app always runs (tap: its settings)"
+                  : "Battery: optimized, the phone may stop it. Tap: Unrestricted"}
+              </button>
+            )}
             {wavHere && (
               <div className="mt-2 space-y-1.5">
                 <Toggle

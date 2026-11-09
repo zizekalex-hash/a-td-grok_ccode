@@ -3,8 +3,10 @@
  * tab and the background; the floating window's reps taken as soon as they come
  * (with XP), whether the tab is open or not; and its sound (Nonstop, the phrase's
  * or text's .wav loop) playing on when the tab closes, if its Background setting
- * is on, with the app kept running (RehearseService) while it plays. A closed
- * window's last phrase is never taken as where you are.
+ * is on, with the app kept running (RehearseService) while it plays: a paused
+ * player is woken again, and if the phone closed the app meanwhile, the sound
+ * starts again when it opens. A closed window's last phrase is never taken as
+ * where you are.
  */
 import { flashToast, grantSkillXp } from "@/game/engine";
 import { levelForXp, repXp } from "@/game/recite";
@@ -12,13 +14,17 @@ import { wordsOf } from "@/game/reps";
 import { useGame } from "@/game/store";
 import {
   fileLoop,
+  holdAudio,
   phraseLoop,
+  wakeAudio,
   type FileLoop,
   type LoopSound,
   type PhraseLoop,
 } from "@/game/phraseSound";
 import { folderFileUrl, folderName } from "@/game/azsFolder";
 import {
+  askUnrestricted,
+  batteryUnrestricted,
   bubbleState,
   closeBubble,
   keepAlive,
@@ -164,12 +170,15 @@ export function startRehearseBackground() {
   started = true;
   void onBubble(() => void takeBubble());
   document.addEventListener("visibilitychange", () => {
+    if (alive) wakeAudio();
     if (!document.hidden) void takeBubble();
   });
   void bubbleState().then((b) => {
     setShown(b.shown);
     void takeBubble();
   });
+  // Playing in the background when the phone closed the app: it plays on.
+  if (wasPlaying() && rehearseState().settings.background) void playClosed();
 }
 
 // ---- The sound ----
@@ -186,11 +195,49 @@ let open = false;
 /** .wav files picked by hand in a browser, by name (lower case), for this visit. */
 export const pickedWavs = new Map<string, string>();
 
+const PLAYING_KEY = "azshara-rehearse-playing";
+const ASKED_KEY = "azshara-unrestricted-asked";
+
+function wasPlaying(): boolean {
+  try {
+    return localStorage.getItem(PLAYING_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+let watchdog = 0;
+
+/** Playing in the background or not: the app kept running (and asked once to be Unrestricted), the players kept awake. */
 function keep() {
   const on = !!(loopText || wavUrl) && rehearseState().settings.background;
   if (on === alive) return;
   alive = on;
   void keepAlive(on);
+  holdAudio(on);
+  window.clearInterval(watchdog);
+  try {
+    if (on) localStorage.setItem(PLAYING_KEY, "1");
+    else localStorage.removeItem(PLAYING_KEY);
+  } catch {
+    /* private mode */
+  }
+  if (!on) return;
+  // A player paused by the phone (or another app's sound) is woken again.
+  watchdog = window.setInterval(wakeAudio, 3000);
+  void askOnce();
+}
+
+/** The first time it plays in the background: Android asked to let the app always run. */
+async function askOnce() {
+  try {
+    if (localStorage.getItem(ASKED_KEY)) return;
+    if ((await batteryUnrestricted()) !== false) return;
+    localStorage.setItem(ASKED_KEY, "1");
+  } catch {
+    return;
+  }
+  await askUnrestricted();
 }
 
 /** The phrase's sound all the time (null: off). */

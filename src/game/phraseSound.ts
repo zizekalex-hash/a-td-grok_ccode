@@ -42,6 +42,28 @@ export function savedSound(): LoopSound {
 
 let audio: AudioContext | null = null;
 
+/** Sound meant to be playing (Rehearse, in the background too): a paused player is woken at once. */
+let holding = false;
+
+function watch(c: AudioContext) {
+  c.onstatechange = () => {
+    if (holding && c.state !== "running" && c.state !== "closed") void c.resume().catch(() => {});
+  };
+}
+
+/** Wakes every player the phone (or another app) paused, if its sound is meant to play. */
+export function wakeAudio() {
+  for (const c of [audio, ...atRate.values()]) {
+    if (c && c.state !== "running" && c.state !== "closed") void c.resume().catch(() => {});
+  }
+}
+
+/** Whether sound is meant to play now: then a paused player is woken as soon as it pauses. */
+export function holdAudio(on: boolean) {
+  holding = on;
+  if (on) wakeAudio();
+}
+
 function context(): AudioContext | null {
   try {
     if (!audio) {
@@ -50,6 +72,7 @@ function context(): AudioContext | null {
         (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AC) return null;
       audio = new AC();
+      watch(audio);
     }
     if (audio.state === "suspended") void audio.resume();
     return audio;
@@ -71,6 +94,7 @@ function contextAt(rate: number | null): AudioContext | null {
         (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AC) return null;
       c = new AC({ sampleRate: rate });
+      watch(c);
       atRate.set(rate, c);
     }
     if (c.state === "suspended") void c.resume();
@@ -168,10 +192,13 @@ export interface FileLoop {
   stop(): void;
 }
 
-/** How far ahead the loops' curves are set (s), so a slow timer (the app in the background) keeps up. */
-const AHEAD = 40;
+/**
+ * How far ahead the loops' curves are set (s), so a slow timer keeps up: in the
+ * background a page's timers may run only once a minute.
+ */
+const AHEAD = 150;
 /** The most loops set ahead at once (a very short file). */
-const MAX_AHEAD_LOOPS = 2000;
+const MAX_AHEAD_LOOPS = 4000;
 
 interface Playing {
   src: AudioBufferSourceNode;
