@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeft,
@@ -16,7 +24,13 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { flashToast, loadCodexTexts, loadTextFolder, updateText } from "@/game/engine";
+import {
+  flashToast,
+  loadCodexTexts,
+  loadTextFolder,
+  nudgeSetting,
+  updateText,
+} from "@/game/engine";
 import { unzipTexts } from "@/game/unzip";
 import { saveConfirmed } from "@/game/textFiles";
 import { repXp } from "@/game/recite";
@@ -98,6 +112,7 @@ import {
   totalReps,
   clampCycles,
   clampFade,
+  clampPhraseSize,
   levelsText,
   parseLevels,
   presetOf,
@@ -429,6 +444,28 @@ export function RehearseTab() {
   /** The phrase being repped now: a single phrase, or the text's phrase it is at. */
   const activeText = textsView ? (unit?.text ?? "") : (item?.text ?? "");
   const emitter = useEmitter(activeText, set);
+  // The screen's size (the whole app's, Options → Interface size), and the phrase's own.
+  const uiScale = useGame((s) => s.settings.uiScale);
+  const phraseBox = useRef<HTMLSpanElement>(null);
+  const phraseEl = useRef<HTMLSpanElement>(null);
+  const [fitPx, setFitPx] = useState(set.phraseSize);
+  const phraseSize = set.phraseSize;
+  /** The phrase at its size, or smaller till the whole of it fits the tap area. */
+  const fitPhrase = useCallback(() => {
+    const box = phraseBox.current;
+    const el = phraseEl.current;
+    if (!box || !el) return;
+    let px = phraseSize;
+    el.style.fontSize = `${px}px`;
+    while (
+      px > 8 &&
+      (el.scrollHeight > box.clientHeight + 1 || el.scrollWidth > box.clientWidth + 1)
+    ) {
+      px = Math.max(8, Math.floor(px * 0.92));
+      el.style.fontSize = `${px}px`;
+    }
+    setFitPx(px);
+  }, [phraseSize]);
   /** The phrase being rewritten (texts), and the check (read with the Read tab's, after a change). */
   const [editing, setEditing] = useState<string | null>(null);
   const [checkTick, setCheckTick] = useState(0);
@@ -810,6 +847,7 @@ export function RehearseTab() {
           advance: true,
           title: textNow?.name ?? "",
           passes: prog.passes,
+          locked,
         }
       : {
           phrases: st.items.map((i) => ({ id: i.id, text: i.text, count: i.count })),
@@ -820,12 +858,23 @@ export function RehearseTab() {
           advance: false,
           title: "",
           passes: 0,
+          locked,
         };
   // The window shows what is here: the phrases (or the text's), their counts, the batch and its wait.
   const bubbleKey = JSON.stringify(
     textsView
-      ? [textKeyNow, textSumNow, at, prog.passes, prog.reps, set.batch, batchWait, st.lastTap]
-      : [st.items.map((i) => [i.id, i.count]), item?.id, set.batch, batchWait, st.lastTap],
+      ? [
+          textKeyNow,
+          textSumNow,
+          at,
+          prog.passes,
+          prog.reps,
+          set.batch,
+          batchWait,
+          st.lastTap,
+          locked,
+        ]
+      : [st.items.map((i) => [i.id, i.count]), item?.id, set.batch, batchWait, st.lastTap, locked],
   );
   useEffect(() => {
     if (!bubbleOn) return;
@@ -850,6 +899,8 @@ export function RehearseTab() {
       setTapNote("Unlocked: taps don't count. Lock it to count them.");
       return;
     }
+    // Locked: Hold to test waits too.
+    if (!count && locked) return;
     emitter.start();
     if (count) rep();
   };
@@ -960,6 +1011,24 @@ export function RehearseTab() {
   const bytes = activeText ? phraseBytes(activeText).length : 0;
   const presetNow = presetOf(wavStyle);
   const presetName = WAV_PRESETS.find((p) => p.id === presetNow)?.name ?? "Custom";
+  // Fitted again whenever the phrase, the sizes or what else the tap area shows change, and when it is resized.
+  useLayoutEffect(fitPhrase, [
+    fitPhrase,
+    activeText,
+    set.tapHeight,
+    uiScale,
+    tapNote,
+    wavHere,
+    textsView,
+    locked,
+  ]);
+  useEffect(() => {
+    const box = phraseBox.current;
+    if (!box || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => fitPhrase());
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [fitPhrase, activeText]);
   const tapHead = !locked
     ? "UNLOCKED · TAPS DON'T COUNT"
     : textsView
@@ -1030,7 +1099,15 @@ export function RehearseTab() {
                 {textNow.name}
               </span>
             )}
-            <span className="line-clamp-5 text-lg leading-snug text-fg">{activeText}</span>
+            {/* The whole phrase, never cut off: its letters made smaller till it fits. */}
+            <span
+              ref={phraseBox}
+              className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden"
+            >
+              <span ref={phraseEl} className="block w-full leading-snug break-words text-fg">
+                {activeText}
+              </span>
+            </span>
             <span className="font-display text-3xl text-cyan" aria-live="polite">
               {textsView ? `${at + 1} / ${total}` : (item?.count ?? 0).toLocaleString()}
             </span>
@@ -1063,7 +1140,7 @@ export function RehearseTab() {
               onClick={() =>
                 update((s) => (textsView ? textStep(s, textKeyNow, total, -1) : step(s, -1)))
               }
-              disabled={(textsView ? total : st.items.length) < 2}
+              disabled={locked || (textsView ? total : st.items.length) < 2}
               aria-label="Previous phrase"
             >
               <ChevronLeft className="size-4" aria-hidden />
@@ -1080,7 +1157,7 @@ export function RehearseTab() {
               onClick={() =>
                 update((s) => (textsView ? textStep(s, textKeyNow, total, 1) : step(s, 1)))
               }
-              disabled={(textsView ? total : st.items.length) < 2}
+              disabled={locked || (textsView ? total : st.items.length) < 2}
               aria-label="Next phrase"
             >
               <ChevronRight className="size-4" aria-hidden />
@@ -1110,9 +1187,25 @@ export function RehearseTab() {
           <LockOpen className="size-4" aria-hidden />
         )}
         {locked
-          ? "Locked: the tap counts, settings wait (tap to unlock)"
+          ? "Locked: only the tap works, everything else waits (tap to unlock)"
           : "Unlocked: settings work, taps don't count (tap to lock)"}
       </button>
+      <fieldset disabled={locked} className="min-w-0">
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <SizeStep
+            label="Screen"
+            value={`${uiScale}%`}
+            less={() => nudgeSetting("uiScale", -1)}
+            more={() => nudgeSetting("uiScale", 1)}
+          />
+          <SizeStep
+            label="Phrase"
+            value={fitPx < set.phraseSize ? `${fitPx}/${set.phraseSize}` : `${set.phraseSize}`}
+            less={() => setOpt({ phraseSize: clampPhraseSize(set.phraseSize - 2) })}
+            more={() => setOpt({ phraseSize: clampPhraseSize(set.phraseSize + 2) })}
+          />
+        </div>
+      </fieldset>
       {activeText && (
         <>
           <fieldset disabled={locked} className="min-w-0">
@@ -1198,6 +1291,7 @@ export function RehearseTab() {
               type="button"
               className="btn select-none"
               style={{ touchAction: "none" }}
+              disabled={locked}
               {...holdProps(false)}
             >
               Hold to test (no rep)
@@ -1219,6 +1313,7 @@ export function RehearseTab() {
               className="btn mt-2 w-full tracking-normal normal-case"
               data-on={bubbleOn}
               aria-pressed={bubbleOn}
+              disabled={locked}
               onClick={() => void toggleBubble()}
             >
               <PictureInPicture2 className="size-4" aria-hidden />
@@ -1872,5 +1967,43 @@ function LevelsField({ levels, set }: { levels: number[]; set: (v: number[]) => 
         aria-label="Each loop's level in turn"
       />
     </label>
+  );
+}
+
+/** A size with − and +: the screen's, or the phrase's. */
+function SizeStep({
+  label,
+  value,
+  less,
+  more,
+}: {
+  label: string;
+  value: string;
+  less: () => void;
+  more: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-1 text-xs">
+      <span className="text-muted">{label}</span>
+      <span className="flex items-center gap-1">
+        <button
+          type="button"
+          className="btn stepper"
+          onClick={less}
+          aria-label={`${label}: smaller`}
+        >
+          <Minus className="size-4" aria-hidden />
+        </button>
+        <span className="min-w-10 text-center text-fg">{value}</span>
+        <button
+          type="button"
+          className="btn stepper"
+          onClick={more}
+          aria-label={`${label}: bigger`}
+        >
+          <Plus className="size-4" aria-hidden />
+        </button>
+      </span>
+    </div>
   );
 }

@@ -103,6 +103,9 @@ describe("rehearse: phrases and their counts", () => {
       "Three",
     ]);
     assert.deepEqual(phrasesOf("Keep this. Whole", false), ["Keep this. Whole"]);
+    const long = `${"word ".repeat(120)}end.`;
+    assert.equal(phrasesOf(long)[0], long, "a long sentence is kept whole");
+    assert.equal(addPhrases(newRehearse(), [long], 1, ids).state.items[0]!.text, long);
     const back = loadRehearse({
       items: [
         { id: "a", text: " x ", count: 4.7, last: 5, at: 1 },
@@ -328,6 +331,9 @@ describe("rehearse: whole texts, phrase after phrase", () => {
 
   it("is locked to start: the tap counts, the settings wait", () => {
     assert.equal(defaultSettings().locked, true);
+    assert.equal(defaultSettings().phraseSize, 18);
+    assert.equal(loadRehearse({ settings: { phraseSize: 500 } }).settings.phraseSize, 96);
+    assert.equal(loadRehearse({ settings: { phraseSize: 2 } }).settings.phraseSize, 8);
     assert.equal(loadRehearse({ settings: { locked: false } }).settings.locked, false);
   });
 });

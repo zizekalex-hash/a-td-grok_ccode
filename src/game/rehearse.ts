@@ -17,6 +17,8 @@ import { BYTES_MODES, readUnits, textKey, type BytesMode } from "./readtext.ts";
 export const REHEARSE_KEY = "azshara-rehearse-v1";
 /** The most phrases kept. */
 export const MAX_PHRASES = 5000;
+/** The longest a phrase is kept (letters): a long sentence whole. */
+export const MAX_PHRASE_CHARS = 2000;
 /** The most texts whose place is kept. */
 export const MAX_PROGRESS = 2000;
 
@@ -80,6 +82,8 @@ export interface RehearseSettings {
   emit: EmitMode;
   /** The tap area's height, in % of the screen. */
   tapHeight: number;
+  /** The phrase's letters in the tap area (px, apart from the screen's size): smaller still if a long phrase needs it. */
+  phraseSize: number;
 }
 
 /** Single phrases, or whole texts (the Read tab's) phrase after phrase. */
@@ -125,6 +129,7 @@ export const clampTopSpeed = (v: number) => clamp(Math.round(v * 100) / 100, 1, 
 export const MAX_CYCLE_MS = 60_000;
 export const clampLayer = (v: number) => clamp(Math.round(v * 100) / 100, 0, 1);
 export const clampTapHeight = (v: number) => clamp(Math.round(v), 15, 80);
+export const clampPhraseSize = (v: number) => clamp(Math.round(v), 8, 96);
 
 export function defaultSettings(): RehearseSettings {
   return {
@@ -153,6 +158,7 @@ export function defaultSettings(): RehearseSettings {
     pictureOpacity: 1,
     emit: "press",
     tapHeight: 32,
+    phraseSize: 18,
   };
 }
 
@@ -175,7 +181,10 @@ export function loadRehearse(data: unknown): RehearseState {
   const seen = new Set<string>();
   for (const raw of Array.isArray(d.items) ? d.items : []) {
     const r = obj(raw);
-    const text = typeof r.text === "string" ? r.text.replace(/\s+/g, " ").trim().slice(0, 300) : "";
+    const text =
+      typeof r.text === "string"
+        ? r.text.replace(/\s+/g, " ").trim().slice(0, MAX_PHRASE_CHARS)
+        : "";
     const id = typeof r.id === "string" && r.id ? r.id.slice(0, 40) : "";
     if (!text || !id || seen.has(id) || s.items.length >= MAX_PHRASES) continue;
     seen.add(id);
@@ -235,6 +244,7 @@ export function loadRehearse(data: unknown): RehearseState {
   u.pictureOpacity = Math.max(0.05, clampLayer(num(t.pictureOpacity, u.pictureOpacity)));
   if (t.emit === "press" || t.emit === "full") u.emit = t.emit;
   u.tapHeight = clampTapHeight(num(t.tapHeight, u.tapHeight));
+  u.phraseSize = clampPhraseSize(num(t.phraseSize, u.phraseSize));
   return s;
 }
 
@@ -262,7 +272,7 @@ export function addPhrases(
   const keys = new Set(s.items.map((i) => phraseKey(i.text)));
   const added: RehearsePhrase[] = [];
   for (const raw of texts) {
-    const text = raw.replace(/\s+/g, " ").trim().slice(0, 300);
+    const text = raw.replace(/\s+/g, " ").trim().slice(0, MAX_PHRASE_CHARS);
     const key = phraseKey(text);
     if (!text || keys.has(key)) continue;
     if (s.items.length + added.length >= MAX_PHRASES) break;
@@ -277,7 +287,7 @@ export function addPhrases(
 
 /** The phrases of a pasted or loaded text: its lines (or each sentence of them), list marks off. */
 export function phrasesOf(text: string, bySentence = true): string[] {
-  return phrasesFromText(text, MAX_PHRASES, bySentence);
+  return phrasesFromText(text, MAX_PHRASES, bySentence, MAX_PHRASE_CHARS);
 }
 
 /** One rep for a phrase. */

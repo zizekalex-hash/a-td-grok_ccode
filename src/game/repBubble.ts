@@ -22,6 +22,8 @@ export interface BubbleSetup {
   advance: boolean;
   title: string;
   passes: number;
+  /** Locked in the app: on the window too only the tap works (‹ › ◐ ◢ wait). */
+  locked: boolean;
 }
 
 export interface BubbleReps {
