@@ -42,6 +42,14 @@ export type EmitMode = "press" | "full";
  */
 export type SoundMode = "steady" | "cycle";
 
+/**
+ * How the phrase's bytes become samples: each byte one 8-bit sample (u8), each
+ * four bytes one 32-bit sample (pcm32, little-endian, as a .wav's PCM 32), or
+ * both together (each raised to the same peak, then mixed).
+ */
+export type SoundEncoding = "u8" | "pcm32" | "both";
+export const SOUND_ENCODINGS: SoundEncoding[] = ["u8", "pcm32", "both"];
+
 export interface RehearseSettings {
   /** The phrase's sound on a tap. */
   sound: boolean;
@@ -51,6 +59,8 @@ export interface RehearseSettings {
   amp: number;
   /** Raw samples a second: how long the bytes naturally last. */
   rawRate: number;
+  /** The bytes as 8-bit samples, 32-bit samples, or both. */
+  encoding: SoundEncoding;
   /** Steady or a rising cycle, its plays and its top speed. */
   mode: SoundMode;
   plays: number;
@@ -98,7 +108,12 @@ export interface TextProgress {
   /** Reps counted on its phrases, and when the last was (ms since 1970; 0 for none). */
   reps: number;
   last: number;
+  /** Time spent on it (ms): between one rep and the next, here or in the Read tab's reader (a break of more than SPENT_GAP_MS counts as that). */
+  spentMs: number;
 }
+
+/** The most a gap between two reps adds to a text's time (a break counts as this much). */
+export const SPENT_GAP_MS = 5 * 60_000;
 
 export interface RehearseState {
   items: RehearsePhrase[];
@@ -118,18 +133,24 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
 const obj = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 
-export const clampSignalMs = (v: number) => clamp(Math.round(v), 1, 60_000);
-export const clampAmp = (v: number) => clamp(Math.round(v * 100) / 100, 0, 1);
-export const clampRawRate = (v: number) => clamp(Math.round(v), 1, 1_000_000);
-export const clampPlays = (v: number) => clamp(Math.round(v), 2, 99);
-export const clampBatch = (v: number) => clamp(Math.round(v), 1, 1000);
-export const clampRepSeconds = (v: number) => clamp(Math.round(v * 100) / 100, 0, 60);
-export const clampTopSpeed = (v: number) => clamp(Math.round(v * 100) / 100, 1, 10_000);
+// Wide on purpose: the sound is float32, so a peak of 100 is kept as such (the phone's
+// output stops at 1, so above that it is clipped: louder and harsher). What stays bounded
+// is only what would run a phone out of memory (see soundRate) or make no sense.
+/** The longest one play lasts (ms): 10 minutes. */
+export const MAX_SIGNAL_MS = 600_000;
+export const clampSignalMs = (v: number) => clamp(Math.round(v), 1, MAX_SIGNAL_MS);
+/** A peak or a gain: 0 up to 10,000 (1 is full scale). */
+export const clampAmp = (v: number) => clamp(Math.round(v * 100) / 100, 0, 10_000);
+export const clampRawRate = (v: number) => clamp(Math.round(v), 1, 100_000_000);
+export const clampPlays = (v: number) => clamp(Math.round(v), 2, 9999);
+export const clampBatch = (v: number) => clamp(Math.round(v), 1, 1_000_000);
+export const clampRepSeconds = (v: number) => clamp(Math.round(v * 100) / 100, 0, 3600);
+export const clampTopSpeed = (v: number) => clamp(Math.round(v * 100) / 100, 1, 1_000_000);
 /** The longest a whole cycle lasts (ms): its plays are shortened to fit. */
-export const MAX_CYCLE_MS = 60_000;
+export const MAX_CYCLE_MS = 600_000;
 export const clampLayer = (v: number) => clamp(Math.round(v * 100) / 100, 0, 1);
-export const clampTapHeight = (v: number) => clamp(Math.round(v), 15, 80);
-export const clampPhraseSize = (v: number) => clamp(Math.round(v), 8, 96);
+export const clampTapHeight = (v: number) => clamp(Math.round(v), 5, 100);
+export const clampPhraseSize = (v: number) => clamp(Math.round(v), 4, 400);
 
 export function defaultSettings(): RehearseSettings {
   return {
@@ -137,6 +158,7 @@ export function defaultSettings(): RehearseSettings {
     signalMs: 900,
     amp: 0.9,
     rawRate: 8000,
+    encoding: "u8",
     mode: "steady",
     plays: 9,
     topSpeed: 9,
@@ -208,6 +230,7 @@ export function loadRehearse(data: unknown): RehearseState {
       passes: Math.max(0, Math.floor(num(r.passes, 0))),
       reps: Math.max(0, Math.floor(num(r.reps, 0))),
       last: Math.max(0, num(r.last, 0)),
+      spentMs: Math.max(0, num(r.spentMs, 0)),
     };
   }
   const t = obj(d.settings);
@@ -216,6 +239,8 @@ export function loadRehearse(data: unknown): RehearseState {
   u.signalMs = clampSignalMs(num(t.signalMs, u.signalMs));
   u.amp = clampAmp(num(t.amp, u.amp));
   u.rawRate = clampRawRate(num(t.rawRate, u.rawRate));
+  if (SOUND_ENCODINGS.includes(t.encoding as SoundEncoding))
+    u.encoding = t.encoding as SoundEncoding;
   if (t.mode === "steady" || t.mode === "cycle") u.mode = t.mode;
   u.plays = clampPlays(num(t.plays, u.plays));
   u.topSpeed = clampTopSpeed(num(t.topSpeed, u.topSpeed));
@@ -356,10 +381,27 @@ export function phraseBytes(text: string): Uint8Array {
 
 /**
  * The bytes as raw samples, -1 to 1, around their own middle (their average
- * taken off, so the wave swings both ways). Bytes all the same would be silence:
- * then their bits are used (each bit one sample, 1 up and 0 down).
+ * taken off, so the wave swings both ways). 8-bit: each byte a sample; bytes all
+ * the same would be silence, so then their bits are used (each bit one sample, 1
+ * up and 0 down). 32-bit: each four bytes a signed 32-bit sample, little-endian
+ * (the last ones padded with 0), as a .wav's PCM 32; too few to swing (a phrase of
+ * four bytes or less), the 8-bit samples instead.
  */
-export function rawSamples(bytes: Uint8Array): Float32Array<ArrayBuffer> {
+export function rawSamples(
+  bytes: Uint8Array,
+  encoding: Exclude<SoundEncoding, "both"> = "u8",
+): Float32Array<ArrayBuffer> {
+  if (encoding === "pcm32") {
+    const n = Math.ceil(bytes.length / 4);
+    const padded = new Uint8Array(n * 4);
+    padded.set(bytes);
+    const v = new DataView(padded.buffer);
+    const raw = new Float32Array(n);
+    for (let i = 0; i < n; i++) raw[i] = v.getInt32(i * 4, true) / 2147483648;
+    const mean = raw.reduce((m, x) => m + x, 0) / Math.max(1, n);
+    for (let i = 0; i < n; i++) raw[i] = raw[i]! - mean;
+    if (raw.some((x) => Math.abs(x) > 1e-9)) return raw;
+  }
   const same = bytes.every((b) => b === bytes[0]);
   let raw: Float32Array<ArrayBuffer>;
   if (!same) {
@@ -400,10 +442,24 @@ export function signalFit(
 export function phraseSignal(
   text: string,
   rate: number,
-  opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate">,
+  opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate"> & { encoding?: SoundEncoding },
   faster = 1,
 ): Float32Array<ArrayBuffer> {
-  const raw = rawSamples(phraseBytes(text));
+  const enc = opts.encoding ?? "u8";
+  if (enc === "both") {
+    // Each at the same peak, mixed, then the mix to the peak asked for.
+    const a = phraseSignal(text, rate, { ...opts, encoding: "u8", amp: 1 }, faster);
+    const b = phraseSignal(text, rate, { ...opts, encoding: "pcm32", amp: 1 }, faster);
+    let peak = 0;
+    for (let i = 0; i < a.length; i++) {
+      a[i] = a[i]! + (b[i] ?? 0);
+      peak = Math.max(peak, Math.abs(a[i]!));
+    }
+    const gain = peak > 0 ? opts.amp / peak : 0;
+    for (let i = 0; i < a.length; i++) a[i] = a[i]! * gain;
+    return a;
+  }
+  const raw = rawSamples(phraseBytes(text), enc);
   const len = raw.length;
   const { speed } = signalFit(len, opts.rawRate, opts.signalMs);
   const out = new Float32Array(Math.max(1, Math.round((rate * opts.signalMs) / 1000)));
@@ -440,7 +496,9 @@ export function cycleSpeeds(plays: number, topSpeed: number): number[] {
 export function cycleSignal(
   text: string,
   rate: number,
-  opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate" | "plays" | "topSpeed">,
+  opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate" | "plays" | "topSpeed"> & {
+    encoding?: SoundEncoding;
+  },
 ): Float32Array<ArrayBuffer> {
   const speeds = cycleSpeeds(opts.plays, opts.topSpeed);
   const each = Math.max(1, Math.min(opts.signalMs, MAX_CYCLE_MS / speeds.length));
@@ -454,12 +512,34 @@ export function cycleSignal(
   return out;
 }
 
+export type SoundOpts = Pick<
+  RehearseSettings,
+  "signalMs" | "amp" | "rawRate" | "mode" | "plays" | "topSpeed"
+> & { encoding?: SoundEncoding };
+
+/** How long the sound as the settings shape it lasts (ms): one play, or a whole cycle. */
+export function soundMs(opts: SoundOpts): number {
+  if (opts.mode !== "cycle") return opts.signalMs;
+  const n = cycleSpeeds(opts.plays, opts.topSpeed).length;
+  return n * Math.max(1, Math.min(opts.signalMs, MAX_CYCLE_MS / n));
+}
+
+/** The most samples one sound is made of (2 minutes at 48,000 a second, 23 MB). */
+export const MAX_SOUND_SAMPLES = 48_000 * 120;
+
+/**
+ * The sample rate to make a sound at: the player's own, or, for a sound so long it
+ * would not fit in MAX_SOUND_SAMPLES, a lower one (at least 3,000 a second; the
+ * player turns it back to its own as it plays).
+ */
+export function soundRate(rate: number, opts: SoundOpts): number {
+  const ms = soundMs(opts);
+  if ((rate * ms) / 1000 <= MAX_SOUND_SAMPLES) return rate;
+  return Math.max(3000, Math.floor((MAX_SOUND_SAMPLES * 1000) / ms));
+}
+
 /** The phrase's sound as the settings shape it: steady, or the rising cycle. */
-export function soundOf(
-  text: string,
-  rate: number,
-  opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate" | "mode" | "plays" | "topSpeed">,
-): Float32Array<ArrayBuffer> {
+export function soundOf(text: string, rate: number, opts: SoundOpts): Float32Array<ArrayBuffer> {
   return opts.mode === "cycle" ? cycleSignal(text, rate, opts) : phraseSignal(text, rate, opts);
 }
 
@@ -587,7 +667,11 @@ export function currentText(s: RehearseState, library: LibText[]): LibText | und
   return library.find((t) => t.key === s.text) ?? library[0];
 }
 
-const noProgress = (): TextProgress => ({ at: 0, passes: 0, reps: 0, last: 0 });
+const noProgress = (): TextProgress => ({ at: 0, passes: 0, reps: 0, last: 0, spentMs: 0 });
+
+/** A text's time with one more rep now: the gap since its last (SPENT_GAP_MS at most). */
+const spentAt = (p: TextProgress, now: number) =>
+  p.spentMs + (p.last > 0 && now > p.last ? Math.min(now - p.last, SPENT_GAP_MS) : 0);
 
 /** A text's place and counts (none yet: at the first phrase). */
 export function textProgress(s: RehearseState, key: string): TextProgress {
@@ -628,9 +712,32 @@ export function textTap(
       passes: p.passes + (wrap ? 1 : 0),
       reps: p.reps + Math.max(1, Math.floor(n)),
       last: now,
+      spentMs: spentAt(p, now),
     }),
     lastTap: now,
   };
+}
+
+/** A phrase of a text read through in the Read tab's reader: a rep of it (the place moves with textGo). */
+export function textRep(s: RehearseState, key: string, now: number, n = 1): RehearseState {
+  const p = textProgress(s, key);
+  return withProgress(s, key, {
+    ...p,
+    reps: p.reps + Math.max(1, Math.floor(n)),
+    last: now,
+    spentMs: spentAt(p, now),
+  });
+}
+
+/** A whole text read through in the reader: a pass, and back to its first phrase. */
+export function textPass(s: RehearseState, key: string): RehearseState {
+  const p = textProgress(s, key);
+  return withProgress(s, key, { ...p, at: 0, passes: p.passes + 1 });
+}
+
+/** How far through a text, in percent (to one decimal): its phrases before the one it is at. */
+export function textPercent(at: number, total: number): number {
+  return total > 0 ? Math.round((Math.min(at, total) / total) * 1000) / 10 : 0;
 }
 
 /** The phrase before or after in a text (round it), nothing counted. */
@@ -736,8 +843,8 @@ export interface WavStyle {
 /** The most levels in turn. */
 export const MAX_LEVELS = 32;
 export const clampFade = (v: number) => clamp(Math.round(v * 1000) / 1000, 0, 1);
-export const clampCycles = (v: number) => clamp(Math.round(v), 1, 64);
-export const clampLevel = (v: number) => clamp(Math.round(v * 100) / 100, 0, 4);
+export const clampCycles = (v: number) => clamp(Math.round(v), 1, 512);
+export const clampLevel = (v: number) => clamp(Math.round(v * 100) / 100, 0, 10_000);
 
 export function wavStyleOf(
   s: Pick<

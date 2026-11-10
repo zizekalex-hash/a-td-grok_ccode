@@ -31,6 +31,7 @@ import {
   phraseSignal,
   REHEARSE_KEY,
   type RehearseSettings,
+  type SoundEncoding,
 } from "./rehearse.ts";
 
 /** The longest the alarm lasts (ms): fewer repeats if one is long. */
@@ -45,7 +46,9 @@ export interface AlarmSpec {
 }
 
 /** How the phrase sounds: Rehearse's length, raw rate and peak. */
-export type AlarmSound = Pick<RehearseSettings, "signalMs" | "amp" | "rawRate">;
+export type AlarmSound = Pick<RehearseSettings, "signalMs" | "amp" | "rawRate"> & {
+  encoding?: SoundEncoding;
+};
 
 const clamp = (v: number, lo: number, hi: number) =>
   Math.min(hi, Math.max(lo, Number.isFinite(v) ? v : lo));

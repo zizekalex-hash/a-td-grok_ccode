@@ -116,7 +116,15 @@ import {
   streamWords,
   wrapWords,
 } from "@/game/readview";
-import { phraseLoop, savedSound, type PhraseLoop } from "@/game/phraseSound";
+import { savedSound } from "@/game/phraseSound";
+import {
+  backToRehearse,
+  readerSound,
+  rehearseState,
+  rehearseUpdate,
+  takeReaderRequest,
+} from "@/game/rehearseRun";
+import { textAt, textGo, textPass, textRep } from "@/game/rehearse";
 import { exportText, fileName, saveConfirmed, saveFile } from "@/game/textFiles";
 import { holdRest } from "@/game/rest";
 import { useGame } from "@/game/store";
@@ -324,6 +332,25 @@ export function ReadTab() {
     setOpen({ name: t.name, lines: t.lines, folder: t.folder });
   };
 
+  // Opened from Rehearse ("Read it"): that text, at the phrase it is at there; closed, back to Rehearse.
+  const [fromRehearse, setFromRehearse] = useState(false);
+  useEffect(() => {
+    const k = takeReaderRequest();
+    if (!k) return;
+    const all: OpenText[] = [
+      ...library.map((t) => ({ name: t.name, lines: t.lines })),
+      ...folders.flatMap((f) =>
+        f.texts.map((t) => ({ name: t.name, lines: t.lines, folder: f.name })),
+      ),
+    ];
+    const t = all.find((x) => textKey(x.name, x.folder) === k);
+    if (!t) return;
+    openText(t);
+    setFromRehearse(true);
+    // Once, when the tab opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** Files picked: each .zip becomes a folder of its own; .txt files join your texts. */
   const load = (files: File[]) => {
     const zips = files.filter((f) => /\.zip$/i.test(f.name));
@@ -359,6 +386,10 @@ export function ReadTab() {
         onClose={() => {
           setOpen(null);
           setReader(readReader());
+          if (fromRehearse) {
+            setFromRehearse(false);
+            backToRehearse();
+          }
         }}
       />
     );
@@ -1108,7 +1139,14 @@ function Reader({
   const units = useMemo(() => readUnits(lines), [lines]);
   const phrases = useMemo(() => units.map((u) => u.text), [units]);
   const total = units.length;
-  const [index, setIndex] = useState(() => placeOf(reader, key, total));
+  // The place is shared with Rehearse's Whole texts: where either left it.
+  const [index, setIndex] = useState(() => {
+    const r = rehearseState();
+    return r.progress[key] ? textAt(r, key, total) : placeOf(reader, key, total);
+  });
+  useEffect(() => {
+    if (total > 0) rehearseUpdate((s) => textGo(s, key, index, total));
+  }, [key, index, total]);
   const [pass, setPass] = useState(0);
   const [start, setStart] = useState(() => performance.now());
   const [now, setNow] = useState(() => performance.now());
@@ -1201,16 +1239,15 @@ function Reader({
   useEffect(() => holdRest(), []);
 
   // The phrase's sound: its raw bytes, as Rehearse shapes them, all the while it is read.
-  const phraseLoopRef = useRef<PhraseLoop | null>(null);
+
   const loopSound = useMemo(() => (reader.phraseSound ? savedSound() : null), [reader.phraseSound]);
   const reading = heldAt === null && !finished && editing === null;
   const loopText = units[Math.min(index, total - 1)]?.text ?? "";
   useEffect(() => {
-    phraseLoopRef.current ??= phraseLoop();
-    if (loopSound && reading && loopText) phraseLoopRef.current.play(loopText, loopSound);
-    else phraseLoopRef.current.stop();
+    // Through Rehearse's phrase player (one for the app, so two never play at once).
+    readerSound(loopSound && reading && loopText ? loopText : null);
   }, [loopSound, reading, loopText]);
-  useEffect(() => () => phraseLoopRef.current?.stop(), []);
+  useEffect(() => () => readerSound(null), []);
 
   const ms = wordTime(reader);
   const unit = units[Math.min(index, total - 1)];
@@ -1274,6 +1311,8 @@ function Reader({
     const after = levelForXp(useGame.getState().skills.recitation);
     if (after > before) flashToast(`Recitation level ${after}`);
     const t = performance.now();
+    // A rep of the phrase in Rehearse's count of this text (and its time).
+    rehearseUpdate((s) => textRep(s, key, Date.now()));
     if (pass + 1 < reader.passes) {
       setPass(pass + 1);
       setStart(t);
@@ -1285,6 +1324,8 @@ function Reader({
       // The whole text: logged, and next time it starts from the top.
       setFinished(true);
       save(setPlace(reader, key, 0));
+      // A pass through the whole text, in Rehearse too.
+      rehearseUpdate((s) => textPass(s, key));
       logSession(true);
       return;
     }

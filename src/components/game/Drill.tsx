@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { CONFIG } from "@/game/config";
 import { flashToast, grantSkillXp } from "@/game/engine";
@@ -114,6 +114,15 @@ export function DrillPanel() {
       /* private mode */
     }
   };
+  // Rehearse opens a text in the Read tab's reader (and the reader comes back): the tab asked for.
+  useEffect(() => {
+    const go = (e: Event) => {
+      const t = (e as CustomEvent<DrillTab>).detail;
+      if (t === "read" || t === "rehearse") setTab(t);
+    };
+    window.addEventListener("azshara-drill-tab", go);
+    return () => window.removeEventListener("azshara-drill-tab", go);
+  });
   const count = lines.length;
   const safeIndex = count ? ((index % count) + count) % count : 0;
   const words = sectorWords(lines, safeIndex);

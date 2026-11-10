@@ -1,8 +1,9 @@
 /**
  * A phrase's sound playing all the time: Rehearse's Nonstop and the Read tab's
  * phrase sound. The current phrase's sound as Rehearse shapes it (steady, or
- * the rising cycle; game/rehearse.ts soundOf), looped with no gap; when the
- * phrase (or a setting) changes, the new one fades in as the old fades out.
+ * the rising cycle; game/rehearse.ts soundOf), looped with no gap, on the
+ * same phrase till it is given another (a tap): that one takes over at once,
+ * fading in as the old fades out. Nothing is scheduled ahead.
  * Each player plays one phrase at a time. Needs a page.
  */
 import {
@@ -12,6 +13,7 @@ import {
   loadRehearse,
   REHEARSE_KEY,
   soundOf,
+  soundRate,
   steadyGain,
   wavCurve,
   wavSampleRate,
@@ -22,7 +24,8 @@ import {
 export type LoopSound = Pick<
   RehearseSettings,
   "signalMs" | "amp" | "rawRate" | "mode" | "plays" | "topSpeed"
->;
+> &
+  Partial<Pick<RehearseSettings, "encoding">>;
 
 export interface PhraseLoop {
   /** Plays this phrase's sound over and over (the same phrase and settings again: nothing changes). */
@@ -139,16 +142,20 @@ export function phraseLoop(): PhraseLoop {
         sound.signalMs,
         sound.amp,
         sound.rawRate,
+        sound.encoding ?? "u8",
         sound.mode,
         sound.plays,
         sound.topSpeed,
         ctx.sampleRate,
       ]);
+      // The same phrase and settings: it goes on as it is.
       if (now?.key === key) return;
       let buf = made.get(key);
       if (!buf) {
-        const data = soundOf(text, ctx.sampleRate, sound);
-        buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
+        // A very long sound is made at a lower rate (the player turns it back to its own).
+        const rate = soundRate(ctx.sampleRate, sound);
+        const data = soundOf(text, rate, sound);
+        buf = ctx.createBuffer(1, data.length, rate);
         buf.copyToChannel(data, 0);
         made.set(key, buf);
         if (made.size > KEEP) made.delete(made.keys().next().value!);

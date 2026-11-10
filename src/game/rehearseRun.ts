@@ -80,6 +80,37 @@ export function rehearseUpdate(fn: (s: RehearseState) => RehearseState) {
   for (const f of subs) f();
   // Background turned on or off while it plays: the app kept running, or let rest.
   keep();
+  // Moved on elsewhere (the reader, the window) with the tab closed: the sound follows.
+  if (!open && alive) queueClosed();
+}
+
+let closedTimer = 0;
+function queueClosed() {
+  if (typeof window === "undefined") return;
+  window.clearTimeout(closedTimer);
+  closedTimer = window.setTimeout(() => void playClosed(), 40);
+}
+
+// ---- The Read tab's reader, opened from here ----
+
+let readRequest: string | null = null;
+
+/** Opens a text (by its key) in the Read tab's reader, at the place it is at; closing it comes back here. */
+export function requestReader(key: string) {
+  readRequest = key;
+  window.dispatchEvent(new CustomEvent("azshara-drill-tab", { detail: "read" }));
+}
+
+/** The text asked for (once). */
+export function takeReaderRequest(): string | null {
+  const k = readRequest;
+  readRequest = null;
+  return k;
+}
+
+/** Back to Rehearse (the reader opened from it closed). */
+export function backToRehearse() {
+  window.dispatchEvent(new CustomEvent("azshara-drill-tab", { detail: "rehearse" }));
 }
 
 export function subscribeRehearse(fn: () => void): () => void {
@@ -296,14 +327,39 @@ export function rehearseOpen(on: boolean) {
 
 let playing = 0;
 
-/** With the tab closed: what the state asks for (after the window moved it on). */
+/** The reader's phrase sound has the phrase player (one for the whole app, so two never play at once). */
+let reading = false;
+
+/**
+ * The Read tab's phrase sound: the phrase being read, through the same player as
+ * Rehearse's (shaped by Rehearse's settings); null gives the player back (to
+ * Rehearse's own sound, if it plays on).
+ */
+export function readerSound(text: string | null) {
+  const set = rehearseState().settings;
+  if (text) {
+    reading = true;
+    playNonstop(text, set);
+    return;
+  }
+  if (!reading) return;
+  reading = false;
+  if (open) return;
+  if (set.background) void playClosed();
+  else playNonstop(null);
+}
+
+/** With the tab closed: what the state asks for (after the window, or the reader, moved it on). */
 async function playClosed() {
   const s = rehearseState();
   if (!s.settings.background) return;
   const ask = ++playing;
   const a = activeOf(s, rehearseLibrary());
   const set = s.settings;
-  if (set.nonstop && set.sound && a.text) playNonstop(a.text, set);
+  // The reader has the phrase player meanwhile.
+  if (reading) {
+    /* its phrase plays */
+  } else if (set.nonstop && set.sound && a.text) playNonstop(a.text, set);
   else playNonstop(null);
   if (!set.wavLoop || !a.name) {
     void playWav(null);

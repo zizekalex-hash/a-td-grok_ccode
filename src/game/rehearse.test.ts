@@ -47,6 +47,13 @@ import {
   wavStyleOf,
   wavSettingsOf,
   type WavStyle,
+  soundRate,
+  soundMs,
+  MAX_SOUND_SAMPLES,
+  textRep,
+  textPass,
+  textPercent,
+  SPENT_GAP_MS,
   libraryOf,
   currentText,
   applyBubble,
@@ -115,8 +122,8 @@ describe("rehearse: phrases and their counts", () => {
       ],
       current: "zzz",
       settings: {
-        signalMs: 99_999,
-        amp: 3,
+        signalMs: 9_999_999,
+        amp: 100,
         rawRate: 2,
         layers: { rgb: -1, gray: 0.5 },
         emit: "full",
@@ -126,14 +133,14 @@ describe("rehearse: phrases and their counts", () => {
     assert.equal(back.items.length, 1);
     assert.deepEqual(back.items[0], { id: "a", text: "x", count: 4, last: 5, at: 1 });
     assert.equal(back.current, "", "an unknown current is dropped");
-    assert.equal(back.settings.signalMs, 60_000);
-    assert.equal(back.settings.amp, 1);
+    assert.equal(back.settings.signalMs, 600_000, "ten minutes at most");
+    assert.equal(back.settings.amp, 100, "above full scale is kept (the output clips it)");
     assert.equal(back.settings.rawRate, 2, "below 1000 too");
     assert.equal(back.settings.mode, "steady");
     assert.equal(back.settings.nonstop, false);
     assert.deepEqual(back.settings.layers, { rgb: 0, gray: 0.5, bits: 0.36 });
     assert.equal(back.settings.emit, "full");
-    assert.equal(back.settings.tapHeight, 15);
+    assert.equal(back.settings.tapHeight, 5);
     const d = defaultSettings();
     assert.equal(d.signalMs, 900);
     assert.equal(d.amp, 0.9);
@@ -152,6 +159,58 @@ describe("rehearse: the phrase as sound", () => {
     const one = rawSamples(phraseBytes("I"));
     assert.equal(one.length, 8);
     assert.ok(one.some((v) => v !== 0));
+  });
+
+  it("can take the bytes four at a time, as 32-bit samples, or both mixed", () => {
+    // "abcd" little-endian is 0x64636261; "efgh" 0x68676665: two samples, centred.
+    const p = rawSamples(phraseBytes("abcdefgh"), "pcm32");
+    assert.equal(p.length, 2);
+    assert.ok(Math.abs(p[0]! + p[1]!) < 1e-6, "no offset");
+    assert.ok(p[1]! > p[0]!);
+    // Four bytes or less cannot swing as 32-bit: the 8-bit samples instead.
+    assert.equal(rawSamples(phraseBytes("abc"), "pcm32").length, 3);
+    for (const encoding of ["u8", "pcm32", "both"] as const) {
+      const sig = phraseSignal("The chloride gradient is reversed.", 48_000, {
+        signalMs: 500,
+        amp: 0.9,
+        rawRate: 8000,
+        encoding,
+      });
+      assert.equal(sig.length, 24_000, encoding);
+      const peak = sig.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+      assert.ok(Math.abs(peak - 0.9) < 1e-6, `${encoding}: peak ${peak}`);
+    }
+    const u8 = phraseSignal("Oxygenation here", 8000, { signalMs: 100, amp: 1, rawRate: 8000 });
+    const both = phraseSignal("Oxygenation here", 8000, {
+      signalMs: 100,
+      amp: 1,
+      rawRate: 8000,
+      encoding: "both",
+    });
+    assert.notDeepEqual(both, u8, "both is a mix, not the 8-bit alone");
+    assert.equal(defaultSettings().encoding, "u8");
+    assert.equal(loadRehearse({ settings: { encoding: "pcm32" } }).settings.encoding, "pcm32");
+    assert.equal(loadRehearse({ settings: { encoding: "mp3" } }).settings.encoding, "u8");
+  });
+
+  it("makes a very long sound at a lower rate, so it fits in memory", () => {
+    const opts = {
+      signalMs: 900,
+      amp: 1,
+      rawRate: 8000,
+      mode: "steady" as const,
+      plays: 9,
+      topSpeed: 9,
+    };
+    assert.equal(soundRate(48_000, opts), 48_000);
+    assert.equal(soundMs({ ...opts, signalMs: 600_000 }), 600_000);
+    const r = soundRate(48_000, { ...opts, signalMs: 600_000 });
+    assert.equal(r, 9600);
+    assert.ok(r * 600 <= MAX_SOUND_SAMPLES);
+    assert.equal(soundMs({ ...opts, mode: "cycle", signalMs: 900, plays: 9 }), 8100);
+    // A peak far above 1 is kept: the sound is float32 (the phone clips it on the way out).
+    const loud = phraseSignal("abc", 8000, { signalMs: 10, amp: 100, rawRate: 8000 });
+    assert.equal(Math.round(loud.reduce((m, v) => Math.max(m, Math.abs(v)), 0)), 100);
   });
 
   it("repeats a short phrase to fill the time, and speeds up a long one to fit it", () => {
@@ -214,12 +273,13 @@ describe("rehearse: the phrase as sound", () => {
       phraseSignal("ab", 8000, opts),
     );
     assert.equal(
-      soundOf("ab", 100, { ...opts, mode: "cycle", signalMs: 60_000, plays: 10 }).length,
-      10 * 600,
+      soundOf("ab", 100, { ...opts, mode: "cycle", signalMs: 600_000, plays: 10 }).length,
+      10 * 6000,
+      "a cycle keeps within ten minutes",
     );
-    const back = load({ settings: { mode: "cycle", plays: 500, topSpeed: 0, nonstop: true } });
+    const back = load({ settings: { mode: "cycle", plays: 50_000, topSpeed: 0, nonstop: true } });
     assert.equal(back.settings.mode, "cycle");
-    assert.equal(back.settings.plays, 99);
+    assert.equal(back.settings.plays, 9999);
     assert.equal(back.settings.topSpeed, 1);
     assert.equal(back.settings.nonstop, true);
   });
@@ -242,8 +302,8 @@ describe("rehearse: phrases as files", () => {
     assert.equal(d.wavLoop, true);
     assert.equal(d.wavVolume, 1);
     assert.equal(
-      loadRehearse({ settings: { wavVolume: 3, wavLoop: false } }).settings.wavVolume,
-      1,
+      loadRehearse({ settings: { wavVolume: 30_000, wavLoop: false } }).settings.wavVolume,
+      10_000,
     );
     assert.equal(loadRehearse({ settings: { wavLoop: false } }).settings.wavLoop, false);
   });
@@ -276,10 +336,10 @@ describe("rehearse: phrases as files", () => {
     s = countRep(s, "p0", 1000 + 9900, 10);
     assert.equal(s.items[0]!.count, 11);
     assert.equal(s.lastTap, 10_900);
-    const back = loadRehearse({ ...s, settings: { batch: 0, repSeconds: 999 } });
+    const back = loadRehearse({ ...s, settings: { batch: 0, repSeconds: 99_999 } });
     assert.equal(back.lastTap, 10_900);
     assert.equal(back.settings.batch, 1);
-    assert.equal(back.settings.repSeconds, 60);
+    assert.equal(back.settings.repSeconds, 3600);
   });
 });
 
@@ -292,7 +352,7 @@ describe("rehearse: whole texts, phrase after phrase", () => {
     assert.equal(textProgress(s, key).at, 1);
     s = textTap(s, key, 3, 200, 10);
     s = textTap(s, key, 3, 300);
-    assert.deepEqual(textProgress(s, key), { at: 0, passes: 1, reps: 12, last: 300 });
+    assert.deepEqual(textProgress(s, key), { at: 0, passes: 1, reps: 12, last: 300, spentMs: 200 });
     assert.equal(s.lastTap, 300, "a batch waits from a text's tap too");
     // Moving round it counts nothing.
     s = textStep(s, key, 3, -1);
@@ -307,7 +367,7 @@ describe("rehearse: whole texts, phrase after phrase", () => {
     assert.equal(textProgress(s, key).passes, 2);
     assert.equal(textProgress(s, key).at, 0);
     s = resetText(s, key);
-    assert.deepEqual(textProgress(s, key), { at: 0, passes: 0, reps: 0, last: 0 });
+    assert.deepEqual(textProgress(s, key), { at: 0, passes: 0, reps: 0, last: 0, spentMs: 0 });
     const back = loadRehearse({
       view: "texts",
       text: key,
@@ -315,8 +375,31 @@ describe("rehearse: whole texts, phrase after phrase", () => {
     });
     assert.equal(back.view, "texts");
     assert.equal(back.text, key);
-    assert.deepEqual(back.progress, { [key]: { at: 2, passes: 0, reps: 7, last: 9 } });
+    assert.deepEqual(back.progress, { [key]: { at: 2, passes: 0, reps: 7, last: 9, spentMs: 0 } });
     assert.equal(loadRehearse({ view: "nope" }).view, "phrases");
+  });
+
+  it("shares a text with the Read tab's reader: its reps, passes, time and place", () => {
+    const key = "Book";
+    let s = textTap(newRehearse(), key, 10, 1_000);
+    s = textGo(s, key, 4, 10);
+    s = textRep(s, key, 61_000);
+    assert.deepEqual(textProgress(s, key), {
+      at: 4,
+      passes: 0,
+      reps: 2,
+      last: 61_000,
+      spentMs: 60_000,
+    });
+    // A long break counts as SPENT_GAP_MS at most.
+    s = textRep(s, key, 61_000 + 3_600_000);
+    assert.equal(textProgress(s, key).spentMs, 60_000 + SPENT_GAP_MS);
+    s = textPass(s, key);
+    assert.equal(textProgress(s, key).passes, 1);
+    assert.equal(textProgress(s, key).at, 0);
+    assert.equal(textPercent(4, 10), 40);
+    assert.equal(textPercent(1, 3), 33.3);
+    assert.equal(textPercent(0, 0), 0);
   });
 
   it("names each text's .txt after it (and its folder), once each", () => {
@@ -332,8 +415,8 @@ describe("rehearse: whole texts, phrase after phrase", () => {
   it("is locked to start: the tap counts, the settings wait", () => {
     assert.equal(defaultSettings().locked, true);
     assert.equal(defaultSettings().phraseSize, 18);
-    assert.equal(loadRehearse({ settings: { phraseSize: 500 } }).settings.phraseSize, 96);
-    assert.equal(loadRehearse({ settings: { phraseSize: 2 } }).settings.phraseSize, 8);
+    assert.equal(loadRehearse({ settings: { phraseSize: 5000 } }).settings.phraseSize, 400);
+    assert.equal(loadRehearse({ settings: { phraseSize: 2 } }).settings.phraseSize, 4);
     assert.equal(loadRehearse({ settings: { locked: false } }).settings.locked, false);
   });
 });
@@ -384,7 +467,7 @@ describe("rehearse: how the .wav plays", () => {
 
   it("plays each loop at the next level, round again", () => {
     assert.deepEqual(parseLevels("0.5, 0.5 2;1"), [0.5, 0.5, 2, 1]);
-    assert.deepEqual(parseLevels("9, -1, x"), [4, 0]);
+    assert.deepEqual(parseLevels("99999, 9, -1, x"), [10_000, 9, 0]);
     assert.equal(parseLevels(" , "), null);
     const w = style({ levels: [0.5, 0.5, 2, 1] });
     assert.equal(presetOf(w), "waves");
@@ -396,10 +479,10 @@ describe("rehearse: how the .wav plays", () => {
     assert.equal(steadyGain(style({ levels: [0.4] })), 0.4);
     assert.equal(levelsText([0.1, 0.2]), "0.1, 0.2");
     const back = loadRehearse({
-      settings: { ...wavSettingsOf(w), wavShape: "zigzag", wavCycles: 500, wavLevels: [] },
+      settings: { ...wavSettingsOf(w), wavShape: "zigzag", wavCycles: 5000, wavLevels: [] },
     });
     assert.equal(back.settings.wavShape, "flat");
-    assert.equal(back.settings.wavCycles, 64);
+    assert.equal(back.settings.wavCycles, 512);
     assert.deepEqual(back.settings.wavLevels, [1], "none: as it is");
     assert.deepEqual(
       loadRehearse({ settings: wavSettingsOf(w) }).settings.wavLevels,
@@ -478,7 +561,13 @@ describe("rehearse: the floating window and the background", () => {
       shown: true,
     };
     const r = applyBubble(s, take, lib, bubbleId(0, "Long"));
-    assert.deepEqual(textProgress(r.state, "Long"), { at: 0, passes: 1, reps: 10, last: 50 });
+    assert.deepEqual(textProgress(r.state, "Long"), {
+      at: 0,
+      passes: 1,
+      reps: 10,
+      last: 50,
+      spentMs: 0,
+    });
     assert.equal(r.state.items[0]!.count, 1);
     assert.deepEqual(r.xp, [
       { text: "Three here now.", n: 10 },

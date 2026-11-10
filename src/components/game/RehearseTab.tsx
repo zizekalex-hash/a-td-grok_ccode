@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   CircleCheck,
@@ -34,7 +35,7 @@ import {
 import { unzipTexts } from "@/game/unzip";
 import { saveConfirmed } from "@/game/textFiles";
 import { repXp } from "@/game/recite";
-import { wordsOf } from "@/game/reps";
+import { clock, wordsOf } from "@/game/reps";
 import { bytesPicture } from "@/game/readview";
 import {
   BYTES_MODES,
@@ -59,6 +60,7 @@ import {
   hideBubble,
   pickedWavs,
   playNonstop,
+  requestReader,
   playWav,
   rehearseOpen,
   rehearseState,
@@ -101,6 +103,7 @@ import {
   currentPhrase,
   phraseBytes,
   soundOf,
+  soundRate,
   phrasesOf,
   rawSamples,
   removePhrase,
@@ -121,6 +124,7 @@ import {
   textAt,
   textFileNames,
   textProgress,
+  textPercent,
   textStep,
   textTap,
   WAV_PRESETS,
@@ -257,14 +261,16 @@ function useEmitter(text: string, settings: RehearseSettings) {
       settings.signalMs,
       settings.amp,
       settings.rawRate,
+      settings.encoding,
       settings.mode,
       settings.plays,
       settings.topSpeed,
       text,
     ]);
     if (made.current?.key !== key) {
-      const data = soundOf(text, ctx.sampleRate, settings);
-      const buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
+      const rate = soundRate(ctx.sampleRate, settings);
+      const data = soundOf(text, rate, settings);
+      const buf = ctx.createBuffer(1, data.length, rate);
       buf.copyToChannel(data, 0);
       made.current = { key, buf };
     }
@@ -466,6 +472,8 @@ export function RehearseTab() {
     }
     setFitPx(px);
   }, [phraseSize]);
+  /** A pass just done (the text's key): a check that it is all written right is offered. */
+  const [passDone, setPassDone] = useState<string | null>(null);
   /** The phrase being rewritten (texts), and the check (read with the Read tab's, after a change). */
   const [editing, setEditing] = useState<string | null>(null);
   const [checkTick, setCheckTick] = useState(0);
@@ -498,14 +506,22 @@ export function RehearseTab() {
 
   // Nonstop: the current phrase's sound all the time (on after the tab closes too, with Background on).
   const phraseText = activeText;
-  const { nonstop, sound, signalMs, amp, rawRate, mode, plays, topSpeed } = set;
+  const { nonstop, sound, signalMs, amp, rawRate, mode, plays, topSpeed, encoding } = set;
   useEffect(() => {
     if (nonstop && sound && phraseText) {
-      playNonstop(phraseText, { signalMs, amp, rawRate, mode, plays, topSpeed });
+      playNonstop(phraseText, {
+        signalMs,
+        amp,
+        rawRate,
+        mode,
+        plays,
+        topSpeed,
+        encoding,
+      });
     } else {
       playNonstop(null);
     }
-  }, [nonstop, sound, phraseText, signalMs, amp, rawRate, mode, plays, topSpeed]);
+  }, [nonstop, sound, phraseText, signalMs, amp, rawRate, mode, plays, topSpeed, encoding]);
   // Open here; closed, the background takes over (or the sound stops, with Background off).
   useEffect(() => {
     startRehearseBackground();
@@ -806,9 +822,12 @@ export function RehearseTab() {
       const key = textKeyNow;
       const count = total;
       const here = at;
-      if (here + 1 >= count && textNow)
-        flashToast(`“${textNow.name}”: pass ${prog.passes + 1} through it ✓`);
       update((s) => textTap(s, key, count, t, n, here));
+      // A pass through the whole text: done, and a check that it is all written right.
+      if (here + 1 >= count && textNow) {
+        flashToast(`“${textNow.name}”: pass ${prog.passes + 1} through it ✓`);
+        setPassDone(key);
+      }
       return;
     }
     if (!item) return;
@@ -1006,7 +1025,11 @@ export function RehearseTab() {
   }, [library, checkTick]);
 
   const fit = activeText
-    ? signalFit(rawSamples(phraseBytes(activeText)).length, set.rawRate, set.signalMs)
+    ? signalFit(
+        rawSamples(phraseBytes(activeText), set.encoding === "pcm32" ? "pcm32" : "u8").length,
+        set.rawRate,
+        set.signalMs,
+      )
     : null;
   const bytes = activeText ? phraseBytes(activeText).length : 0;
   const presetNow = presetOf(wavStyle);
@@ -1114,7 +1137,8 @@ export function RehearseTab() {
             {textsView && (
               <span className="text-xs text-muted">
                 {prog.passes.toLocaleString()} pass{prog.passes === 1 ? "" : "es"} ·{" "}
-                {prog.reps.toLocaleString()} reps
+                {prog.reps.toLocaleString()} reps · {textPercent(at, total)}% ·{" "}
+                {clock(prog.spentMs)} on it
               </span>
             )}
             {tapNote && (
@@ -1206,11 +1230,56 @@ export function RehearseTab() {
           />
         </div>
       </fieldset>
+      {textsView && passDone === textKeyNow && textNow && (
+        <div className="glass mt-2 space-y-2 border border-gold/60 p-3" role="status">
+          <p className="text-sm text-gold">
+            ✓ Pass {prog.passes} through “{textNow.name}” done · {clock(prog.spentMs)} on it in all.
+            Is it all written right, no mistypes?
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className="btn tracking-normal normal-case"
+              style={{ color: "#4ade80", borderColor: "#4ade80" }}
+              data-on={armed === "check-done"}
+              disabled={checked === "checked"}
+              onClick={() =>
+                arm("check-done", () => {
+                  confirmText();
+                  setPassDone(null);
+                })
+              }
+            >
+              <CircleCheck className="size-4" aria-hidden />
+              {checked === "checked"
+                ? "Checked ✓ already"
+                : armed === "check-done"
+                  ? "Tap again: save to confirmed_txt"
+                  : "Checked: save to confirmed_txt"}
+            </button>
+            <button
+              type="button"
+              className="btn tracking-normal normal-case"
+              onClick={() => setPassDone(null)}
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
       {activeText && (
         <>
           <fieldset disabled={locked} className="min-w-0">
             {textsView && unit && (
               <div className="mt-2">
+                <button
+                  type="button"
+                  className="btn mb-2 w-full tracking-normal normal-case"
+                  onClick={() => requestReader(textKeyNow)}
+                >
+                  <BookOpen className="size-4" aria-hidden /> Read it in the reader (from phrase{" "}
+                  {at + 1}, {textPercent(at, total)}%)
+                </button>
                 {editing === null ? (
                   <div className="grid grid-cols-2 gap-2">
                     <button
@@ -1359,7 +1428,7 @@ export function RehearseTab() {
                   flip={() => setOpt({ wavLoop: !wavLoop })}
                 />
                 <Num
-                  label="WAV volume (0 to 1, the file as it is)"
+                  label="WAV volume (1 the file as it is; above 1 clips)"
                   value={wavVolume}
                   step={0.05}
                   digits={2}
@@ -1512,6 +1581,32 @@ export function RehearseTab() {
               Rising cycle
             </button>
           </div>
+          <p className="pt-1 text-[0.65rem] text-muted">Its bytes as samples:</p>
+          <div
+            className="grid grid-cols-3 gap-1"
+            role="radiogroup"
+            aria-label="Its bytes as samples"
+          >
+            {(
+              [
+                ["u8", "8-bit (a byte each)"],
+                ["pcm32", "PCM 32 (4 bytes each)"],
+                ["both", "Both, mixed"],
+              ] as const
+            ).map(([e, label]) => (
+              <button
+                key={e}
+                type="button"
+                role="radio"
+                aria-checked={set.encoding === e}
+                data-on={set.encoding === e}
+                className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+                onClick={() => setOpt({ encoding: e })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {set.mode === "cycle" && (
             <>
               <Num
@@ -1543,13 +1638,19 @@ export function RehearseTab() {
             set={(v) => setOpt({ repSeconds: clampRepSeconds(v) })}
           />
           <Num
-            label="Length (ms)"
+            label="Length of one play (ms), looped"
             value={set.signalMs}
             step={100}
             set={(v) => setOpt({ signalMs: clampSignalMs(v) })}
           />
+          <p className="text-[0.65rem] leading-snug text-muted">
+            One play is the phrase fitted to this length (repeated if shorter, sped up if longer).
+            Nonstop plays it over and over with no gap, on the same phrase, till you tap it done:
+            then the next phrase's sound takes over at once (never before). A tap plays it, looping,
+            as long as you hold it.
+          </p>
           <Num
-            label="Peak loudness (0 to 1)"
+            label="Peak loudness (1 full; above 1 clips: louder, harsher)"
             value={set.amp}
             step={0.05}
             digits={2}
@@ -1983,7 +2084,7 @@ function SizeStep({
   more: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-1 text-xs">
+    <div className="flex min-w-0 flex-col items-center gap-1 text-xs">
       <span className="text-muted">{label}</span>
       <span className="flex items-center gap-1">
         <button
