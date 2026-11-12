@@ -182,7 +182,7 @@
     }
   },
   "td": {
-    "_about": "Tower defense. Waves never end: each one is bigger and tougher than the last, with a boss every bossEvery waves and an extra boss every extraBossEvery waves. Towers keep levelling past maxLevel as mastery, each mastery level costing masteryCostGrowth times the one before. Speeds are cells per second, ranges are cells, rates are shots per second. Armor is the share of damage a creep shrugs off; pierce is the share of armor a tower ignores. Maps are on a 9 by 9 grid, columns and rows 0 to 8: the lane runs straight between waypoints, from the gate (the first) to the core (the last), so each waypoint must share a column or a row with the one before. A map's startGold, if set, replaces the usual one. Towers that do not fire (Muse, Eraser) affect everything in their circle, which grows with level up to maxSupportRange. medals are the waves that earn bronze, silver and gold on a map. Each tower takes one of its two paths at maxLevel, then one of its two ascend options at ascendLevel, for pathCostFactor and ascendCostFactor times its price. A map with lanes has two (or more) lanes, each from its own gate to the shared core; the creeps of a wave take them in turn (waypoints is the first lane). Towers with void: true are paid in flux (see void). execute: creeps (not bosses) at that share of life or less in the tower's circle (or hit by it) collapse; fluxIncome: flux paid when a wave clears. haste: fire-rate bonus for towers in the circle.",
+    "_about": "Tower defense. Waves never end: each one is bigger and tougher than the last, with a boss every bossEvery waves and an extra boss every extraBossEvery waves. Towers keep levelling past maxLevel as mastery, each mastery level costing masteryCostGrowth times the one before. Speeds are cells per second, ranges are cells, rates are shots per second. Armor is the share of damage a creep shrugs off; pierce is the share of armor a tower ignores. Maps are on a 9 by 9 grid, columns and rows 0 to 8: the lane runs straight between waypoints, from the gate (the first) to the core (the last), so each waypoint must share a column or a row with the one before. A map's startGold, if set, replaces the usual one. Towers that do not fire (Muse, Eraser) affect everything in their circle, which grows with level up to maxSupportRange. medals are the waves that earn bronze, silver and gold on a map. Each tower takes one of its two paths at maxLevel, then one of its two ascend options at ascendLevel, for pathCostFactor and ascendCostFactor times its price. A map with lanes has two (or more) lanes, each from its own gate to the shared core; the creeps of a wave take them in turn (waypoints is the first lane). Towers with void: true are paid in flux (see void). execute: creeps (not bosses) at that share of life or less in the tower's circle (or hit by it) collapse; fluxIncome: flux paid when a wave clears. haste: fire-rate bonus for towers in the circle. A circle's growth by level stops at maxSupportRange; range added by a path or an Ascension goes on top of it. Towers with wake: true are paid in ATP (see atp and core); the dream set of creeps (delta to debt, and the bosses hypnos, morpheus and nyx) is described in the creep fields of config.ts. Maps can be joined into one (see stitch).",
     "startGold": 150,
     "startLives": 20,
     "defaultMap": "coil",
@@ -252,7 +252,10 @@
       "aura": 0.05,
       "income": 12,
       "vuln": 0.04,
-      "fluxIncome": 15
+      "fluxIncome": 15,
+      "reach": 0.03,
+      "atpIncome": 4,
+      "mire": 0.02
     },
     "upgradeCostFactor": 0.6,
     "masteryCostGrowth": 1.5,
@@ -286,6 +289,7 @@
       "extraBossEvery": 25,
       "bossHpPerBossWave": 0.15,
       "swarmSize": 4,
+      "atpPerWave": 0.03,
       "unlocks": {
         "adenosine": 1,
         "gaba": 2,
@@ -294,7 +298,13 @@
         "galanin": 6,
         "theta": 8,
         "rem": 9,
-        "glycine": 11
+        "glycine": 11,
+        "delta": 12,
+        "kcomplex": 14,
+        "microsleep": 16,
+        "cytokine": 18,
+        "atonia": 21,
+        "debt": 24
       },
       "weights": {
         "adenosine": 5,
@@ -304,10 +314,16 @@
         "galanin": 2,
         "theta": 1.5,
         "rem": 1.5,
-        "glycine": 1
+        "glycine": 1,
+        "delta": 1.5,
+        "kcomplex": 1.5,
+        "microsleep": 1.2,
+        "cytokine": 1,
+        "atonia": 1,
+        "debt": 0.8
       }
     },
-    "bosses": ["pressure", "circadian", "somnus"],
+    "bosses": ["pressure", "circadian", "somnus", "hypnos", "morpheus", "nyx"],
     "pathCostFactor": 3,
     "ascendLevel": 10,
     "ascendCostFactor": 8,
@@ -750,6 +766,231 @@
           { "name": "Event horizon", "copy": "Collapses creeps at 8% more life, over a wider circle.", "add": {"execute":0.08,"range":0.4} },
           { "name": "Hawking", "copy": "Another 20% more damage taken, and 20% more armor lost.", "add": {"vuln":0.2,"shred":0.2} }
         ]
+      },
+      "orexin": {
+        "name": "Orexin",
+        "label": "ORX",
+        "role": "rapid",
+        "color": "#ffd166",
+        "copy": "Wake. Keeps the brain awake: quick shots at two creeps at once.",
+        "wake": true,
+        "cost": 50,
+        "range": 2.3,
+        "rate": 1.8,
+        "damage": 9,
+        "multi": 1,
+        "paths": [
+          { "name": "Hypocretin", "copy": "Fires at one more creep at once.", "add": {"multi":1} },
+          { "name": "Stabilizer", "copy": "Hits 60% harder, through some armor.", "mult": {"damage":1.6}, "add": {"pierce":0.4} }
+        ],
+        "ascend": [
+          { "name": "Flip-flop switch", "copy": "Fires 60% faster, at one more creep.", "mult": {"rate":1.6}, "add": {"multi":1} },
+          { "name": "Sustained wake", "copy": "Hits 2.4 times as hard, from further.", "mult": {"damage":2.4}, "add": {"range":0.5} }
+        ]
+      },
+      "noradrenaline": {
+        "name": "Noradrenaline",
+        "label": "NA",
+        "role": "sniper",
+        "color": "#ef476f",
+        "copy": "Wake. A jolt from afar: a heavy hit that stops the creep dead for a moment. Bosses resist half.",
+        "wake": true,
+        "cost": 90,
+        "range": 3.6,
+        "rate": 0.5,
+        "damage": 45,
+        "pierce": 0.5,
+        "stun": 0.5,
+        "paths": [
+          { "name": "Locus coeruleus", "copy": "Hits twice as hard, from further.", "mult": {"damage":2}, "add": {"range":0.6} },
+          { "name": "Startle", "copy": "Fires 50% faster and stops creeps 0.4 s longer.", "mult": {"rate":1.5}, "add": {"stun":0.4} }
+        ],
+        "ascend": [
+          { "name": "Fight or flight", "copy": "Hits 2.5 times as hard, through all armor.", "mult": {"damage":2.5}, "add": {"pierce":0.5} },
+          { "name": "Hypervigilance", "copy": "Fires 80% faster and stops creeps 0.3 s longer.", "mult": {"rate":1.8}, "add": {"stun":0.3} }
+        ]
+      },
+      "glutamate": {
+        "name": "Glutamate",
+        "label": "GLU",
+        "role": "splash",
+        "color": "#06d6a0",
+        "copy": "Wake. An excitatory burst: a blast, and every third one hits three times as hard.",
+        "wake": true,
+        "cost": 110,
+        "range": 2.1,
+        "rate": 0.7,
+        "damage": 20,
+        "splash": 1.0,
+        "spikeEvery": 3,
+        "spikeMult": 3,
+        "paths": [
+          { "name": "NMDA", "copy": "Every third blast hits five times as hard.", "add": {"spikeMult":2} },
+          { "name": "AMPA", "copy": "Fires 60% faster, a wider blast.", "mult": {"rate":1.6}, "add": {"splash":0.2} }
+        ],
+        "ascend": [
+          { "name": "Excitotoxic", "copy": "Hits 2.2 times as hard, over a wider blast.", "mult": {"damage":2.2}, "add": {"splash":0.4} },
+          { "name": "Potentiation", "copy": "Fires 50% faster; the third blast hits twice as hard again.", "mult": {"rate":1.5}, "add": {"spikeMult":2} }
+        ]
+      },
+      "caffeine": {
+        "name": "Caffeine",
+        "label": "CAF",
+        "role": "slow",
+        "color": "#d4a373",
+        "copy": "Wake. Blocks the receptors: slows the creeps it splashes, and for a while they cannot mend or be healed. Bosses resist half the slow.",
+        "wake": true,
+        "cost": 70,
+        "range": 2.1,
+        "rate": 1.1,
+        "damage": 6,
+        "splash": 0.5,
+        "slow": 0.4,
+        "slowTime": 2,
+        "block": 2.5,
+        "paths": [
+          { "name": "Double shot", "copy": "Slows 15% more, a second longer, and blocks mending 1.5 s longer.", "add": {"slow":0.15,"slowTime":1,"block":1.5} },
+          { "name": "Cold brew", "copy": "Hits three times as hard, over a wider splash.", "mult": {"damage":3}, "add": {"splash":0.5} }
+        ],
+        "ascend": [
+          { "name": "Antagonist", "copy": "Slows 15% more, blocks mending 3 s longer, and stops creeps for a moment.", "add": {"slow":0.15,"block":3,"stun":0.25} },
+          { "name": "Espresso", "copy": "Fires twice as fast and hits twice as hard.", "mult": {"rate":2,"damage":2} }
+        ]
+      },
+      "acetylcholine": {
+        "name": "Acetylcholine",
+        "label": "ACH",
+        "role": "chain",
+        "color": "#4cc9f0",
+        "copy": "Wake. A signal down the line: an instant strike that jumps to three more creeps and loses nothing on the way.",
+        "wake": true,
+        "cost": 100,
+        "range": 2.5,
+        "rate": 0.9,
+        "damage": 16,
+        "chain": 3,
+        "chainKeep": 1,
+        "paths": [
+          { "name": "Nicotinic", "copy": "Jumps to three more creeps.", "add": {"chain":3} },
+          { "name": "Muscarinic", "copy": "Hits 80% harder, through half of any armor.", "mult": {"damage":1.8}, "add": {"pierce":0.5} }
+        ],
+        "ascend": [
+          { "name": "Basal forebrain", "copy": "Jumps to four more creeps, 30% harder.", "mult": {"damage":1.3}, "add": {"chain":4} },
+          { "name": "Synaptic burst", "copy": "Strikes 80% faster and 50% harder.", "mult": {"rate":1.8,"damage":1.5} }
+        ]
+      },
+      "cortisol": {
+        "name": "Cortisol",
+        "label": "CRT",
+        "role": "burn",
+        "color": "#f77f00",
+        "copy": "Wake. Stress: sets creeps burning through armor, and every hit wears 3 points of their armor away for good.",
+        "wake": true,
+        "cost": 95,
+        "range": 2.2,
+        "rate": 0.8,
+        "damage": 8,
+        "burn": 12,
+        "burnTime": 3,
+        "pierce": 1,
+        "corrode": 0.03,
+        "paths": [
+          { "name": "Awakening response", "copy": "Burns 80% hotter and a second longer.", "mult": {"burn":1.8}, "add": {"burnTime":1} },
+          { "name": "Catabolic", "copy": "Wears 4 more points of armor a hit, on every creep near the target.", "add": {"corrode":0.04,"splash":0.6} }
+        ],
+        "ascend": [
+          { "name": "Chronic stress", "copy": "Burns 2.4 times as hot.", "mult": {"burn":2.4} },
+          { "name": "Adrenal surge", "copy": "Fires 80% faster, hits 50% harder, and wears 4 more points of armor a hit.", "mult": {"rate":1.8,"damage":1.5}, "add": {"corrode":0.04} }
+        ]
+      },
+      "daybreak": {
+        "name": "Daybreak",
+        "label": "SUN",
+        "role": "beam",
+        "color": "#fff3b0",
+        "copy": "Wake. Morning light: a beam that grows on one target, and each pulse also burns away 0.6% of the life it has left (a quarter of that on bosses).",
+        "wake": true,
+        "cost": 150,
+        "range": 2.7,
+        "rate": 5,
+        "damage": 3.5,
+        "beam": true,
+        "ramp": 0.15,
+        "maxRamp": 20,
+        "rend": 0.006,
+        "paths": [
+          { "name": "Blue light", "copy": "Each pulse burns away another 0.6% of the life left.", "add": {"rend":0.006} },
+          { "name": "Golden hour", "copy": "Ramps faster and 15 steps higher.", "add": {"ramp":0.05,"maxRamp":15} }
+        ],
+        "ascend": [
+          { "name": "Solstice", "copy": "Hits 2.5 times as hard from a cell further.", "mult": {"damage":2.5}, "add": {"range":1} },
+          { "name": "Melanopsin", "copy": "Pulses 40% faster, each burning away another 1% of the life left.", "mult": {"rate":1.4}, "add": {"rend":0.01} }
+        ]
+      },
+      "serotonin": {
+        "name": "Serotonin",
+        "label": "SER",
+        "role": "aura",
+        "color": "#b5e48c",
+        "copy": "Wake. Does not fire. Towers in its circle deal 15% more damage and reach 0.4 cells further. The reach of several does not stack: the widest counts.",
+        "wake": true,
+        "cost": 130,
+        "range": 1.6,
+        "rate": 0,
+        "damage": 0,
+        "aura": 0.15,
+        "reach": 0.4,
+        "paths": [
+          { "name": "Raphe", "copy": "Towers in its circle reach another 0.4 cells further.", "add": {"reach":0.4} },
+          { "name": "Mood lift", "copy": "Towers in its circle deal another 20% more damage.", "add": {"aura":0.2} }
+        ],
+        "ascend": [
+          { "name": "Calm focus", "copy": "Another 30% more damage, and 15% faster fire.", "add": {"aura":0.3,"haste":0.15} },
+          { "name": "Wide awake", "copy": "A wider circle, and another 0.5 cells of reach.", "add": {"range":0.6,"reach":0.5} }
+        ]
+      },
+      "dopamine": {
+        "name": "Dopamine",
+        "label": "DA",
+        "role": "atp",
+        "color": "#ff70a6",
+        "copy": "Wake. Does not fire. Reward: pays 8 ATP every time a wave clears, plus 4 per level.",
+        "wake": true,
+        "cost": 80,
+        "range": 0,
+        "rate": 0,
+        "damage": 0,
+        "atpIncome": 8,
+        "paths": [
+          { "name": "Reward", "copy": "Pays another 10 ATP a wave.", "add": {"atpIncome":10} },
+          { "name": "Motivation", "copy": "Every kill pays 15% more O/I.", "add": {"bounty":0.15} }
+        ],
+        "ascend": [
+          { "name": "Anticipation", "copy": "Pays another 30 ATP a wave.", "add": {"atpIncome":30} },
+          { "name": "Drive", "copy": "Also pays 120 O/I a wave, and kills pay 10% more.", "add": {"income":120,"bounty":0.1} }
+        ]
+      },
+      "histamine": {
+        "name": "Histamine",
+        "label": "HIS",
+        "role": "weaken",
+        "color": "#e5383b",
+        "copy": "Wake. Does not fire. Inflames: creeps in its circle take 15% more damage and move 15% slower (bosses resist half the slowing).",
+        "wake": true,
+        "cost": 100,
+        "range": 1.7,
+        "rate": 0,
+        "damage": 0,
+        "vuln": 0.15,
+        "mire": 0.15,
+        "paths": [
+          { "name": "Inflame", "copy": "Creeps in its circle take another 20% more damage.", "add": {"vuln":0.2} },
+          { "name": "Itch", "copy": "Creeps move another 15% slower, over a wider circle.", "add": {"mire":0.15,"range":0.3} }
+        ],
+        "ascend": [
+          { "name": "Tuberomammillary", "copy": "Another 30% more damage taken, and 30% of armor lost.", "add": {"vuln":0.3,"shred":0.3} },
+          { "name": "Flare-up", "copy": "Creeps move another 20% slower, and any but bosses at 8% life collapse.", "add": {"mire":0.2,"execute":0.08} }
+        ]
       }
     },
     "creeps": {
@@ -762,7 +1003,8 @@
         "gold": 6,
         "leak": 1,
         "size": 0.28,
-        "sides": 4
+        "sides": 4,
+        "atp": 1
       },
       "gaba": {
         "name": "GABA",
@@ -870,7 +1112,8 @@
         "size": 0.42,
         "sides": 8,
         "armor": 0.2,
-        "boss": true
+        "boss": true,
+        "atp": 25
       },
       "circadian": {
         "name": "Circadian Tide",
@@ -883,6 +1126,7 @@
         "size": 0.44,
         "sides": 10,
         "boss": true,
+        "atp": 35,
         "summon": "melatonin",
         "summonEvery": 2.5,
         "summonCount": 2
@@ -899,7 +1143,8 @@
         "sides": 12,
         "armor": 0.35,
         "regen": 8,
-        "boss": true
+        "boss": true,
+        "atp": 50
       },
       "rift": {
         "name": "Rift Titan",
@@ -912,7 +1157,144 @@
         "size": 0.5,
         "sides": 7,
         "armor": 0.15,
-        "boss": true
+        "boss": true,
+        "atp": 40
+      },
+      "delta": {
+        "name": "Delta wave",
+        "label": "DLT",
+        "color": "#6366f1",
+        "hp": 100,
+        "speed": 0.85,
+        "gold": 14,
+        "leak": 2,
+        "size": 0.32,
+        "sides": 4,
+        "ward": 0.1,
+        "atp": 6
+      },
+      "kcomplex": {
+        "name": "K-complex",
+        "label": "KCX",
+        "color": "#f59e0b",
+        "hp": 36,
+        "speed": 1.35,
+        "gold": 9,
+        "leak": 1,
+        "size": 0.25,
+        "sides": 3,
+        "dashEvery": 3.5,
+        "dashTime": 0.7,
+        "dashSpeed": 3.2,
+        "atp": 4
+      },
+      "microsleep": {
+        "name": "Microsleep",
+        "label": "MCS",
+        "color": "#e2e8f0",
+        "hp": 28,
+        "speed": 1.7,
+        "gold": 9,
+        "leak": 1,
+        "size": 0.22,
+        "sides": 5,
+        "phaseEvery": 3,
+        "phaseTime": 1.3,
+        "atp": 4
+      },
+      "cytokine": {
+        "name": "Cytokine",
+        "label": "CYT",
+        "color": "#84cc16",
+        "hp": 44,
+        "speed": 1.1,
+        "gold": 12,
+        "leak": 1,
+        "size": 0.27,
+        "sides": 6,
+        "guard": 0.3,
+        "guardRange": 1.3,
+        "atp": 6
+      },
+      "atonia": {
+        "name": "Atonia",
+        "label": "ATN",
+        "color": "#14b8a6",
+        "hp": 56,
+        "speed": 1.05,
+        "gold": 13,
+        "leak": 2,
+        "size": 0.29,
+        "sides": 8,
+        "jam": 2,
+        "jamRange": 1.5,
+        "atp": 6
+      },
+      "debt": {
+        "name": "Sleep debt",
+        "label": "DBT",
+        "color": "#dc2626",
+        "hp": 72,
+        "speed": 0.85,
+        "gold": 15,
+        "leak": 3,
+        "size": 0.3,
+        "sides": 7,
+        "rush": 0.07,
+        "rushMax": 2,
+        "atp": 8
+      },
+      "hypnos": {
+        "name": "Hypnos",
+        "label": "HYP",
+        "color": "#818cf8",
+        "hp": 700,
+        "speed": 0.5,
+        "gold": 110,
+        "leak": 10,
+        "size": 0.5,
+        "sides": 9,
+        "armor": 0.2,
+        "lull": 0.35,
+        "lullRange": 2.2,
+        "boss": true,
+        "atp": 60
+      },
+      "morpheus": {
+        "name": "Morpheus",
+        "label": "MRP",
+        "color": "#f0e6ff",
+        "hp": 620,
+        "speed": 0.55,
+        "gold": 120,
+        "leak": 10,
+        "size": 0.48,
+        "sides": 5,
+        "phaseEvery": 5,
+        "phaseTime": 1.5,
+        "summon": "microsleep",
+        "summonEvery": 3,
+        "summonCount": 2,
+        "boss": true,
+        "atp": 70
+      },
+      "nyx": {
+        "name": "Nyx",
+        "label": "NYX",
+        "color": "#4338ca",
+        "hp": 850,
+        "speed": 0.42,
+        "gold": 150,
+        "leak": 12,
+        "size": 0.52,
+        "sides": 11,
+        "armor": 0.3,
+        "ward": 0.04,
+        "jam": 1.5,
+        "jamRange": 1.8,
+        "jamEvery": 6,
+        "boss": true,
+        "atp": 90
       }
     },
     "perks": {
@@ -934,7 +1316,7 @@
       },
       "range": {
         "name": "Wider margins",
-        "copy": "+0.1 cells of range for every tower.",
+        "copy": "+0.1 cells of range for every tower that fires.",
         "max": 5,
         "baseCost": 120,
         "costPerLevel": 100,
@@ -999,7 +1381,7 @@
         },
         "reach": {
           "name": "Event horizon",
-          "copy": "+0.15 cells of range for every void tower.",
+          "copy": "+0.15 cells of range for every void tower that fires.",
           "max": 5,
           "baseCost": 220,
           "costPerLevel": 140,
@@ -1014,6 +1396,42 @@
           "amount": 6
         }
       }
+    },
+    "atp": {
+      "_about": "ATP, the third currency. It comes from every Adenosine slain (recycled into ATP), from the dream set of creeps and from every boss (each creep's atp, growing by waves.atpPerWave a wave), from the wake core every time a wave clears (core.atpPerWave, plus core.atpPerLevel for each core level above 1), and from Dopamine towers. It buys the wake set of towers (the ten with wake: true) and the core's levels. start: ATP a run begins with.",
+      "start": 0
+    },
+    "core": {
+      "_about": "The wake core has levels, bought with ATP: level 2 costs cost, each one after costGrowth times the one before. Every level adds livesPerLevel lives and atpPerLevel ATP each time a wave clears. From pulse.fromLevel the core pulses every pulse.every seconds, hitting every creep within its circle (pulse.range cells, plus rangePerLevel a level, up to maxRange) for pulse.damage, times damageGrowth for each level after. stages: what the core gains for good at a level (the pulse slows; towers in its circle deal more damage; lives come back when a wave clears; the pulse comes more often and ignores armor).",
+      "cost": 40,
+      "costGrowth": 1.3,
+      "livesPerLevel": 1,
+      "atpPerWave": 10,
+      "atpPerLevel": 3,
+      "pulse": {
+        "fromLevel": 2,
+        "every": 2,
+        "damage": 10,
+        "damageGrowth": 1.24,
+        "range": 1.3,
+        "rangePerLevel": 0.1,
+        "maxRange": 2.8
+      },
+      "stages": [
+        { "level": 1, "name": "Ember", "copy": "Makes ATP each time a wave clears." },
+        { "level": 2, "name": "Spark", "copy": "Pulses: hits every creep in its circle." },
+        { "level": 4, "name": "Kindled", "copy": "The pulse slows what it hits by 30%.", "slow": 0.3, "slowTime": 1.5 },
+        { "level": 7, "name": "Radiant", "copy": "Towers in its circle deal 15% more damage.", "aura": 0.15 },
+        { "level": 10, "name": "Awakened", "copy": "A life comes back each time a wave clears.", "mend": 1 },
+        { "level": 14, "name": "Zenith", "copy": "The pulse comes twice as often, through all armor.", "rate": 2, "pierce": 1 }
+      ]
+    },
+    "stitch": {
+      "_about": "Maps joined into one: pick two to maxMaps maps on the title screen and they sit side by side (three or four in a square) as one map. The lane is one line through them in the order picked: from where a map's own lane ends it runs on, along a row and a column, to the next map's gate, and only the last map holds the core. A longer lane is easier, so for every map after the first creeps have hpPerBoard more life, kills pay goldPerBoard more O/I, and the run starts with startGoldPerBoard more O/I.",
+      "maxMaps": 4,
+      "hpPerBoard": 0.25,
+      "goldPerBoard": 0.15,
+      "startGoldPerBoard": 0.5
     }
   },
   "chess": {

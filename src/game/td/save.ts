@@ -5,7 +5,7 @@
  */
 
 import { CONFIG } from "../config.ts";
-import { MAPS, buildable, laneCount, type TdMap } from "./map.ts";
+import { buildable, findMap, laneCount } from "./map.ts";
 import {
   CREEPS,
   isCreepKind,
@@ -26,6 +26,8 @@ import {
 import { createGame, TARGETING, type Targeting, type TdState } from "./sim.ts";
 
 export const SAVE_VERSION = 1;
+/** A save cannot claim a core level past this. */
+const MAX_CORE_LEVEL = 200;
 
 /** What the title screen shows about a saved run. */
 export interface RunSummary {
@@ -71,10 +73,11 @@ export function restore(raw: string | null): TdState | null {
   }
   const run = obj(data);
   const st = obj(run.state);
-  if (run.v !== SAVE_VERSION || typeof run.map !== "string" || !MAPS[run.map]) return null;
+  // A stitched map's key names its boards ("coil+zigzag"); each must still be a map.
+  const map = typeof run.map === "string" ? findMap(run.map) : undefined;
+  if (run.v !== SAVE_VERSION || !map) return null;
   if (!num(st.gold) || !num(st.lives) || !num(st.wave) || !num(st.cleared) || st.lives <= 0) return null;
   if (st.phase === "over") return null;
-  const map = MAPS[run.map] as TdMap;
   const s = createGame(map, isDifficulty(st.difficulty) ? st.difficulty : "normal");
 
   s.gold = Math.max(0, st.gold);
@@ -103,6 +106,13 @@ export function restore(raw: string | null): TdState | null {
   const vp = obj(st.voidPerks);
   for (const key of VOID_PERK_KEYS)
     if (num(vp[key])) s.voidPerks[key] = Math.max(0, Math.min(VOID_PERKS[key].max, Math.floor(vp[key])));
+  // ATP and the core's level (a save from before there were any starts the core at level 1).
+  s.atp = num(st.atp) ? Math.max(0, st.atp) : s.atp;
+  const core = obj(st.core);
+  s.core.level = num(core.level) ? Math.max(1, Math.min(MAX_CORE_LEVEL, Math.floor(core.level))) : 1;
+  s.core.pulse = num(core.pulse) ? Math.max(0, core.pulse) : 0;
+  s.core.dealt = num(core.dealt) ? Math.max(0, core.dealt) : 0;
+  s.core.kills = num(core.kills) ? Math.max(0, core.kills) : 0;
 
   let maxId = 0;
   const seen = new Set<string>();
@@ -137,6 +147,7 @@ export function restore(raw: string | null): TdState | null {
       // A save from before refunds were tracked never counts as a fresh build.
       builtWave: num(t.builtWave) ? t.builtWave : -1,
       builtCleared: num(t.builtCleared) ? t.builtCleared : -1,
+      jam: num(t.jam) ? Math.max(0, Math.min(10, t.jam)) : 0,
     });
     maxId = Math.max(maxId, t.id);
   }
@@ -175,6 +186,14 @@ export function restore(raw: string | null): TdState | null {
       exec: 0,
       execBy: 0,
       summoned: c.summoned === true && kind === "rift",
+      stun: Math.max(0, n("stun")),
+      stunGrace: Math.max(0, n("stunGrace")),
+      block: Math.max(0, n("block")),
+      age: Math.max(0, n("age")),
+      faded: false,
+      guard: 0,
+      mire: 0,
+      jamTimer: n("jamTimer", CREEPS[kind].jamEvery ?? 0),
     });
     maxId = Math.max(maxId, c.id);
   }

@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -20,6 +21,7 @@ import {
   PictureInPicture2,
   Minus,
   Plus,
+  RefreshCw,
   RotateCcw,
   Settings2,
   Trash2,
@@ -32,10 +34,11 @@ import {
   nudgeSetting,
   updateText,
 } from "@/game/engine";
+import { parseCodex } from "@/game/codex";
 import { unzipTexts } from "@/game/unzip";
 import { saveConfirmed } from "@/game/textFiles";
 import { repXp } from "@/game/recite";
-import { clock, wordsOf } from "@/game/reps";
+import { clock, phraseKey, wordsOf } from "@/game/reps";
 import { bytesPicture } from "@/game/readview";
 import {
   BYTES_MODES,
@@ -53,13 +56,16 @@ import {
   askUnrestricted,
   batteryUnrestricted,
   bubbleState,
+  resetBubblePlace,
   type BubbleSetup,
 } from "@/game/repBubble";
+import { voiceEngines, voiceHere, voiceList, type VoiceInfo } from "@/game/voice";
 import {
   bubbleShown,
   hideBubble,
   pickedWavs,
   playNonstop,
+  playVoice,
   requestReader,
   playWav,
   rehearseOpen,
@@ -116,6 +122,17 @@ import {
   clampCycles,
   clampFade,
   clampPhraseSize,
+  clampBubbleSp,
+  clampRobot,
+  clampRobotHz,
+  clampVoiceCopies,
+  clampVoiceMs,
+  clampVoicePitch,
+  clampVoiceRate,
+  clampVoiceSpeedUp,
+  VOICE_PRESETS,
+  voicePresetOf,
+  voiceShapeOf,
   levelsText,
   parseLevels,
   presetOf,
@@ -522,6 +539,26 @@ export function RehearseTab() {
       playNonstop(null);
     }
   }, [nonstop, sound, phraseText, signalMs, amp, rawRate, mode, plays, topSpeed, encoding]);
+  // The robot voice: the current phrase said, over and over (on after the tab closes too, with Background on).
+  const [voiceNote, setVoiceNote] = useState("");
+  const voiceKey = JSON.stringify([
+    set.voice,
+    set.voiceEngine,
+    set.voiceName,
+    voiceShapeOf(set),
+    phraseText,
+  ]);
+  useEffect(() => {
+    let live = true;
+    void playVoice(set.voice && phraseText ? phraseText : null).then((m) => {
+      if (live) setVoiceNote(m);
+    });
+    return () => {
+      live = false;
+    };
+    // voiceKey holds the phrase and every voice setting.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceKey]);
   // Open here; closed, the background takes over (or the sound stops, with Background off).
   useEffect(() => {
     startRehearseBackground();
@@ -690,6 +727,113 @@ export function RehearseTab() {
     }
     if (files.length) loadCodexTexts(files);
   };
+  /** .txt files in input_perphrase holding a phrase that is not in the list yet (found by Refresh). */
+  const [newPhrases, setNewPhrases] = useState<string[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  /** What the last Refresh found, shown under its button. */
+  const [refreshNote, setRefreshNote] = useState("");
+  /**
+   * Refresh: the lists read again. In the phone app the azs-folder is looked at
+   * afresh: a .txt changed outside the app replaces the text (or the phrase) it
+   * belongs to, new .txt files are offered to load, and the .wav files are found
+   * again. Anywhere, the checks and what is kept on the device are read again.
+   */
+  const refresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      setCheckTick((t) => t + 1);
+      const s = (n: number) => (n === 1 ? "" : "s");
+      if (!folder) {
+        const n = textsView ? library.length : st.items.length;
+        setRefreshNote(
+          `Refreshed: ${n.toLocaleString()} ${textsView ? "text" : "phrase"}${s(n)} shown, all there are.`,
+        );
+        return;
+      }
+      const wavCount = (await lookForWavs())[dir] ?? 0;
+      setTick((t) => t + 1);
+      const fold = (t: string) => t.replace(/\s+/g, " ").trim();
+      if (textsView) {
+        const files = (await listFolder(TEXT_FOLDER))
+          .map((f) => f.name)
+          .filter((f) => /\.txt$/i.test(f));
+        const mine = new Map(textNames.map((n, i) => [`${n}.txt`.toLowerCase(), i]));
+        const sums = readSums();
+        const changed: { name: string; lines: string[]; folder?: string }[] = [];
+        let fresh = 0;
+        for (const [i, f] of files.entries()) {
+          const at = mine.get(f.toLowerCase());
+          const t = at === undefined ? undefined : library[at];
+          if (!t) {
+            fresh += 1;
+            continue;
+          }
+          if (t.builtIn) continue;
+          setRefreshNote(`Reading ${i + 1} of ${files.length}…`);
+          let lines: string[];
+          try {
+            lines = parseCodex(await readFolderText(`${TEXT_FOLDER}/${f}`));
+          } catch {
+            continue;
+          }
+          if (!lines.length || lines.join("\n") === t.lines.join("\n")) continue;
+          // A text changed here and not saved yet keeps its own words: it is saved over the file.
+          const k = f.toLowerCase();
+          if (sums[k] && sums[k] !== textSum(t.lines)) continue;
+          sums[k] = textSum(lines);
+          changed.push({ name: t.name, lines, folder: t.folder });
+        }
+        if (changed.length) {
+          writeSums(sums);
+          for (const c of changed) updateText(c.name, c.lines, c.folder);
+        }
+        setRefreshNote(
+          `Refreshed from ${TEXT_FOLDER}: ${files.length} .txt file${s(files.length)}, ${changed.length} changed outside and read again${fresh ? `, ${fresh} new (load ${fresh === 1 ? "it" : "them"} with the button above)` : ""}; ${wavCount} .wav file${s(wavCount)}.`,
+        );
+        return;
+      }
+      const files = (await listFolder(PHRASE_FOLDER))
+        .map((f) => f.name)
+        .filter((f) => /\.txt$/i.test(f));
+      const mine = new Map(names.map((n, i) => [`${n}.txt`.toLowerCase(), i]));
+      const have = new Set(st.items.map((i) => phraseKey(i.text)));
+      const fresh: string[] = [];
+      const changed: { id: string; text: string }[] = [];
+      for (const [i, f] of files.entries()) {
+        setRefreshNote(`Reading ${i + 1} of ${files.length}…`);
+        let text: string;
+        try {
+          text = fold(await readFolderText(`${PHRASE_FOLDER}/${f}`));
+        } catch {
+          continue;
+        }
+        const key = phraseKey(text);
+        if (!text || have.has(key)) continue;
+        have.add(key);
+        // Its own phrase's file, rewritten outside: the phrase takes the new words (its count stays).
+        const at = mine.get(f.toLowerCase());
+        const it = at === undefined ? undefined : st.items[at];
+        if (it) changed.push({ id: it.id, text });
+        else fresh.push(text);
+      }
+      if (changed.length) {
+        const next = new Map(changed.map((c) => [c.id, c.text]));
+        update((st0) => ({
+          ...st0,
+          items: st0.items.map((it) => (next.has(it.id) ? { ...it, text: next.get(it.id)! } : it)),
+        }));
+      }
+      setNewPhrases(fresh);
+      setRefreshNote(
+        `Refreshed from ${PHRASE_FOLDER}: ${files.length} .txt file${s(files.length)}, ${changed.length} changed outside and read again${fresh.length ? `, ${fresh.length} new (add ${fresh.length === 1 ? "it" : "them"} with the button above)` : ""}; ${wavCount} .wav file${s(wavCount)}.`,
+      );
+    } catch (e) {
+      setRefreshNote(String((e as Error)?.message ?? e));
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const hasWav = (base: string, d = dir) => {
     const key = `${base}.wav`.toLowerCase();
     return wavs.has(`${d}/${key}`) || picked.has(key);
@@ -800,6 +944,21 @@ export function RehearseTab() {
     setArmed(key);
     window.setTimeout(() => setArmed((a) => (a === key ? "" : a)), 3000);
   };
+  // The lists' rows only draw again when their own line changes, however many there are:
+  // what they call stays the same from one draw to the next.
+  const armNow = useRef(arm);
+  armNow.current = arm;
+  const pickText = useCallback((key: string) => rehearseUpdate((s) => ({ ...s, text: key })), []);
+  const resetTextRow = useCallback(
+    (key: string) => armNow.current(`rt-${key}`, () => rehearseUpdate((s) => resetText(s, key))),
+    [],
+  );
+  const pickPhrase = useCallback((id: string) => rehearseUpdate((s) => select(s, id)), []);
+  const resetPhraseRow = useCallback((id: string) => rehearseUpdate((s) => resetCount(s, id)), []);
+  const removePhraseRow = useCallback(
+    (id: string) => armNow.current(`rm-${id}`, () => rehearseUpdate((s) => removePhrase(s, id))),
+    [],
+  );
 
   const rep = () => {
     const text = activeText;
@@ -851,6 +1010,13 @@ export function RehearseTab() {
       live = false;
     };
   }, []);
+  /** The window's look, as set here. */
+  const bubbleLook = {
+    phraseSp: set.bubblePhraseSp,
+    barSp: set.bubbleBarSp,
+    bottomSp: set.bubbleBottomSp,
+    showBottom: set.bubbleBottom,
+  };
   const bubbleSetup = (): BubbleSetup =>
     textsView
       ? {
@@ -867,6 +1033,7 @@ export function RehearseTab() {
           title: textNow?.name ?? "",
           passes: prog.passes,
           locked,
+          ...bubbleLook,
         }
       : {
           phrases: st.items.map((i) => ({ id: i.id, text: i.text, count: i.count })),
@@ -878,6 +1045,7 @@ export function RehearseTab() {
           title: "",
           passes: 0,
           locked,
+          ...bubbleLook,
         };
   // The window shows what is here: the phrases (or the text's), their counts, the batch and its wait.
   const bubbleKey = JSON.stringify(
@@ -892,8 +1060,17 @@ export function RehearseTab() {
           batchWait,
           st.lastTap,
           locked,
+          bubbleLook,
         ]
-      : [st.items.map((i) => [i.id, i.count]), item?.id, set.batch, batchWait, st.lastTap, locked],
+      : [
+          st.items.map((i) => [i.id, i.count]),
+          item?.id,
+          set.batch,
+          batchWait,
+          st.lastTap,
+          locked,
+          bubbleLook,
+        ],
   );
   useEffect(() => {
     if (!bubbleOn) return;
@@ -1391,6 +1568,47 @@ export function RehearseTab() {
                 : "Floating window over other apps: tap it to count reps"}
             </button>
           )}
+          {bubbleHere && (
+            <fieldset disabled={locked} className="mt-2 min-w-0">
+              <div className="grid grid-cols-3 gap-1">
+                <SizeStep
+                  label="Its phrase"
+                  value={`${set.bubblePhraseSp}`}
+                  less={() => setOpt({ bubblePhraseSp: clampBubbleSp(set.bubblePhraseSp - 1) })}
+                  more={() => setOpt({ bubblePhraseSp: clampBubbleSp(set.bubblePhraseSp + 1) })}
+                />
+                <SizeStep
+                  label="Its top bar"
+                  value={`${set.bubbleBarSp}`}
+                  less={() => setOpt({ bubbleBarSp: Math.max(8, set.bubbleBarSp - 1) })}
+                  more={() => setOpt({ bubbleBarSp: Math.min(48, set.bubbleBarSp + 1) })}
+                />
+                <SizeStep
+                  label="Its bottom"
+                  value={`${set.bubbleBottomSp}`}
+                  less={() => setOpt({ bubbleBottomSp: Math.max(6, set.bubbleBottomSp - 1) })}
+                  more={() => setOpt({ bubbleBottomSp: Math.min(48, set.bubbleBottomSp + 1) })}
+                />
+              </div>
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                <Toggle
+                  label="Its bottom line (count)"
+                  on={set.bubbleBottom}
+                  flip={() => setOpt({ bubbleBottom: !set.bubbleBottom })}
+                />
+                <button
+                  type="button"
+                  className="btn tracking-normal normal-case"
+                  onClick={() => {
+                    void resetBubblePlace();
+                    setTapNote("Floating window: back in the middle, at its first size.");
+                  }}
+                >
+                  Reset its place and size
+                </button>
+              </div>
+            </fieldset>
+          )}
           <fieldset disabled={locked} className="min-w-0">
             <div className="mt-2">
               <Toggle
@@ -1683,6 +1901,7 @@ export function RehearseTab() {
               , its loudest point at {set.amp}.
             </p>
           )}
+          <VoicePanel set={set} setOpt={setOpt} note={voiceNote} />
           <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
             THE PICTURE: ITS BYTES, THREE LAYERS
           </p>
@@ -1862,6 +2081,19 @@ export function RehearseTab() {
                   {TEXT_FOLDER}
                 </button>
               )}
+              {folder && !textsView && newPhrases.length > 0 && (
+                <button
+                  type="button"
+                  className="btn w-full tracking-normal normal-case"
+                  onClick={() => {
+                    add(newPhrases, PHRASE_FOLDER);
+                    setNewPhrases([]);
+                  }}
+                >
+                  Add {newPhrases.length} new phrase{newPhrases.length === 1 ? "" : "s"} from{" "}
+                  {PHRASE_FOLDER}
+                </button>
+              )}
             </>
           ) : (
             <>
@@ -1899,53 +2131,56 @@ export function RehearseTab() {
           )}
         </div>
 
+        <div className="mt-4 flex items-center gap-2">
+          <p className="min-w-0 flex-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
+            {textsView
+              ? `YOUR TEXTS · ${library.length.toLocaleString()} · ${phraseCounts.reduce((n, c) => n + c, 0).toLocaleString()} PHRASES IN ALL · TAP ONE TO REHEARSE IT`
+              : `YOUR PHRASES · ${st.items.length.toLocaleString()} · TAP ONE TO REHEARSE IT`}
+          </p>
+          <button
+            type="button"
+            className="btn tracking-normal normal-case"
+            onClick={() => void refresh()}
+            disabled={refreshing}
+            aria-label={
+              folder
+                ? `Refresh: read ${dir} in the azs-folder again, for files changed or added outside the app`
+                : "Refresh the list"
+            }
+          >
+            <RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
+            {refreshing ? "Reading…" : "Refresh"}
+          </button>
+        </div>
+        {refreshNote && (
+          <p className="mt-1 text-xs text-gold" role="status">
+            {refreshNote}
+          </p>
+        )}
         {textsView ? (
           <>
-            <ul className="mt-4 max-h-[45dvh] overflow-y-auto" aria-label="Texts and their passes">
+            <ul className="mt-2 max-h-[45dvh] overflow-y-auto" aria-label="Texts and their passes">
               {library.map((t, i) => {
                 const p = textProgress(st, t.key);
                 const n = phraseCounts[i] ?? 0;
                 return (
-                  <li
+                  <TextRow
                     key={t.key}
-                    className={`flex items-center gap-1 border-b border-cyan/10 py-1 ${t.key === textKeyNow ? "bg-violet/15" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="min-w-0 flex-1 py-1 text-left text-sm text-fg"
-                      onClick={() => update((s) => ({ ...s, text: t.key }))}
-                      aria-current={t.key === textKeyNow}
-                    >
-                      <span className="block truncate">
-                        <span className="text-muted">{i + 1}.</span>{" "}
-                        {hasWav(textNames[i] ?? "", TEXT_FOLDER) ? "♪ " : ""}
-                        {rowChecks[i] === "checked" ? "✓ " : ""}
-                        {t.folder ? <span className="text-muted">{t.folder} / </span> : null}
-                        {t.name}
-                      </span>
-                      <span className="block text-[0.65rem] text-muted">
-                        phrase {Math.min(p.at, Math.max(0, n - 1)) + 1} of {n} · {p.passes} pass
-                        {p.passes === 1 ? "" : "es"}
-                      </span>
-                    </button>
-                    <span className="w-12 text-right font-display text-xs text-cyan">
-                      {p.reps.toLocaleString()}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn stepper"
-                      data-on={armed === `rt-${t.key}`}
-                      onClick={() => arm(`rt-${t.key}`, () => update((s) => resetText(s, t.key)))}
-                      disabled={!p.reps && !p.at && !p.passes}
-                      aria-label={
-                        armed === `rt-${t.key}`
-                          ? `Tap again to start over: ${t.name}`
-                          : `Start over (place, passes and reps): ${t.name}`
-                      }
-                    >
-                      <RotateCcw className="size-4" aria-hidden />
-                    </button>
-                  </li>
+                    tkey={t.key}
+                    index={i}
+                    name={t.name}
+                    folder={t.folder ?? ""}
+                    current={t.key === textKeyNow}
+                    wav={hasWav(textNames[i] ?? "", TEXT_FOLDER)}
+                    checked={rowChecks[i] === "checked"}
+                    at={Math.min(p.at, Math.max(0, n - 1))}
+                    total={n}
+                    passes={p.passes}
+                    reps={p.reps}
+                    armed={armed === `rt-${t.key}`}
+                    onPick={pickText}
+                    onReset={resetTextRow}
+                  />
                 );
               })}
             </ul>
@@ -1958,61 +2193,36 @@ export function RehearseTab() {
                 disabled={!Object.keys(st.progress).length}
               >
                 {armed === "zero-texts"
-                  ? "Tap again: every text from the start"
-                  : "Every text from the start (places, passes, reps)"}
+                  ? "Tap again: every text's progress back to 0"
+                  : "Reset all progress: every text back to phrase 1, 0 passes, 0 reps"}
               </button>
+              <p className="mt-1 text-[0.65rem] leading-snug text-muted">
+                This only clears where you are in each text and what you have counted. The texts
+                themselves stay. The ↺ beside a text does the same for that one text.
+              </p>
             </div>
           </>
         ) : (
           st.items.length > 0 && (
             <>
               <ul
-                className="mt-4 max-h-[45dvh] overflow-y-auto"
+                className="mt-2 max-h-[45dvh] overflow-y-auto"
                 aria-label="Phrases and their reps"
               >
                 {st.items.map((it, i) => (
-                  <li
+                  <PhraseRow
                     key={it.id}
-                    className={`flex items-center gap-1 border-b border-cyan/10 py-1 ${it.id === item?.id ? "bg-violet/15" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="min-w-0 flex-1 truncate py-2 text-left text-sm text-fg"
-                      onClick={() => update((s) => select(s, it.id))}
-                      aria-current={it.id === item?.id}
-                    >
-                      <span className="text-muted">{i + 1}.</span>{" "}
-                      {hasWav(names[i] ?? "") ? "♪ " : ""}
-                      {it.text}
-                    </button>
-                    <span className="w-12 text-right font-display text-xs text-cyan">
-                      {it.count.toLocaleString()}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn stepper"
-                      onClick={() => update((s) => resetCount(s, it.id))}
-                      disabled={!it.count}
-                      aria-label={`Reset the count of: ${it.text}`}
-                    >
-                      <RotateCcw className="size-4" aria-hidden />
-                    </button>
-                    <button
-                      type="button"
-                      className="btn stepper"
-                      data-on={armed === `rm-${it.id}`}
-                      onClick={() =>
-                        arm(`rm-${it.id}`, () => update((s) => removePhrase(s, it.id)))
-                      }
-                      aria-label={
-                        armed === `rm-${it.id}`
-                          ? `Tap again to remove: ${it.text}`
-                          : `Remove: ${it.text}`
-                      }
-                    >
-                      <Trash2 className="size-4" aria-hidden />
-                    </button>
-                  </li>
+                    id={it.id}
+                    index={i}
+                    text={it.text}
+                    count={it.count}
+                    current={it.id === item?.id}
+                    wav={hasWav(names[i] ?? "")}
+                    armed={armed === `rm-${it.id}`}
+                    onPick={pickPhrase}
+                    onReset={resetPhraseRow}
+                    onRemove={removePhraseRow}
+                  />
                 ))}
               </ul>
               <div className="mt-2 grid grid-cols-2 gap-2">
@@ -2023,7 +2233,9 @@ export function RehearseTab() {
                   onClick={() => arm("zero", () => update(resetCounts))}
                   disabled={!totalReps(st)}
                 >
-                  {armed === "zero" ? "Tap again: all counts to 0" : "Reset all counts"}
+                  {armed === "zero"
+                    ? "Tap again: all counts to 0"
+                    : "Reset all counts to 0 (phrases stay)"}
                 </button>
                 <button
                   type="button"
@@ -2043,6 +2255,116 @@ export function RehearseTab() {
     </div>
   );
 }
+
+/** A text in the list: its name, where you are in it, its reps, and the button that starts it over. */
+const TextRow = memo(function TextRow(p: {
+  tkey: string;
+  index: number;
+  name: string;
+  folder: string;
+  current: boolean;
+  wav: boolean;
+  checked: boolean;
+  at: number;
+  total: number;
+  passes: number;
+  reps: number;
+  armed: boolean;
+  onPick: (key: string) => void;
+  onReset: (key: string) => void;
+}) {
+  return (
+    <li
+      className={`flex items-center gap-1 border-b border-cyan/10 py-1 ${p.current ? "bg-violet/15" : ""}`}
+    >
+      <button
+        type="button"
+        className="min-w-0 flex-1 py-1 text-left text-sm text-fg"
+        onClick={() => p.onPick(p.tkey)}
+        aria-current={p.current}
+      >
+        <span className="block truncate">
+          <span className="text-muted">{p.index + 1}.</span> {p.wav ? "♪ " : ""}
+          {p.checked ? "✓ " : ""}
+          {p.folder ? <span className="text-muted">{p.folder} / </span> : null}
+          {p.name}
+        </span>
+        <span className="block text-[0.65rem] text-muted">
+          phrase {(p.at + 1).toLocaleString()} of {p.total.toLocaleString()} · {p.passes} pass
+          {p.passes === 1 ? "" : "es"}
+        </span>
+      </button>
+      <span className="w-12 text-right font-display text-xs text-cyan">
+        {p.reps.toLocaleString()}
+      </span>
+      <button
+        type="button"
+        className="btn stepper"
+        data-on={p.armed}
+        onClick={() => p.onReset(p.tkey)}
+        disabled={!p.reps && !p.at && !p.passes}
+        aria-label={
+          p.armed
+            ? `Tap again to start over: ${p.name}`
+            : `Start over (place, passes and reps): ${p.name}`
+        }
+      >
+        <RotateCcw className="size-4" aria-hidden />
+      </button>
+    </li>
+  );
+});
+
+/** A phrase in the list: its words, its reps, and the buttons that reset its count or take it out. */
+const PhraseRow = memo(function PhraseRow(p: {
+  id: string;
+  index: number;
+  text: string;
+  count: number;
+  current: boolean;
+  wav: boolean;
+  armed: boolean;
+  onPick: (id: string) => void;
+  onReset: (id: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <li
+      className={`flex items-center gap-1 border-b border-cyan/10 py-1 ${p.current ? "bg-violet/15" : ""}`}
+    >
+      <button
+        type="button"
+        className="min-w-0 flex-1 truncate py-2 text-left text-sm text-fg"
+        onClick={() => p.onPick(p.id)}
+        aria-current={p.current}
+      >
+        <span className="text-muted">{p.index + 1}.</span> {p.wav ? "♪ " : ""}
+        {p.text}
+      </button>
+      <span className="w-12 text-right font-display text-xs text-cyan">
+        {p.count.toLocaleString()}
+      </span>
+      <button
+        type="button"
+        className="btn stepper"
+        onClick={() => p.onReset(p.id)}
+        disabled={!p.count}
+        aria-label={`Reset the count of: ${p.text}`}
+      >
+        <RotateCcw className="size-4" aria-hidden />
+      </button>
+      <button
+        type="button"
+        className="btn stepper"
+        data-on={p.armed}
+        onClick={() => p.onRemove(p.id)}
+        aria-label={p.armed ? `Tap again to remove: ${p.text}` : `Remove: ${p.text}`}
+      >
+        <Trash2 className="size-4" aria-hidden />
+      </button>
+    </li>
+  );
+});
 
 /** Each loop's level in turn, typed as numbers apart ("0.5, 0.5, 2, 1"). */
 function LevelsField({ levels, set }: { levels: number[]; set: (v: number[]) => void }) {
@@ -2106,5 +2428,178 @@ function SizeStep({
         </button>
       </span>
     </div>
+  );
+}
+
+/** The robot voice's settings: engine and voice, presets, rate, pitch, copies, speed-ups, gap, robot. */
+function VoicePanel({
+  set,
+  setOpt,
+  note,
+}: {
+  set: RehearseSettings;
+  setOpt: (next: Partial<RehearseSettings>) => void;
+  note: string;
+}) {
+  const [where, setWhere] = useState<"phone" | "browser" | null>(null);
+  const [engines, setEngines] = useState<{ name: string; label: string }[]>([]);
+  const [voices, setVoices] = useState<VoiceInfo[]>([]);
+  useEffect(() => {
+    let live = true;
+    void voiceHere().then((w) => live && setWhere(w));
+    void voiceEngines().then((e) => live && setEngines(e));
+    return () => {
+      live = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!set.voice) return;
+    let live = true;
+    void voiceList(set.voiceEngine).then((v) => live && setVoices(v));
+    return () => {
+      live = false;
+    };
+  }, [set.voice, set.voiceEngine]);
+  const preset = voicePresetOf(set);
+  return (
+    <>
+      <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
+        THE ROBOT VOICE: THE PHONE'S TEXT-TO-SPEECH
+      </p>
+      <Toggle
+        label="Robot voice: it says the phrase"
+        on={set.voice}
+        flip={() => setOpt({ voice: !set.voice })}
+      />
+      {set.voice && (
+        <>
+          {where === "phone" && (
+            <label className="block text-xs">
+              <span className="text-muted">Voice engine</span>
+              <select
+                className="mt-1 w-full rounded border border-cyan/40 bg-bg p-2 text-fg"
+                value={set.voiceEngine}
+                onChange={(e) => setOpt({ voiceEngine: e.target.value, voiceName: "" })}
+                aria-label="Voice engine"
+              >
+                <option value="">The phone's default</option>
+                {engines.map((e) => (
+                  <option key={e.name} value={e.name}>
+                    {e.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="block text-xs">
+            <span className="text-muted">Voice ({voices.length})</span>
+            <select
+              className="mt-1 w-full rounded border border-cyan/40 bg-bg p-2 text-fg"
+              value={set.voiceName}
+              onChange={(e) => setOpt({ voiceName: e.target.value })}
+              aria-label="Voice"
+            >
+              <option value="">The engine's default</option>
+              {voices.map((v) => (
+                <option key={v.name} value={v.name}>
+                  {v.locale} · {v.name}
+                  {v.network ? " (online)" : ""}
+                  {v.notInstalled ? " (not installed)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-1" role="radiogroup" aria-label="Voice presets">
+            {VOICE_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="radio"
+                aria-checked={preset === p.id}
+                data-on={preset === p.id}
+                className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+                onClick={() => setOpt(p.shape)}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+          <Num
+            label="Speaking rate (1 as it is)"
+            value={set.voiceRate}
+            step={0.1}
+            digits={2}
+            set={(v) => setOpt({ voiceRate: clampVoiceRate(v) })}
+          />
+          <Num
+            label="Pitch (1 as it is)"
+            value={set.voicePitch}
+            step={0.1}
+            digits={2}
+            set={(v) => setOpt({ voicePitch: clampVoicePitch(v) })}
+          />
+          <Num
+            label="Copies at once"
+            value={set.voiceCopies}
+            step={1}
+            set={(v) => setOpt({ voiceCopies: clampVoiceCopies(v) })}
+          />
+          <Num
+            label="Each copy starts after (ms)"
+            value={set.voiceSpreadMs}
+            step={10}
+            set={(v) => setOpt({ voiceSpreadMs: clampVoiceMs(v) })}
+          />
+          <Num
+            label="Each copy faster (×, pitch and pace)"
+            value={set.voiceSpeedUp}
+            step={0.05}
+            digits={2}
+            set={(v) => setOpt({ voiceSpeedUp: clampVoiceSpeedUp(v) })}
+          />
+          <Toggle
+            label="Over and over while on the phrase"
+            on={set.voiceLoop}
+            flip={() => setOpt({ voiceLoop: !set.voiceLoop })}
+          />
+          <Num
+            label="Silence between (ms)"
+            value={set.voiceGapMs}
+            step={50}
+            set={(v) => setOpt({ voiceGapMs: clampVoiceMs(v) })}
+          />
+          <Num
+            label="Robot (0 none, 1 all)"
+            value={set.voiceRobot}
+            step={0.05}
+            digits={2}
+            set={(v) => setOpt({ voiceRobot: clampRobot(v) })}
+          />
+          <Num
+            label="Robot tone (Hz)"
+            value={set.voiceRobotHz}
+            step={5}
+            set={(v) => setOpt({ voiceRobotHz: clampRobotHz(v) })}
+          />
+          <Num
+            label="Voice volume (1 as it is; above 1 clips)"
+            value={set.voiceVolume}
+            step={0.1}
+            digits={2}
+            set={(v) => setOpt({ voiceVolume: clampAmp(v) })}
+          />
+          <p className="text-[0.65rem] leading-snug text-muted">
+            {where === "browser"
+              ? "Here the browser's own voice says it (its voice, rate and pitch, one copy). The copies, speed-ups and the robot are in the Android app."
+              : "Said by the phone's text-to-speech, then played here: copies drift apart as each loops at its own speed. For truly robotic voices, install a voice engine such as eSpeak NG and choose it above (or set it in Android's Text-to-speech settings)."}
+          </p>
+          {note && (
+            <p className="text-xs text-gold" role="status">
+              {note}
+            </p>
+          )}
+        </>
+      )}
+    </>
   );
 }

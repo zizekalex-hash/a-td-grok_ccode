@@ -84,8 +84,8 @@ async function inflate(data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-/** The .txt files of a zip, in the zip's order (at most maxFiles). Files packed another way are skipped. */
-export async function unzipTexts(bytes: Uint8Array, maxFiles = 300): Promise<ZipText[]> {
+/** The .txt files of a zip, in the zip's order: all of them, unless maxFiles says fewer. Files packed another way are skipped. */
+export async function unzipTexts(bytes: Uint8Array, maxFiles = Infinity): Promise<ZipText[]> {
   const entries = zipEntries(bytes).filter(
     (e) => isTextPath(e.path) && (e.method === 0 || e.method === 8),
   );

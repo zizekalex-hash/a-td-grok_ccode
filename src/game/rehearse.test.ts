@@ -54,6 +54,10 @@ import {
   textPass,
   textPercent,
   SPENT_GAP_MS,
+  VOICE_PRESETS,
+  voicePresetOf,
+  voiceShapeOf,
+  voiceSpeeds,
   libraryOf,
   currentText,
   applyBubble,
@@ -573,5 +577,97 @@ describe("rehearse: the floating window and the background", () => {
       { text: "Three here now.", n: 10 },
       { text: "Hold it", n: 1 },
     ]);
+  });
+});
+
+describe("rehearse: no limits on phrases or texts", () => {
+  it("keeps every phrase, however many and however long", () => {
+    const many = Array.from({ length: 12000 }, (_, i) => `Phrase number ${i} of a long list`);
+    let n = 0;
+    const r = addPhrases(newRehearse(), many, 1, () => `p${n++}`);
+    assert.equal(r.added, 12000);
+    assert.equal(r.state.items.length, 12000);
+    const long = `${"word ".repeat(4000)}end`;
+    const one = addPhrases(newRehearse(), [long], 1, () => "x");
+    assert.equal(one.state.items[0]!.text, long, "a very long phrase is kept whole");
+    // And all of it comes back from a save.
+    const back = loadRehearse(JSON.parse(JSON.stringify(r.state)));
+    assert.equal(back.items.length, 12000);
+    assert.equal(loadRehearse(JSON.parse(JSON.stringify(one.state))).items[0]!.text, long);
+  });
+
+  it("takes every line of a pasted or loaded .txt as a phrase", () => {
+    const text = Array.from({ length: 7000 }, (_, i) => `Line ${i}`).join("\n");
+    assert.equal(phrasesOf(text, false).length, 7000);
+  });
+
+  it("keeps the place of every text, and a text's key whole", () => {
+    const progress: Record<string, unknown> = {};
+    for (let i = 0; i < 5000; i++)
+      progress[`folder/text ${i}`] = { at: i, passes: 1, reps: 2, last: 3, spentMs: 4 };
+    const key = `${"a very long folder name ".repeat(30)}/text`;
+    progress[key] = { at: 7, passes: 0, reps: 0, last: 0, spentMs: 0 };
+    const s = loadRehearse({ view: "texts", text: key, progress });
+    assert.equal(Object.keys(s.progress).length, 5001);
+    assert.equal(s.text, key);
+    assert.equal(s.progress[key]!.at, 7);
+    assert.equal(s.progress["folder/text 4999"]!.at, 4999);
+  });
+});
+
+describe("rehearse: the floating window's look and the robot voice", () => {
+  it("sizes the floating window from the app, within sense", () => {
+    const d = defaultSettings();
+    assert.deepEqual(
+      [d.bubblePhraseSp, d.bubbleBarSp, d.bubbleBottomSp, d.bubbleBottom],
+      [14, 16, 12, true],
+    );
+    const back = loadRehearse({
+      settings: { bubblePhraseSp: 500, bubbleBarSp: 1, bubbleBottomSp: 20, bubbleBottom: false },
+    }).settings;
+    assert.deepEqual(
+      [back.bubblePhraseSp, back.bubbleBarSp, back.bubbleBottomSp, back.bubbleBottom],
+      [72, 8, 20, false],
+    );
+  });
+
+  it("is off to start, plain; presets set its copies, speed-ups and robot", () => {
+    const d = defaultSettings();
+    assert.equal(d.voice, false);
+    assert.equal(voicePresetOf(d), "plain");
+    const robot = VOICE_PRESETS.find((p) => p.id === "robot")!;
+    assert.equal(voicePresetOf({ ...d, ...robot.shape }), "robot");
+    assert.equal(voicePresetOf({ ...d, voiceCopies: 3 }), "custom");
+    assert.deepEqual(voiceSpeeds({ voiceCopies: 3, voiceSpeedUp: 1.25 }), [1, 1.25, 1.5625]);
+    assert.deepEqual(Object.keys(voiceShapeOf(d)).length, 10);
+    const back = loadRehearse({
+      settings: {
+        voice: true,
+        voiceEngine: "com.reecedunn.espeak",
+        voiceName: "en-us",
+        voiceRate: 99,
+        voicePitch: 0,
+        voiceCopies: 100,
+        voiceSpeedUp: 9,
+        voiceRobot: 2,
+        voiceRobotHz: 0,
+        voiceVolume: 50,
+      },
+    }).settings;
+    assert.equal(back.voice, true);
+    assert.equal(back.voiceEngine, "com.reecedunn.espeak");
+    assert.equal(back.voiceName, "en-us");
+    assert.deepEqual(
+      [
+        back.voiceRate,
+        back.voicePitch,
+        back.voiceCopies,
+        back.voiceSpeedUp,
+        back.voiceRobot,
+        back.voiceRobotHz,
+        back.voiceVolume,
+      ],
+      [10, 0.1, 32, 4, 1, 1, 50],
+    );
   });
 });

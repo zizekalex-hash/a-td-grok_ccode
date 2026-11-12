@@ -15,12 +15,8 @@ import { phraseKey, phrasesFromText } from "./reps.ts";
 import { BYTES_MODES, readUnits, textKey, type BytesMode } from "./readtext.ts";
 
 export const REHEARSE_KEY = "azshara-rehearse-v1";
-/** The most phrases kept. */
-export const MAX_PHRASES = 5000;
-/** The longest a phrase is kept (letters): a long sentence whole. */
-export const MAX_PHRASE_CHARS = 2000;
-/** The most texts whose place is kept. */
-export const MAX_PROGRESS = 2000;
+// No limit on how many phrases are kept, on a phrase's length, or on how many texts keep
+// their place: every phrase of every .txt shows.
 
 export interface RehearsePhrase {
   id: string;
@@ -94,6 +90,30 @@ export interface RehearseSettings {
   tapHeight: number;
   /** The phrase's letters in the tap area (px, apart from the screen's size): smaller still if a long phrase needs it. */
   phraseSize: number;
+  /** The floating window's look: its phrase's, top bar's and bottom line's letters (sp), and its bottom line shown. */
+  bubblePhraseSp: number;
+  bubbleBarSp: number;
+  bubbleBottomSp: number;
+  bubbleBottom: boolean;
+  /** The robot voice: the phone's text-to-speech saying the phrase (see VoiceShape). */
+  voice: boolean;
+  /** The voice engine (an app's package; "" the phone's default) and the voice in it ("" its default). */
+  voiceEngine: string;
+  voiceName: string;
+  /** Its speaking rate and pitch (1 as it is). */
+  voiceRate: number;
+  voicePitch: number;
+  /** Copies of it at once, each starting spreadMs after the one before and speedUp times faster. */
+  voiceCopies: number;
+  voiceSpreadMs: number;
+  voiceSpeedUp: number;
+  /** Said over and over while on the phrase, with this silence between (else once each phrase). */
+  voiceLoop: boolean;
+  voiceGapMs: number;
+  /** The robot: its loudness rung against a tone of robotHz, this much (0 none, 1 all). */
+  voiceRobot: number;
+  voiceRobotHz: number;
+  voiceVolume: number;
 }
 
 /** Single phrases, or whole texts (the Read tab's) phrase after phrase. */
@@ -151,6 +171,14 @@ export const MAX_CYCLE_MS = 600_000;
 export const clampLayer = (v: number) => clamp(Math.round(v * 100) / 100, 0, 1);
 export const clampTapHeight = (v: number) => clamp(Math.round(v), 5, 100);
 export const clampPhraseSize = (v: number) => clamp(Math.round(v), 4, 400);
+export const clampBubbleSp = (v: number) => clamp(Math.round(v), 6, 72);
+export const clampVoiceRate = (v: number) => clamp(Math.round(v * 100) / 100, 0.1, 10);
+export const clampVoicePitch = (v: number) => clamp(Math.round(v * 100) / 100, 0.1, 4);
+export const clampVoiceCopies = (v: number) => clamp(Math.round(v), 1, 32);
+export const clampVoiceMs = (v: number) => clamp(Math.round(v), 0, 60_000);
+export const clampVoiceSpeedUp = (v: number) => clamp(Math.round(v * 100) / 100, 0.25, 4);
+export const clampRobot = (v: number) => clamp(Math.round(v * 100) / 100, 0, 1);
+export const clampRobotHz = (v: number) => clamp(Math.round(v * 10) / 10, 1, 5000);
 
 export function defaultSettings(): RehearseSettings {
   return {
@@ -181,6 +209,14 @@ export function defaultSettings(): RehearseSettings {
     emit: "press",
     tapHeight: 32,
     phraseSize: 18,
+    bubblePhraseSp: 14,
+    bubbleBarSp: 16,
+    bubbleBottomSp: 12,
+    bubbleBottom: true,
+    voice: false,
+    voiceEngine: "",
+    voiceName: "",
+    ...VOICE_PRESETS[0]!.shape,
   };
 }
 
@@ -203,12 +239,9 @@ export function loadRehearse(data: unknown): RehearseState {
   const seen = new Set<string>();
   for (const raw of Array.isArray(d.items) ? d.items : []) {
     const r = obj(raw);
-    const text =
-      typeof r.text === "string"
-        ? r.text.replace(/\s+/g, " ").trim().slice(0, MAX_PHRASE_CHARS)
-        : "";
+    const text = typeof r.text === "string" ? r.text.replace(/\s+/g, " ").trim() : "";
     const id = typeof r.id === "string" && r.id ? r.id.slice(0, 40) : "";
-    if (!text || !id || seen.has(id) || s.items.length >= MAX_PHRASES) continue;
+    if (!text || !id || seen.has(id)) continue;
     seen.add(id);
     s.items.push({
       id,
@@ -221,10 +254,10 @@ export function loadRehearse(data: unknown): RehearseState {
   if (typeof d.current === "string" && seen.has(d.current)) s.current = d.current;
   s.lastTap = Math.max(0, num(d.lastTap, 0));
   if (d.view === "phrases" || d.view === "texts") s.view = d.view;
-  if (typeof d.text === "string") s.text = d.text.slice(0, 400);
-  for (const [key, raw] of Object.entries(obj(d.progress)).slice(0, MAX_PROGRESS)) {
+  if (typeof d.text === "string") s.text = d.text;
+  for (const [key, raw] of Object.entries(obj(d.progress))) {
     const r = obj(raw);
-    if (!key || key.length > 400) continue;
+    if (!key) continue;
     s.progress[key] = {
       at: Math.max(0, Math.floor(num(r.at, 0))),
       passes: Math.max(0, Math.floor(num(r.passes, 0))),
@@ -270,6 +303,23 @@ export function loadRehearse(data: unknown): RehearseState {
   if (t.emit === "press" || t.emit === "full") u.emit = t.emit;
   u.tapHeight = clampTapHeight(num(t.tapHeight, u.tapHeight));
   u.phraseSize = clampPhraseSize(num(t.phraseSize, u.phraseSize));
+  u.bubblePhraseSp = clampBubbleSp(num(t.bubblePhraseSp, u.bubblePhraseSp));
+  u.bubbleBarSp = clamp(Math.round(num(t.bubbleBarSp, u.bubbleBarSp)), 8, 48);
+  u.bubbleBottomSp = clamp(Math.round(num(t.bubbleBottomSp, u.bubbleBottomSp)), 6, 48);
+  if (typeof t.bubbleBottom === "boolean") u.bubbleBottom = t.bubbleBottom;
+  if (typeof t.voice === "boolean") u.voice = t.voice;
+  if (typeof t.voiceEngine === "string") u.voiceEngine = t.voiceEngine.slice(0, 200);
+  if (typeof t.voiceName === "string") u.voiceName = t.voiceName.slice(0, 200);
+  u.voiceRate = clampVoiceRate(num(t.voiceRate, u.voiceRate));
+  u.voicePitch = clampVoicePitch(num(t.voicePitch, u.voicePitch));
+  u.voiceCopies = clampVoiceCopies(num(t.voiceCopies, u.voiceCopies));
+  u.voiceSpreadMs = clampVoiceMs(num(t.voiceSpreadMs, u.voiceSpreadMs));
+  u.voiceSpeedUp = clampVoiceSpeedUp(num(t.voiceSpeedUp, u.voiceSpeedUp));
+  if (typeof t.voiceLoop === "boolean") u.voiceLoop = t.voiceLoop;
+  u.voiceGapMs = clampVoiceMs(num(t.voiceGapMs, u.voiceGapMs));
+  u.voiceRobot = clampRobot(num(t.voiceRobot, u.voiceRobot));
+  u.voiceRobotHz = clampRobotHz(num(t.voiceRobotHz, u.voiceRobotHz));
+  u.voiceVolume = clampAmp(num(t.voiceVolume, u.voiceVolume));
   return s;
 }
 
@@ -297,10 +347,9 @@ export function addPhrases(
   const keys = new Set(s.items.map((i) => phraseKey(i.text)));
   const added: RehearsePhrase[] = [];
   for (const raw of texts) {
-    const text = raw.replace(/\s+/g, " ").trim().slice(0, MAX_PHRASE_CHARS);
+    const text = raw.replace(/\s+/g, " ").trim();
     const key = phraseKey(text);
     if (!text || keys.has(key)) continue;
-    if (s.items.length + added.length >= MAX_PHRASES) break;
     keys.add(key);
     added.push({ id: makeId(added.length), text, count: 0, last: 0, at: now });
   }
@@ -312,7 +361,7 @@ export function addPhrases(
 
 /** The phrases of a pasted or loaded text: its lines (or each sentence of them), list marks off. */
 export function phrasesOf(text: string, bySentence = true): string[] {
-  return phrasesFromText(text, MAX_PHRASES, bySentence, MAX_PHRASE_CHARS);
+  return phrasesFromText(text, Infinity, bySentence, Infinity);
 }
 
 /** One rep for a phrase. */
@@ -997,4 +1046,84 @@ export function sameStyle(a: WavStyle, b: WavStyle): boolean {
 /** The preset a style is, or "custom". */
 export function presetOf(style: WavStyle): string {
   return WAV_PRESETS.find((p) => sameStyle(p.style, style))?.id ?? "custom";
+}
+
+// ---- The robot voice: the phone's text-to-speech, shaped ----
+
+/** How the voice is said and played: its rate and pitch, copies, speed-ups, loop and robot. */
+export type VoiceShape = Pick<
+  RehearseSettings,
+  | "voiceRate"
+  | "voicePitch"
+  | "voiceCopies"
+  | "voiceSpreadMs"
+  | "voiceSpeedUp"
+  | "voiceLoop"
+  | "voiceGapMs"
+  | "voiceRobot"
+  | "voiceRobotHz"
+  | "voiceVolume"
+>;
+
+export interface VoicePreset {
+  id: string;
+  name: string;
+  shape: VoiceShape;
+}
+
+const voicePreset = (id: string, name: string, shape: Partial<VoiceShape>): VoicePreset => ({
+  id,
+  name,
+  shape: {
+    voiceRate: 1,
+    voicePitch: 1,
+    voiceCopies: 1,
+    voiceSpreadMs: 150,
+    voiceSpeedUp: 1,
+    voiceLoop: true,
+    voiceGapMs: 400,
+    voiceRobot: 0,
+    voiceRobotHz: 50,
+    voiceVolume: 1,
+    ...shape,
+  },
+});
+
+export const VOICE_PRESETS: VoicePreset[] = [
+  voicePreset("plain", "Plain", {}),
+  voicePreset("robot", "Robot", { voicePitch: 0.8, voiceRobot: 0.85, voiceRobotHz: 55 }),
+  voicePreset("deep", "Deep robot", {
+    voicePitch: 0.5,
+    voiceRate: 0.85,
+    voiceRobot: 1,
+    voiceRobotHz: 30,
+  }),
+  voicePreset("choir", "Choir ×4", { voiceCopies: 4, voiceSpreadMs: 90, voiceSpeedUp: 1.03 }),
+  voicePreset("stack", "Speed stack ×6", { voiceCopies: 6, voiceSpreadMs: 0, voiceSpeedUp: 1.25 }),
+  voicePreset("chip", "Chipmunk ×2", {
+    voiceRate: 1.6,
+    voicePitch: 1.8,
+    voiceCopies: 2,
+    voiceSpreadMs: 40,
+  }),
+  voicePreset("fast", "Fast ×3", { voiceRate: 3, voiceGapMs: 100 }),
+];
+
+const VOICE_KEYS = Object.keys(VOICE_PRESETS[0]!.shape) as (keyof VoiceShape)[];
+
+export function voiceShapeOf(s: VoiceShape): VoiceShape {
+  return Object.fromEntries(VOICE_KEYS.map((k) => [k, s[k]])) as unknown as VoiceShape;
+}
+
+/** The preset a voice shape is, or "custom". */
+export function voicePresetOf(s: VoiceShape): string {
+  return VOICE_PRESETS.find((p) => VOICE_KEYS.every((k) => p.shape[k] === s[k]))?.id ?? "custom";
+}
+
+/** Each copy's speed: the first as it is, each next speedUp times the one before. */
+export function voiceSpeeds(s: Pick<VoiceShape, "voiceCopies" | "voiceSpeedUp">): number[] {
+  return Array.from(
+    { length: clampVoiceCopies(s.voiceCopies) },
+    (_, k) => clampVoiceSpeedUp(s.voiceSpeedUp) ** k,
+  );
 }

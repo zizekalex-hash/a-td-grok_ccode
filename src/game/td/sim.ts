@@ -7,10 +7,13 @@
  * others are still on the board, and gets a bonus for calling it early.
  */
 import { CONFIG } from "../config.ts";
-import { buildable, DEFAULT_MAP, laneCount, laneLength, pointAt, type TdMap } from "./map.ts";
+import { buildable, DEFAULT_MAP, laneCount, laneLength, pointAt, stitchScale, type TdMap } from "./map.ts";
 import {
   buildCost,
+  coreCost,
+  coreStats,
   CREEPS,
+  CURRENCY_NAME,
   currencyOf,
   batchFlux,
   noVoidPerks,
@@ -36,6 +39,7 @@ import {
   upgradeCost,
   waveBonus,
   waveSpec,
+  type CoreStats,
   type CreepKind,
   type DifficultyKey,
   type PerkKey,
@@ -79,6 +83,8 @@ export interface TdTower {
   /** The wave count and cleared count when it was built, for a full refund until it is used. */
   builtWave: number;
   builtCleared: number;
+  /** Seconds it stays jammed: an Atonia slain near it, or Nyx passing, stops it firing. */
+  jam: number;
 }
 
 export interface TdCreep {
@@ -118,6 +124,20 @@ export interface TdCreep {
   execBy: number;
   /** A Rift Titan the player summoned (pays flux when slain). */
   summoned: boolean;
+  /** Seconds it stands stunned, and seconds before it can be stunned again. */
+  stun: number;
+  stunGrace: number;
+  /** Seconds it cannot mend (no regeneration, no healing from others). */
+  block: number;
+  /** Seconds it has been on the board, for the kinds that sprint, fade, rush or jam on a clock. */
+  age: number;
+  /** Faded right now: no tower can aim at it. */
+  faded: boolean;
+  /** Armor lent by a Cytokine near it, and the slowing of a Histamine it walks through. */
+  guard: number;
+  mire: number;
+  /** Seconds until it next jams the towers around it (Nyx). */
+  jamTimer: number;
 }
 
 export interface TdShot {
@@ -143,6 +163,11 @@ export interface TdShot {
   burnTime: number;
   pierce: number;
   text: string;
+  /** What a wake tower's shot also does where it lands (see afflict). */
+  corrode: number;
+  rend: number;
+  stun: number;
+  block: number;
 }
 
 /** An instant strike or a beam, kept briefly for drawing. */
@@ -165,10 +190,11 @@ export interface Spawner {
 
 export type TdEvent =
   | { type: "waveSent"; wave: number; bonus: number; auto: boolean }
-  | { type: "waveCleared"; wave: number; bonus: number; income: number; interest: number }
+  | { type: "waveCleared"; wave: number; bonus: number; income: number; interest: number; atp: number }
   | { type: "leak"; kind: CreepKind; lives: number }
   | { type: "bossSpawned"; kind: CreepKind; wave: number }
-  | { type: "bossKilled"; kind: CreepKind; gold: number }
+  | { type: "bossKilled"; kind: CreepKind; gold: number; atp: number }
+  | { type: "coreRaised"; level: number; stage: string }
   | { type: "spell"; key: SpellKey; hit: number; text: string }
   | { type: "rep"; flux: number; gold: number; count: number }
   | { type: "riftSummoned"; cost: number }
@@ -208,10 +234,27 @@ export interface TdState {
   fluxBoost: number;
   /** When the last rep counted (ms, by the clock), so a rep takes repSeconds. */
   lastRepAt: number;
+  /** ATP, the third currency: from dream creeps, bosses, the core and Dopamine towers. */
+  atp: number;
+  /** The wake core: its level, the clock of its pulse, what it has dealt, and a flash to draw. */
+  core: TdCore;
   nextId: number;
   /** Things that happened since the game last read this list. */
   events: TdEvent[];
 }
+
+export interface TdCore {
+  level: number;
+  /** Seconds since its last pulse. */
+  pulse: number;
+  dealt: number;
+  kills: number;
+  /** Seconds of pulse ring left to draw. */
+  flash: number;
+}
+
+/** The core's id as the last thing that hit a creep (towers count from 1). */
+export const CORE_ID = -1;
 
 export type Result = { ok: true } | { ok: false; reason: string };
 
@@ -226,6 +269,12 @@ const MAX_STEP = 0.05;
 const CHAIN_RANGE = 1.6;
 /** Damage kept on each jump. */
 const CHAIN_FALLOFF = 0.8;
+/** Seconds a creep cannot be stunned again once a stun ends. */
+const STUN_GRACE = 1.5;
+/** Share of a rend (life burned away by a hit) a boss takes. */
+const BOSS_REND = 0.25;
+/** Seconds the core's pulse ring shows. */
+const PULSE_FLASH = 0.4;
 
 export function createGame(map: TdMap = DEFAULT_MAP, level: DifficultyKey = "normal"): TdState {
   const diff = difficulty(level);
@@ -255,6 +304,8 @@ export function createGame(map: TdMap = DEFAULT_MAP, level: DifficultyKey = "nor
     voidPerks: noVoidPerks(),
     fluxBoost: 0,
     lastRepAt: 0,
+    atp: Math.max(0, CONFIG.td.atp.start),
+    core: { level: 1, pulse: 0, dealt: 0, kills: 0, flash: 0 },
     nextId: 1,
     events: [],
   };
@@ -269,19 +320,72 @@ export function statsOf(s: TdState, t: TdTower): TowerStats {
   return towerStats(t.key, t.level, s.perks, t.path, t.ascend, s.voidPerks);
 }
 
-/** What the player has of a tower's currency: O/I, or flux for a void tower. */
+/** What the player has of a tower's currency: O/I, flux for a void tower, ATP for a wake tower. */
 export function purse(s: TdState, key: TowerKey): number {
-  return currencyOf(key) === "flux" ? s.flux : s.gold;
+  const money = currencyOf(key);
+  return money === "flux" ? s.flux : money === "atp" ? s.atp : s.gold;
 }
 
 /** The currency's short name, for messages. */
 export function unit(key: TowerKey): string {
-  return currencyOf(key) === "flux" ? "flux" : "O/I";
+  return CURRENCY_NAME[currencyOf(key)];
 }
 
 function pay(s: TdState, key: TowerKey, amount: number) {
-  if (currencyOf(key) === "flux") s.flux -= amount;
+  const money = currencyOf(key);
+  if (money === "flux") s.flux -= amount;
+  else if (money === "atp") s.atp -= amount;
   else s.gold -= amount;
+}
+
+/** What the core does now. */
+export function coreOf(s: TdState): CoreStats {
+  return coreStats(s.core.level);
+}
+
+/** Raises the wake core a level, for ATP: more lives, more ATP a wave, a stronger pulse. */
+export function raiseCore(s: TdState): Result {
+  if (s.phase === "over") return fail("The rite is over");
+  const cost = coreCost(s.core.level);
+  if (s.atp < cost) return fail(`Needs ${cost} ATP`);
+  s.atp -= cost;
+  const before = coreOf(s).stage;
+  s.core.level += 1;
+  const lives = Math.max(0, CONFIG.td.core.livesPerLevel);
+  s.maxLives += lives;
+  s.lives += lives;
+  const now = coreOf(s).stage;
+  s.events.push({ type: "coreRaised", level: s.core.level, stage: now !== before ? now.name : "" });
+  return OK;
+}
+
+/** How many levels the ATP would buy the core right now, and their total price. */
+export function coreRaises(s: TdState): { levels: number; cost: number } {
+  let atp = s.atp;
+  let level = s.core.level;
+  let cost = 0;
+  let levels = 0;
+  while (levels < 100) {
+    const next = coreCost(level);
+    if (atp < next) break;
+    atp -= next;
+    cost += next;
+    level += 1;
+    levels += 1;
+  }
+  return { levels, cost };
+}
+
+/** Raises the core as many levels as the ATP allows. */
+export function raiseCoreMax(s: TdState): Result & { levels?: number } {
+  let levels = 0;
+  let last: Result = OK;
+  while (levels < 100) {
+    last = raiseCore(s);
+    if (!last.ok) break;
+    levels += 1;
+  }
+  return levels > 0 ? { ok: true, levels } : last;
 }
 
 export function build(s: TdState, key: TowerKey, col: number, row: number): Result {
@@ -311,6 +415,7 @@ export function build(s: TdState, key: TowerKey, col: number, row: number): Resu
     kills: 0,
     builtWave: s.wave,
     builtCleared: s.cleared,
+    jam: 0,
   });
   return OK;
 }
@@ -574,7 +679,9 @@ function specFor(s: TdState, wave: number): WaveSpec {
 
 function makeCreep(s: TdState, kind: CreepKind, spec: WaveSpec, dist: number, lane = 0): TdCreep {
   const c = CREEPS[kind];
-  const hp = c.hp * spec.hpScale * (c.boss ? spec.bossScale : 1) * difficulty(s.difficulty).hp;
+  // On a stitched map the lane is longer, so creeps have more life and pay more.
+  const boards = stitchScale(s.map);
+  const hp = c.hp * spec.hpScale * (c.boss ? spec.bossScale : 1) * difficulty(s.difficulty).hp * boards.hp;
   const p = pointAt(s.map, dist, lane);
   return {
     id: s.nextId++,
@@ -587,7 +694,7 @@ function makeCreep(s: TdState, kind: CreepKind, spec: WaveSpec, dist: number, la
     y: p.y,
     speed: c.speed * spec.speedScale,
     armor: Math.min(CONFIG.td.maxArmor, (c.armor ?? 0) + spec.armorBonus),
-    gold: Math.max(1, Math.round(c.gold * spec.goldScale)),
+    gold: Math.max(1, Math.round(c.gold * spec.goldScale * boards.gold)),
     regen: (c.regen ?? 0) * spec.hpScale,
     heal: (c.heal ?? 0) * spec.hpScale,
     slow: 0,
@@ -605,21 +712,35 @@ function makeCreep(s: TdState, kind: CreepKind, spec: WaveSpec, dist: number, la
     exec: 0,
     execBy: 0,
     summoned: false,
+    stun: 0,
+    stunGrace: 0,
+    block: 0,
+    age: 0,
+    faded: false,
+    guard: 0,
+    mire: 0,
+    jamTimer: c.jamEvery ?? 0,
   };
 }
 
-/** Marks the creeps inside an Eraser's circle. Erasers do not stack: the strongest counts. */
+/**
+ * Marks the creeps inside an Eraser's circle (Erasers do not stack: the strongest
+ * counts), the ones a Histamine slows, and the ones a Cytokine near them armors.
+ */
 function markCreeps(s: TdState) {
   for (const c of s.creeps) {
     c.vuln = 0;
     c.shred = 0;
     c.exec = 0;
     c.execBy = 0;
+    c.mire = 0;
+    c.guard = 0;
   }
   for (const e of s.towers) {
     // A firing tower's collapse works on what it hits (see land); a Singularity's on its circle.
     const field = e.stats.rate <= 0 && e.stats.execute > 0;
-    if (e.stats.vuln <= 0 && e.stats.shred <= 0 && !field) continue;
+    const mire = e.stats.rate <= 0 ? e.stats.mire : 0;
+    if (e.stats.vuln <= 0 && e.stats.shred <= 0 && mire <= 0 && !field) continue;
     const cx = e.col + 0.5;
     const cy = e.row + 0.5;
     const r2 = e.stats.range * e.stats.range;
@@ -627,10 +748,20 @@ function markCreeps(s: TdState) {
       if (!alive(c) || (c.x - cx) ** 2 + (c.y - cy) ** 2 > r2) continue;
       c.vuln = Math.max(c.vuln, e.stats.vuln);
       c.shred = Math.max(c.shred, e.stats.shred);
+      if (mire > 0) c.mire = Math.max(c.mire, CREEPS[c.kind].boss ? mire * (1 - CONFIG.td.bossSlowResist) : mire);
       if (field && e.stats.execute > c.exec) {
         c.exec = e.stats.execute;
         c.execBy = e.id;
       }
+    }
+  }
+  for (const g of s.creeps) {
+    const spec = CREEPS[g.kind];
+    if (!spec.guard || !alive(g)) continue;
+    const range = spec.guardRange ?? 1;
+    for (const o of s.creeps) {
+      if (o === g || !alive(o) || Math.hypot(o.x - g.x, o.y - g.y) > range) continue;
+      o.guard = Math.max(o.guard, spec.guard);
     }
   }
 }
@@ -649,16 +780,40 @@ function collapse(s: TdState, towers: Map<number, TdTower>) {
   }
 }
 
-/** Damage after armor. `pierce` is the share of armor ignored. The tower that dealt it gets the credit. */
-function hurt(c: TdCreep, amount: number, pierce: number, by?: TdTower) {
-  const armor = c.armor * (1 - Math.max(0, Math.min(1, pierce))) * (1 - c.shred);
-  const dmg = amount * (1 - armor) * (1 + c.vuln);
+/** Whoever gets the credit for damage: a tower, or the core. */
+type Credit = { id: number; dealt: number };
+
+/**
+ * Damage after armor. `pierce` is the share of armor ignored. The tower that dealt
+ * it (or the core) gets the credit. A warded creep loses no more than its ward's
+ * share of its full life to one hit.
+ */
+function hurt(c: TdCreep, amount: number, pierce: number, by?: Credit) {
+  const worn = Math.min(CONFIG.td.maxArmor, c.armor + c.guard);
+  const armor = worn * (1 - Math.max(0, Math.min(1, pierce))) * (1 - c.shred);
+  const ward = CREEPS[c.kind].ward ?? 0;
+  let dmg = amount * (1 - armor) * (1 + c.vuln);
+  if (ward > 0) dmg = Math.min(dmg, c.maxHp * ward);
   if (by) {
     by.dealt += Math.max(0, Math.min(c.hp, dmg));
     c.lastHit = by.id;
   }
   c.hp -= dmg;
   c.hit = 0.08;
+}
+
+/** What a wake tower's hit does on top of its damage: wears armor away, burns off a share of the life left, stuns, blocks mending. */
+function afflict(c: TdCreep, st: { corrode: number; rend: number; stun: number; block: number }, by?: Credit) {
+  if (st.corrode > 0) c.armor = Math.max(0, c.armor - st.corrode);
+  if (st.rend > 0 && c.hp > 0) {
+    const dmg = c.hp * st.rend * (CREEPS[c.kind].boss ? BOSS_REND : 1);
+    if (by) by.dealt += dmg;
+    c.hp -= dmg;
+  }
+  if (st.block > 0) c.block = Math.max(c.block, st.block);
+  if (st.stun > 0 && c.stun <= 0 && c.stunGrace <= 0) {
+    c.stun = CREEPS[c.kind].boss ? st.stun * (1 - CONFIG.td.bossSlowResist) : st.stun;
+  }
 }
 
 function applySlow(c: TdCreep, amount: number, time: number) {
@@ -679,14 +834,25 @@ function alive(c: TdCreep): boolean {
   return c.hp > 0 && !c.leaked;
 }
 
-export function pickTarget(s: TdState, t: TdTower): TdCreep | undefined {
+/**
+ * The creep a tower aims at: by its targeting rule, among those in its range
+ * (with `reach` more from a Serotonin). Faded creeps cannot be aimed at; `skip`
+ * leaves out the ones a volley already fires at.
+ */
+export function pickTarget(
+  s: TdState,
+  t: TdTower,
+  reach = reachBonus(s, t),
+  skip?: readonly TdCreep[],
+): TdCreep | undefined {
   const cx = t.col + 0.5;
   const cy = t.row + 0.5;
-  const r2 = t.stats.range * t.stats.range;
+  const range = t.stats.range + reach;
+  const r2 = range * range;
   let best: TdCreep | undefined;
   let bestScore = -Infinity;
   for (const c of s.creeps) {
-    if (!alive(c)) continue;
+    if (!alive(c) || c.faded || skip?.includes(c)) continue;
     const dx = c.x - cx;
     const dy = c.y - cy;
     const d2 = dx * dx + dy * dy;
@@ -720,14 +886,54 @@ export function musesOf(s: TdState, t: TdTower): TdTower[] {
   return s.towers.filter((m) => m !== t && (m.stats.aura > 0 || m.stats.haste > 0) && inCircle(m, t));
 }
 
-/** Damage multiplier a tower gets from the Muses around it. */
+/** True when a tower stands in the core's circle. */
+export function inCore(s: TdState, t: TdTower, core: CoreStats = coreOf(s)): boolean {
+  return Math.hypot(s.map.core[0] - t.col, s.map.core[1] - t.row) <= core.range + 1e-9;
+}
+
+/** Damage multiplier a tower gets from the Muses around it, and from a Radiant core. */
 export function auraBonus(s: TdState, t: TdTower): number {
   let bonus = 0;
   for (const m of s.towers) {
     if (m === t || m.stats.aura <= 0) continue;
     if (inCircle(m, t)) bonus += m.stats.aura;
   }
+  const core = coreOf(s);
+  if (core.aura > 0 && inCore(s, t, core)) bonus += core.aura;
   return 1 + bonus;
+}
+
+/** Extra range a firing tower gets from the Serotonins around it. They do not stack: the widest counts. */
+export function reachBonus(s: TdState, t: TdTower): number {
+  if (t.stats.rate <= 0) return 0;
+  let reach = 0;
+  for (const m of s.towers) {
+    if (m === t || m.stats.reach <= reach) continue;
+    if (inCircle(m, t)) reach = m.stats.reach;
+  }
+  return reach;
+}
+
+/** How far a tower reaches now: its own range, and what a Serotonin adds. */
+export function rangeOf(s: TdState, t: TdTower): number {
+  return t.stats.range + reachBonus(s, t);
+}
+
+/** How much slower a tower fires for the Hypnos near it (0.3 = 30%). */
+function lullOf(t: TdTower, lullers: readonly TdCreep[]): number {
+  let lull = 0;
+  for (const c of lullers) {
+    const spec = CREEPS[c.kind];
+    if (Math.hypot(c.x - t.col - 0.5, c.y - t.row - 0.5) <= (spec.lullRange ?? 1)) lull = Math.max(lull, spec.lull ?? 0);
+  }
+  return Math.min(0.9, lull);
+}
+
+/** Stops the towers that fire within `range` of a point for `time` seconds. Circles (a Muse, an Eraser) keep working. */
+function jamTowers(s: TdState, x: number, y: number, range: number, time: number) {
+  for (const t of s.towers) {
+    if (t.stats.rate > 0 && Math.hypot(t.col + 0.5 - x, t.row + 0.5 - y) <= range) t.jam = Math.max(t.jam, time);
+  }
 }
 
 /** Fire-rate multiplier a tower gets from Tempo Muses around it. */
@@ -759,7 +965,9 @@ function fire(s: TdState, t: TdTower, target: TdCreep, nextText: () => string, e
   const st = t.stats;
   const from = { x: t.col + 0.5, y: t.row + 0.5 };
   const aura = auraBonus(s, t);
-  const damage = st.damage * aura;
+  // Every spikeEvery-th shot of a Glutamate hits spikeMult times as hard.
+  const spike = st.spikeEvery > 0 && st.spikeMult > 0 && t.shots % st.spikeEvery === st.spikeEvery - 1;
+  const damage = st.damage * aura * (spike ? st.spikeMult : 1);
 
   if (st.beam) {
     if (target.id === t.focusId) {
@@ -770,6 +978,7 @@ function fire(s: TdState, t: TdTower, target: TdCreep, nextText: () => string, e
       t.phrase = phraseFor(t, nextText, every);
     }
     hurt(target, damage * (1 + st.ramp * t.focusStacks), st.pierce, t);
+    afflict(target, st, t);
     const life = 1 / Math.max(0.1, st.rate) + 0.03;
     s.beams.push({
       key: t.key,
@@ -788,7 +997,7 @@ function fire(s: TdState, t: TdTower, target: TdCreep, nextText: () => string, e
       let next: TdCreep | undefined;
       let nextD = CHAIN_RANGE * CHAIN_RANGE;
       for (const c of s.creeps) {
-        if (!alive(c) || hits.includes(c)) continue;
+        if (!alive(c) || c.faded || hits.includes(c)) continue;
         const d = (c.x - last.x) ** 2 + (c.y - last.y) ** 2;
         if (d <= nextD) {
           next = c;
@@ -799,7 +1008,12 @@ function fire(s: TdState, t: TdTower, target: TdCreep, nextText: () => string, e
       hits.push(next);
       last = next;
     }
-    hits.forEach((c, i) => hurt(c, damage * CHAIN_FALLOFF ** i, st.pierce, t));
+    // An Acetylcholine's strike keeps all of its damage from creep to creep.
+    const keep = st.chainKeep > 0 ? Math.min(1, st.chainKeep) : CHAIN_FALLOFF;
+    hits.forEach((c, i) => {
+      hurt(c, damage * keep ** i, st.pierce, t);
+      afflict(c, st, t);
+    });
     s.beams.push({
       key: t.key,
       points: [from, ...hits.map((c) => ({ x: c.x, y: c.y }))],
@@ -832,6 +1046,10 @@ function fire(s: TdState, t: TdTower, target: TdCreep, nextText: () => string, e
     burnTime: st.burnTime,
     pierce: st.pierce,
     text: phraseFor(t, nextText, every),
+    corrode: st.corrode,
+    rend: st.rend,
+    stun: st.stun,
+    block: st.block,
   });
 }
 
@@ -845,6 +1063,7 @@ function land(s: TdState, sh: TdShot, byId: Map<number, TdCreep>, towers: Map<nu
     for (const c of s.creeps) {
       if (!alive(c) || Math.hypot(c.x - sh.tx, c.y - sh.ty) > sh.splash) continue;
       hurt(c, sh.damage, sh.pierce, by);
+      afflict(c, sh, by);
       applySlow(c, sh.slow, sh.slowTime);
       applyBurn(c, sh.burn, sh.burnTime, sh.from);
       if (by) strike(c, by);
@@ -853,9 +1072,37 @@ function land(s: TdState, sh: TdShot, byId: Map<number, TdCreep>, towers: Map<nu
   }
   if (!target) return;
   hurt(target, sh.damage, sh.pierce, by);
+  afflict(target, sh, by);
   applySlow(target, sh.slow, sh.slowTime);
   applyBurn(target, sh.burn, sh.burnTime, sh.from);
   if (by) strike(target, by);
+}
+
+/**
+ * The core's pulse: once it has the level for it, every creep in its circle is hit
+ * (and slowed, once Kindled). It waits for a creep to come in reach.
+ */
+function pulseCore(s: TdState, t: number) {
+  const core = coreOf(s);
+  if (s.core.flash > 0) s.core.flash -= t;
+  if (!core.pulses) return;
+  s.core.pulse = Math.min(core.every, s.core.pulse + t);
+  if (s.core.pulse < core.every) return;
+  const cx = s.map.core[0] + 0.5;
+  const cy = s.map.core[1] + 0.5;
+  const r2 = core.range * core.range;
+  const credit: Credit = { id: CORE_ID, dealt: 0 };
+  let hit = 0;
+  for (const c of s.creeps) {
+    if (!alive(c) || (c.x - cx) ** 2 + (c.y - cy) ** 2 > r2) continue;
+    hurt(c, core.damage, core.pierce, credit);
+    applySlow(c, core.slow, core.slowTime);
+    hit += 1;
+  }
+  if (!hit) return;
+  s.core.dealt += credit.dealt;
+  s.core.pulse = 0;
+  s.core.flash = PULSE_FLASH;
 }
 
 /** A tower with collapse (execute) that hits a creep marks it to fall at that share of life. */
@@ -903,11 +1150,35 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
       c.hp -= dmg;
       c.burnTime -= t;
     }
-    if (c.regen > 0 && c.hp > 0) c.hp = Math.min(c.maxHp, c.hp + c.regen * t);
+    // A blocked creep (Caffeine) does not mend.
+    if (c.regen > 0 && c.hp > 0 && c.block <= 0) c.hp = Math.min(c.maxHp, c.hp + c.regen * t);
     if (c.hit > 0) c.hit -= t;
-    const pace = c.slowTime > 0 ? 1 - c.slow : 1;
+    if (c.block > 0) c.block -= t;
+    c.age += t;
+    // A Microsleep fades at the end of each of its cycles; a K-complex sprints at the end of each of its own.
+    c.faded = !!spec.phaseEvery && !!spec.phaseTime && c.age % spec.phaseEvery >= spec.phaseEvery - spec.phaseTime;
+    const dash =
+      spec.dashEvery && spec.dashTime && c.age % spec.dashEvery >= spec.dashEvery - spec.dashTime
+        ? Math.max(1, spec.dashSpeed ?? 1)
+        : 1;
+    // Sleep debt gathers speed for as long as it is left to walk.
+    const rush = spec.rush ? 1 + Math.min(spec.rushMax ?? 1, spec.rush * c.age) : 1;
+    let pace = (1 - Math.max(c.slowTime > 0 ? c.slow : 0, c.mire)) * dash * rush;
     if (c.slowTime > 0) c.slowTime -= t;
+    if (c.stun > 0) {
+      // Stunned: it stands still, then cannot be stunned again for a moment.
+      pace = 0;
+      c.stun -= t;
+      if (c.stun <= 0) c.stunGrace = STUN_GRACE;
+    } else if (c.stunGrace > 0) c.stunGrace -= t;
     c.dist += c.speed * pace * t;
+    if (spec.jamEvery && spec.jam && c.hp > 0) {
+      c.jamTimer -= t;
+      if (c.jamTimer <= 0) {
+        c.jamTimer += spec.jamEvery;
+        jamTowers(s, c.x, c.y, spec.jamRange ?? 1, spec.jam);
+      }
+    }
     const p = pointAt(s.map, c.dist, c.lane);
     c.x = p.x;
     c.y = p.y;
@@ -935,7 +1206,7 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
     if (h.heal <= 0 || !alive(h)) continue;
     const range = CREEPS[h.kind].healRange ?? 1;
     for (const o of s.creeps) {
-      if (o === h || !alive(o)) continue;
+      if (o === h || !alive(o) || o.block > 0) continue;
       if (Math.hypot(o.x - h.x, o.y - h.y) <= range) o.hp = Math.min(o.maxHp, o.hp + h.heal * t);
     }
   }
@@ -950,19 +1221,40 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
 
   // Erasers mark the creeps in their circle, then the towers take aim and fire.
   markCreeps(s);
+  const lullers = s.creeps.filter((c) => alive(c) && (CREEPS[c.kind].lull ?? 0) > 0);
+  const reaches = s.towers.some((m) => m.stats.reach > 0);
   for (const tower of s.towers) {
+    if (tower.jam > 0) {
+      // Jammed: it holds its fire, and a beam loses its lock.
+      tower.jam -= t;
+      tower.focusId = -1;
+      continue;
+    }
     if (tower.stats.rate <= 0) continue;
     tower.cooldown -= t;
     if (tower.cooldown > 0) continue;
-    const target = pickTarget(s, tower);
+    const reach = reaches ? reachBonus(s, tower) : 0;
+    const target = pickTarget(s, tower, reach);
     if (!target) {
       tower.cooldown = 0;
       tower.focusId = -1;
       continue;
     }
-    tower.cooldown += 1 / (tower.stats.rate * hasteBonus(s, tower));
+    const lull = lullers.length ? 1 - lullOf(tower, lullers) : 1;
+    tower.cooldown += 1 / (tower.stats.rate * hasteBonus(s, tower) * lull);
     fire(s, tower, target, nextText, every);
+    // An Orexin fires at more creeps in the same volley, each a different one.
+    if (tower.stats.multi > 0) {
+      const aimed = [target];
+      for (let i = 0; i < tower.stats.multi; i++) {
+        const more = pickTarget(s, tower, reach, aimed);
+        if (!more) break;
+        aimed.push(more);
+        fire(s, tower, more, nextText, every);
+      }
+    }
   }
+  pulseCore(s, t);
 
   // Projectiles fly toward their target, then land.
   const byId = new Map(s.creeps.map((c) => [c.id, c]));
@@ -990,7 +1282,13 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
     s.kills += 1;
     const killer = towerById.get(c.lastHit);
     if (killer) killer.kills += 1;
-    if (spec.boss) s.events.push({ type: "bossKilled", kind: c.kind, gold: pay });
+    else if (c.lastHit === CORE_ID) s.core.kills += 1;
+    // The dream set and every boss drop ATP, a little more each wave.
+    const atp = spec.atp ? Math.max(1, Math.round(spec.atp * specFor(s, Math.max(1, c.wave || s.wave)).atpScale)) : 0;
+    s.atp += atp;
+    if (spec.boss) s.events.push({ type: "bossKilled", kind: c.kind, gold: pay, atp });
+    // An Atonia slain leaves the towers around it jammed for a moment.
+    if (spec.jam && !spec.jamEvery) jamTowers(s, c.x, c.y, spec.jamRange ?? 1, spec.jam);
     if (c.summoned) {
       const V = CONFIG.td.void;
       const flux = summonReward(s.wave);
@@ -1026,8 +1324,13 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
         : 0;
     s.gold += bonus + income + interest;
     s.flux += s.towers.reduce((sum, tw) => sum + tw.stats.fluxIncome, 0);
+    // The core makes ATP, and so do Dopamine towers; an Awakened core mends too.
+    const core = coreOf(s);
+    const atp = Math.round(core.atp + s.towers.reduce((sum, tw) => sum + tw.stats.atpIncome, 0));
+    s.atp += atp;
+    if (core.mend > 0) s.lives = Math.min(s.maxLives, s.lives + core.mend);
     s.cleared = Math.max(s.cleared, sp.wave);
-    s.events.push({ type: "waveCleared", wave: sp.wave, bonus, income, interest });
+    s.events.push({ type: "waveCleared", wave: sp.wave, bonus, income, interest, atp });
   }
   if (done.length) s.spawners = s.spawners.filter((sp) => !done.includes(sp));
 

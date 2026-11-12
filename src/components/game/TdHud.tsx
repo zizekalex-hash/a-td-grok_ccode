@@ -8,8 +8,11 @@ import {
   Coins,
   Crosshair,
   FastForward,
+  Flame,
   Heart,
   Hourglass,
+  Info,
+  Link2,
   Maximize2,
   Minus,
   Move,
@@ -47,6 +50,7 @@ import {
 import {
   buildCost,
   CREEPS,
+  CURRENCY_NAME,
   DIFFICULTY_KEYS,
   difficulty,
   MAX_TOWER_LEVEL,
@@ -59,15 +63,27 @@ import {
   VOID_PERKS,
   VOID_TOWER_KEYS,
   voidPerkCost,
+  WAKE_TOWER_KEYS,
   ascensionsOf,
   pathsOf,
   TOWERS,
   towerStats,
   type SpellKey,
+  type TowerKey,
   batchFlux,
   repsToGrowth,
 } from "@/game/td/economy";
-import { MAP_KEYS, MAPS, mapFor, type TdMap } from "@/game/td/map";
+import {
+  boardCount,
+  MAP_KEYS,
+  MAPS,
+  mapFor,
+  maxStitch,
+  stitchKey,
+  stitchKeys,
+  stitchScale,
+  type TdMap,
+} from "@/game/td/map";
 import { bestKey, TdGame } from "@/game/td/tdgame";
 
 function game(): TdGame | null {
@@ -85,39 +101,124 @@ function short(n: number): string {
   return String(v);
 }
 
-/** Every tower, one tap to raise on the selected cell: the towers (O/I), or the void set (flux). */
+type BuildTab = "towers" | "void" | "wake";
+/** The build menu's tab and its info switch, kept while the game is open, so the next cell opens on the same set. */
+const buildMenu: { tab: BuildTab; info: boolean } = { tab: "towers", info: false };
+
+/**
+ * Every tower, one tap to raise on the selected cell: the towers (O/I), the void
+ * set (flux), or the wake set (ATP). With the info switch on, a tap shows what
+ * the tower does first, with a button to build it.
+ */
 function BuildGrid() {
   const gold = useGame((s) => s.tdView.gold);
   const flux = useGame((s) => s.tdView.flux);
+  const atp = useGame((s) => s.tdView.atp);
   const perks = useGame((s) => s.tdView.perks);
-  const [tab, setTab] = useState<"towers" | "void">("towers");
-  const keys = tab === "void" ? VOID_TOWER_KEYS : TOWER_KEYS;
-  const money = tab === "void" ? flux : gold;
-  const unit = tab === "void" ? "flux" : "O/I";
+  const [tab, setTabState] = useState<BuildTab>(buildMenu.tab);
+  const [info, setInfoState] = useState(buildMenu.info);
+  const [shown, setShown] = useState<TowerKey | null>(null);
+  const setTab = (next: BuildTab) => {
+    buildMenu.tab = next;
+    setTabState(next);
+    setShown(null);
+  };
+  const keys = tab === "void" ? VOID_TOWER_KEYS : tab === "wake" ? WAKE_TOWER_KEYS : TOWER_KEYS;
+  const money = tab === "void" ? flux : tab === "wake" ? atp : gold;
+  const unit = tab === "void" ? "flux" : tab === "wake" ? "ATP" : "O/I";
+  const mark = tab === "void" ? " ◆" : tab === "wake" ? " ✦" : "";
+  // Names fit a button only when the whole set's are short; otherwise the set shows its short forms, as on the board.
+  const byName = keys.every((key) => TOWERS[key].name.length <= 7);
+  const spec = shown ? TOWERS[shown] : null;
   return (
     <div>
-    <div className="mb-1.5 grid grid-cols-2 gap-1.5" role="tablist" aria-label="Tower sets">
+    {/* A tower's card takes the whole panel: the tabs come back with the list. */}
+    <div className={`mb-1.5 grid-cols-[1fr_1fr_1fr_auto] gap-1.5 ${spec ? "hidden" : "grid"}`}>
+      <div className="col-span-3 grid grid-cols-3 gap-1.5" role="tablist" aria-label="Tower sets">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "towers"}
+          data-on={tab === "towers"}
+          className="btn btn-tab"
+          onClick={() => setTab("towers")}
+          aria-label="Towers, paid in O/I"
+        >
+          Towers
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "void"}
+          data-on={tab === "void"}
+          className="btn btn-tab"
+          onClick={() => setTab("void")}
+          aria-label={`The void set, paid in flux: ${Math.floor(flux)} flux`}
+        >
+          <Atom className="size-3.5 shrink-0" aria-hidden /> Void {short(flux)}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "wake"}
+          data-on={tab === "wake"}
+          className="btn btn-tab"
+          onClick={() => setTab("wake")}
+          aria-label={`The wake set, paid in ATP: ${Math.floor(atp)} ATP`}
+        >
+          <Flame className="size-3.5 shrink-0" aria-hidden /> Wake {short(atp)}
+        </button>
+      </div>
       <button
         type="button"
-        role="tab"
-        aria-selected={tab === "towers"}
-        data-on={tab === "towers"}
-        className="btn min-h-8 py-0.5"
-        onClick={() => setTab("towers")}
+        className="btn btn-tab"
+        data-on={info}
+        aria-pressed={info}
+        onClick={() => {
+          buildMenu.info = !info;
+          setInfoState(!info);
+          setShown(null);
+        }}
+        aria-label="Show what a tower does before building it"
+        title="Show what a tower does before building it"
       >
-        Towers · O/I
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={tab === "void"}
-        data-on={tab === "void"}
-        className="btn min-h-8 py-0.5"
-        onClick={() => setTab("void")}
-      >
-        <Atom className="size-3.5" aria-hidden /> Void · flux {short(flux)}
+        <Info className="size-4" aria-hidden />
       </button>
     </div>
+    {spec && shown ? (
+      <div>
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="font-display text-sm" style={{ color: spec.color }}>
+            {spec.name}
+          </p>
+          <p className="text-xs text-muted">
+            {spec.role} · {buildCost(shown, perks)} {unit}
+          </p>
+        </div>
+        <p className="mt-1 text-xs leading-snug text-fg">{spec.copy}</p>
+        <p className="mt-0.5 text-xs leading-snug text-muted">
+          Level {MAX_TOWER_LEVEL}: {pathsOf(shown).map((p) => p.name).join(" or ")}. Level {CONFIG.td.ascendLevel}:{" "}
+          {ascensionsOf(shown).map((p) => p.name).join(" or ")}.
+        </p>
+        <div className="mt-2 grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            className="btn btn-tab"
+            disabled={money < buildCost(shown, perks)}
+            onClick={() => {
+              game()?.tdBuild(shown);
+              setShown(null);
+            }}
+          >
+            Build · {buildCost(shown, perks)}
+            {mark || " O/I"}
+          </button>
+          <button type="button" className="btn btn-tab" onClick={() => setShown(null)}>
+            Back
+          </button>
+        </div>
+      </div>
+    ) : (
     <div className={`grid gap-1.5 ${keys.length > 9 ? "grid-cols-5" : "grid-cols-3"}`}>
       {keys.map((key, i) => {
         const spec = TOWERS[key];
@@ -126,26 +227,29 @@ function BuildGrid() {
           <button
             key={key}
             type="button"
-            className="btn flex-col gap-0 px-1 py-1"
-            disabled={money < cost}
+            className="btn btn-tower flex-col gap-0"
+            // With info on, a tower can be read about even when it cannot be paid for yet.
+            disabled={!info && money < cost}
             title={`${spec.name}: ${spec.copy}${tab === "towers" ? ` (key ${(i + 1) % 10})` : ""}`}
-            aria-label={`Build ${spec.name}, ${spec.role}, ${cost} ${unit}`}
-            onClick={() => game()?.tdBuild(key)}
+            aria-label={`${info ? "About" : "Build"} ${spec.name}, ${spec.role}, ${cost} ${unit}`}
+            onClick={() => (info ? setShown(key) : game()?.tdBuild(key))}
           >
             <span
-              className="font-display text-[0.7rem]"
-              style={{ color: gold < cost ? undefined : spec.color }}
+              className="font-display text-[0.66rem] whitespace-nowrap"
+              style={{ color: money < cost ? undefined : spec.color }}
             >
-              {spec.name}
+              {byName ? spec.name : spec.label}
             </span>
-            <span className="text-[0.6rem] tracking-normal normal-case opacity-80">
-              {spec.role} · {cost}
-              {tab === "void" ? " ◆" : ""}
+            <span className="text-[0.6rem] tracking-normal whitespace-nowrap normal-case opacity-80">{spec.role}</span>
+            <span className="text-[0.6rem] tracking-normal whitespace-nowrap normal-case opacity-80">
+              {cost}
+              {mark}
             </span>
           </button>
         );
       })}
     </div>
+    )}
     </div>
   );
 }
@@ -157,10 +261,11 @@ function TowerPanel() {
   const flux = useGame((s) => s.tdView.flux);
   const perks = useGame((s) => s.tdView.perks);
   const voidPerks = useGame((s) => s.tdView.voidPerks);
+  const atp = useGame((s) => s.tdView.atp);
   if (!tower) return null;
-  // A void tower is paid in flux: every price below is in its currency.
-  const money = tower.currency === "flux" ? flux : gold;
-  const unit = tower.currency === "flux" ? "flux" : "O/I";
+  // A void tower is paid in flux and a wake tower in ATP: every price below is in the tower's currency.
+  const money = tower.currency === "flux" ? flux : tower.currency === "atp" ? atp : gold;
+  const unit = CURRENCY_NAME[tower.currency];
   const spec = TOWERS[tower.key];
   const stats = towerStats(tower.key, tower.level, perks, tower.path, tower.ascend, voidPerks);
   const paths = pathsOf(tower.key);
@@ -169,17 +274,22 @@ function TowerPanel() {
   const ascended = ascensions[tower.ascend];
   const mastery = masteryOf(tower.level);
   const fires = stats.rate > 0;
+  // What the wake set adds to a hit, each only when the tower has it.
+  const wake = `${stats.multi ? ` · ${stats.multi + 1} creeps at once` : ""}${stats.spikeEvery ? ` · every ${stats.spikeEvery}${stats.spikeEvery === 3 ? "rd" : "th"} ×${stats.spikeMult}` : ""}${stats.stun ? ` · stops ${stats.stun.toFixed(1)} s` : ""}${stats.block ? ` · no mending ${stats.block.toFixed(1)} s` : ""}${stats.corrode ? ` · wears ${Math.round(stats.corrode * 100)} armor a hit` : ""}${stats.rend ? ` · −${(stats.rend * 100).toFixed(1)}% of life left a pulse` : ""}`;
+  const pays = [
+    stats.atpIncome ? `${Math.round(stats.atpIncome)} ATP` : "",
+    stats.fluxIncome ? `${Math.round(stats.fluxIncome)} flux` : "",
+    stats.income ? `${Math.round(stats.income)} O/I` : "",
+  ].filter(Boolean);
   const effect = fires
-    ? `Damage ${tower.damage.toFixed(0)}${tower.aura > 0 ? ` (+${Math.round(tower.aura * 100)}% Muse)` : ""} · ${(tower.rate * (1 + tower.haste)).toFixed(2)}/s${tower.haste > 0 ? ` (+${Math.round(tower.haste * 100)}% Tempo)` : ""} · range ${tower.range.toFixed(1)}${
+    ? `${tower.jammed ? "Jammed for a moment. " : ""}Damage ${tower.damage.toFixed(0)}${tower.aura > 0 ? ` (+${Math.round(tower.aura * 100)}% Muse)` : ""} · ${(tower.rate * (1 + tower.haste)).toFixed(2)}/s${tower.haste > 0 ? ` (+${Math.round(tower.haste * 100)}% Tempo)` : ""} · range ${tower.range.toFixed(1)}${tower.reach > 0 ? ` (+${tower.reach.toFixed(1)} Serotonin)` : ""}${
         stats.splash ? ` · blast ${stats.splash.toFixed(1)}` : ""
-      }${stats.slow ? ` · slows ${Math.round(stats.slow * 100)}%` : ""}${stats.chain ? ` · jumps ${stats.chain}` : ""}${stats.burn ? ` · burns ${(stats.burn * (1 + tower.aura)).toFixed(0)}/s` : ""}${stats.execute ? ` · collapses at ${Math.round(stats.execute * 100)}%` : ""}`
-    : stats.aura || stats.haste
-      ? `Towers in its circle (${stats.range.toFixed(1)}) deal ${Math.round(stats.aura * 100)}% more damage${stats.haste ? ` and fire ${Math.round(stats.haste * 100)}% faster` : ""}. Boosting ${tower.boosts} now.`
-      : stats.vuln || stats.shred
-        ? `Creeps in its circle (${stats.range.toFixed(1)}) take ${Math.round(stats.vuln * 100)}% more damage${stats.shred ? ` and lose ${Math.round(stats.shred * 100)}% of their armor` : ""}${stats.execute ? `; any but bosses at ${Math.round(stats.execute * 100)}% life collapse` : ""}.`
-        : stats.fluxIncome
-          ? `Pays ${Math.round(stats.fluxIncome)} flux every time a wave clears${stats.income ? `, and ${Math.round(stats.income)} O/I` : ""}${stats.bounty ? `; kills pay ${Math.round(stats.bounty * 100)}% more` : ""}.`
-          : `Pays ${Math.round(stats.income)} O/I every time a wave clears${stats.bounty ? `; kills pay ${Math.round(stats.bounty * 100)}% more` : ""}.`;
+      }${stats.slow ? ` · slows ${Math.round(stats.slow * 100)}%` : ""}${stats.chain ? ` · jumps ${stats.chain}` : ""}${stats.burn ? ` · burns ${(stats.burn * (1 + tower.aura)).toFixed(0)}/s` : ""}${stats.execute ? ` · collapses at ${Math.round(stats.execute * 100)}%` : ""}${wake}`
+    : stats.aura || stats.haste || stats.reach
+      ? `Towers in its circle (${stats.range.toFixed(1)}) deal ${Math.round(stats.aura * 100)}% more damage${stats.haste ? ` and fire ${Math.round(stats.haste * 100)}% faster` : ""}${stats.reach ? ` and reach ${stats.reach.toFixed(1)} cells further` : ""}. Boosting ${tower.boosts} now.`
+      : stats.vuln || stats.shred || stats.mire
+        ? `Creeps in its circle (${stats.range.toFixed(1)}) take ${Math.round(stats.vuln * 100)}% more damage${stats.shred ? ` and lose ${Math.round(stats.shred * 100)}% of their armor` : ""}${stats.mire ? ` and move ${Math.round(stats.mire * 100)}% slower` : ""}${stats.execute ? `; any but bosses at ${Math.round(stats.execute * 100)}% life collapse` : ""}.`
+        : `Pays ${pays.length ? pays.join(" and ") : "0 O/I"} every time a wave clears${stats.bounty ? `; kills pay ${Math.round(stats.bounty * 100)}% more` : ""}.`;
   const canPath = tower.level >= MAX_TOWER_LEVEL && tower.path < 0 && paths.length > 0;
   const canAscend =
     tower.level >= CONFIG.td.ascendLevel && tower.path >= 0 && tower.ascend < 0 && ascensions.length > 0;
@@ -297,9 +407,75 @@ function TowerPanel() {
   );
 }
 
+/**
+ * The wake core: what it does at its level, the stage to come, and the button
+ * that raises it, for ATP. Shown when the core is tapped, and in the Library.
+ */
+function CorePanel() {
+  const core = useGame((s) => s.tdView.core);
+  const atp = useGame((s) => s.tdView.atp);
+  const over = useGame((s) => s.tdView.phase === "over");
+  const livesEach = CONFIG.td.core.livesPerLevel;
+  const pulse = core.pulses
+    ? `Pulse: ${Math.round(core.damage)} every ${+core.every.toFixed(1)} s within ${core.range.toFixed(1)} cells${core.pierce >= 1 ? ", through armor" : ""}${core.slow ? `, slows ${Math.round(core.slow * 100)}%` : ""}.`
+    : `No pulse yet (from level ${CONFIG.td.core.pulse.fromLevel}).`;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="font-display text-sm text-gold">
+          Wake core · Lv {core.level}
+          {core.stage && <span className="text-atp"> · {core.stage}</span>}
+        </p>
+        <p className="text-xs text-muted">{core.dealt > 0 ? `${short(core.dealt)} dealt · ${short(core.kills)} kills` : "core"}</p>
+      </div>
+      <p className="mt-1 text-xs leading-snug text-fg">
+        {pulse} +{core.atp} ATP a wave.
+        {core.aura ? ` Towers in its circle +${Math.round(core.aura * 100)}% damage (${core.boosts} now).` : ""}
+        {core.mend ? ` Mends ${core.mend} ${core.mend === 1 ? "life" : "lives"} a wave.` : ""}
+      </p>
+      <p className="mt-0.5 text-xs leading-snug text-muted">
+        A level: stronger pulse, +{CONFIG.td.core.atpPerLevel} ATP a wave
+        {livesEach > 0 ? `, +${livesEach} ${livesEach === 1 ? "life" : "lives"}` : ""}.
+        {core.next ? ` Lv ${core.next.level}, ${core.next.name}: ${core.next.copy}` : ""}
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-1.5">
+        <button
+          type="button"
+          className="btn flex-col gap-0 px-1"
+          disabled={over || atp < core.cost}
+          onClick={() => game()?.tdRaiseCore()}
+          aria-label={`Raise the core to level ${core.level + 1} for ${core.cost} ATP`}
+        >
+          <span className="flex items-center gap-1">
+            <ArrowUp className="size-3.5" aria-hidden />
+            Raise the core
+          </span>
+          <span className="text-[0.6rem] tracking-normal">{core.cost} ATP</span>
+        </button>
+        <button
+          type="button"
+          className="btn flex-col gap-0 px-1"
+          disabled={over || core.maxLevels < 1}
+          onClick={() => game()?.tdRaiseCoreMax()}
+          aria-label={`Raise the core ${core.maxLevels} levels for ${core.maxCost} ATP`}
+        >
+          <span className="flex items-center gap-1">
+            <ChevronsUp className="size-3.5" aria-hidden />
+            Max{core.maxLevels > 0 ? ` ×${core.maxLevels}` : ""}
+          </span>
+          <span className="text-[0.6rem] tracking-normal">
+            {core.maxLevels > 0 ? `${short(core.maxCost)} ATP` : `you have ${short(atp)}`}
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Global upgrades bought with O/I. Opening it does not pause the fight. */
 function PerkSheet({ onClose }: { onClose: () => void }) {
   const gold = useGame((s) => s.tdView.gold);
+  const atp = useGame((s) => s.tdView.atp);
   const perks = useGame((s) => s.tdView.perks);
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
@@ -344,6 +520,17 @@ function PerkSheet({ onClose }: { onClose: () => void }) {
               </div>
             );
           })}
+          <div className="rounded-md border border-atp/50 p-2 sm:col-span-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="font-display text-xs tracking-[0.14em] text-atp">THE WAKE CORE · ATP ONLY</p>
+              <p className="font-display text-xs text-atp">✦ {Math.floor(atp)}</p>
+            </div>
+            <p className="mt-1 mb-2 text-xs leading-snug text-muted">
+              ATP comes from every Adenosine slain, the dream creeps (from wave {CONFIG.td.waves.unlocks.delta ?? 12}), every boss,
+              and the core each time a wave clears. It raises the core and builds the wake set (the build menu's Wake tab).
+            </p>
+            <CorePanel />
+          </div>
           <VoidPerks />
           <div className="rounded-md border border-cyan/30 p-2 sm:col-span-2">
             <p className="font-display text-xs text-fg">This run</p>
@@ -1081,6 +1268,16 @@ export function TdHud() {
           >
             <Atom className="size-3.5" aria-hidden /> {short(v.flux)}
           </button>
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded border border-atp/50 px-1.5 py-0.5 text-atp data-[on=true]:bg-atp/20"
+            data-on={v.coreSelected}
+            aria-pressed={v.coreSelected}
+            onClick={() => game()?.tdSelectCore()}
+            aria-label={`${Math.floor(v.atp)} ATP. The core is level ${v.core.level}: open it`}
+          >
+            <Flame className="size-3.5" aria-hidden /> {short(v.atp)}
+          </button>
           <span
             className="flex items-center gap-1 text-danger"
             aria-label={`${Math.round(v.lives)} lives`}
@@ -1088,7 +1285,7 @@ export function TdHud() {
             <Heart className="size-3.5" aria-hidden /> {short(v.lives)}
           </span>
           <span className="text-cyan">WAVE {String(v.wave).padStart(2, "0")}</span>
-          <span className="text-fg">{short(v.kills)} down</span>
+          <span className="hidden text-fg sm:inline">{short(v.kills)} down</span>
         </div>
         <div
           className="meter mt-2"
@@ -1108,6 +1305,34 @@ export function TdHud() {
           <span className="text-right">{status}</span>
         </div>
         <NextWave />
+        {v.boards.length > 1 && (
+          <div className="mt-1 flex gap-1" role="group" aria-label="Boards of the stitched map">
+            <button
+              type="button"
+              className="btn min-h-7 px-2 py-0 text-[0.65rem]"
+              data-on={v.board < 0}
+              aria-pressed={v.board < 0}
+              onClick={() => game()?.tdSetView(-1)}
+            >
+              All
+            </button>
+            {v.boards.map((name, i) => (
+              <button
+                key={i}
+                type="button"
+                className="btn min-h-7 min-w-0 flex-1 px-1 py-0 text-[0.65rem] tracking-normal"
+                data-on={v.board === i}
+                aria-pressed={v.board === i}
+                onClick={() => game()?.tdSetView(i)}
+                aria-label={`Look at board ${i + 1}, ${name}`}
+              >
+                <span className="truncate">
+                  {i + 1} · {name}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
       <footer
@@ -1117,11 +1342,12 @@ export function TdHud() {
         <div className="glass h-[11.25rem] overflow-y-auto p-2">
           {v.canBuild && <BuildGrid />}
           {v.tower && <TowerPanel />}
-          {!v.canBuild && !v.tower && (
+          {!v.canBuild && !v.tower && v.coreSelected && <CorePanel />}
+          {!v.canBuild && !v.tower && !v.coreSelected && (
             <p className="p-1 text-sm leading-relaxed text-muted">
               {v.selected
-                ? "The lane and the core take no towers. Pick a free cell."
-                : "Tap a free cell to raise one of ten towers, or a tower to upgrade it. Waves never end: call the next one early for bonus O/I, even while one is running, and they stack."}
+                ? "The lane takes no towers. Pick a free cell."
+                : "Tap a free cell to raise a tower from one of three sets (O/I, flux, ATP), a tower to upgrade it, or the core to raise it. Waves never end: call the next one early for bonus O/I, even while one is running, and they stack."}
             </p>
           )}
         </div>
@@ -1215,23 +1441,26 @@ export function TdHud() {
   );
 }
 
-/** A map's lane, drawn small: the gate is the open end, the core the gold dot. */
-function LaneThumb({ map }: { map: TdMap }) {
-  const lanes = map.lanes.map((l) => l.waypoints.map(([c, r]) => `${c + 0.5},${r + 0.5}`).join(" "));
+/** A map's lane, drawn small: the gate is the open end, the core the gold dot. On a stitched map, a violet dot marks each join. */
+function LaneThumb({ map, className = "size-10" }: { map: TdMap; className?: string }) {
+  const lines = map.lanes.map((l) => l.waypoints.map(([c, r]) => `${c + 0.5},${r + 0.5}`).join(" "));
   return (
-    <svg viewBox="0 0 9 9" className="size-10" aria-hidden>
-      <rect
-        x="0.1"
-        y="0.1"
-        width="8.8"
-        height="8.8"
-        rx="0.4"
-        fill="none"
-        stroke="currentColor"
-        strokeOpacity="0.3"
-        strokeWidth="0.15"
-      />
-      {lanes.map((points, i) => (
+    <svg viewBox={`0 0 ${map.cols} ${map.rows}`} className={className} aria-hidden>
+      {map.sections.map((sec) => (
+        <rect
+          key={`${sec.col},${sec.row}`}
+          x={sec.col + 0.1}
+          y={sec.row + 0.1}
+          width="8.8"
+          height="8.8"
+          rx="0.4"
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity="0.3"
+          strokeWidth="0.15"
+        />
+      ))}
+      {lines.map((points, i) => (
         <polyline
           key={i}
           points={points}
@@ -1242,33 +1471,76 @@ function LaneThumb({ map }: { map: TdMap }) {
           strokeLinecap="round"
         />
       ))}
+      {map.joins.map(([c, r]) => (
+        <circle key={`${c},${r}`} cx={c + 0.5} cy={r + 0.5} r="0.85" fill="var(--color-violet)" />
+      ))}
       <circle cx={map.core[0] + 0.5} cy={map.core[1] + 0.5} r="0.85" fill="var(--color-gold)" />
     </svg>
   );
 }
 
-/** Map choice on the title screen. The board behind it changes as soon as one is picked. */
+/**
+ * Map choice on the title screen. The board behind it changes as soon as one is
+ * picked. With Stitch on, the maps tapped (two to four, in the order tapped)
+ * are joined into one map: the lane runs on from each into the next.
+ */
 export function MapPicker() {
   const current = mapFor(useGame((s) => s.tdMap));
   const bests = useGame((s) => s.tdView.bests);
   const level = useGame((s) => s.tdDifficulty);
   const best = bests[bestKey(current.key, level)] ?? 0;
+  const chain = stitchKeys(current.key);
+  const [stitching, setStitching] = useState(chain.length > 1);
+  const most = maxStitch();
+  const boards = boardCount(current);
+  const scale = stitchScale(current);
+  const pick = (key: string) => {
+    if (!stitching) {
+      useGame.setState({ tdMap: key });
+      return;
+    }
+    // Tapping a map in the chain takes it out (the last one stays); tapping another adds it at the end.
+    const next = chain.includes(key)
+      ? chain.length > 1
+        ? chain.filter((k) => k !== key)
+        : chain
+      : chain.length < most
+        ? [...chain, key]
+        : chain;
+    useGame.setState({ tdMap: stitchKey(next) });
+  };
+  const toggle = () => {
+    // Stitch off: back to the first map of the chain.
+    if (stitching) useGame.setState({ tdMap: chain[0] ?? current.key });
+    setStitching(!stitching);
+  };
   return (
     <div className="mt-3">
-      <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7" role="radiogroup" aria-label="Map">
+      <div
+        className="grid grid-cols-4 gap-1.5 sm:grid-cols-7"
+        role={stitching ? "group" : "radiogroup"}
+        aria-label={stitching ? "Maps to stitch, in order" : "Map"}
+      >
         {MAP_KEYS.map((key) => {
           const map = MAPS[key] as TdMap;
-          const on = key === current.key;
+          const at = chain.indexOf(key);
+          const on = at >= 0;
           return (
             <button
               key={key}
               type="button"
-              role="radio"
+              role={stitching ? "checkbox" : "radio"}
               aria-checked={on}
               data-on={on}
-              className="flex min-h-11 min-w-0 flex-col items-center gap-1 rounded-md border border-cyan/40 px-0.5 py-1.5 text-[0.65rem] leading-none tracking-normal text-cyan transition-colors focus-visible:outline-2 focus-visible:outline-cyan data-[on=true]:border-violet data-[on=true]:bg-violet/25 data-[on=true]:text-fg"
-              onClick={() => useGame.setState({ tdMap: key })}
+              className="relative flex min-h-11 min-w-0 flex-col items-center gap-1 rounded-md border border-cyan/40 px-0.5 py-1.5 text-[0.65rem] leading-none tracking-normal text-cyan transition-colors focus-visible:outline-2 focus-visible:outline-cyan data-[on=true]:border-violet data-[on=true]:bg-violet/25 data-[on=true]:text-fg"
+              onClick={() => pick(key)}
+              aria-label={stitching && on ? `${map.name}, board ${at + 1} of the stitched map` : map.name}
             >
+              {stitching && on && (
+                <span className="absolute top-0.5 right-1 font-display text-[0.7rem] text-gold" aria-hidden>
+                  {at + 1}
+                </span>
+              )}
               <LaneThumb map={map} />
               <span className="w-full truncate text-center">{map.name}</span>
               <Medal best={bests[bestKey(key, level)] ?? 0} />
@@ -1276,6 +1548,16 @@ export function MapPicker() {
           );
         })}
       </div>
+      <button
+        type="button"
+        className="btn mt-2 min-h-9 w-full py-1 text-[0.7rem]"
+        data-on={stitching}
+        aria-pressed={stitching}
+        onClick={toggle}
+      >
+        <Link2 className="size-4" aria-hidden />
+        {stitching ? `Stitching ${chain.length} of ${most}: tap maps in order` : "Stitch maps together"}
+      </button>
       <div className="mt-2 grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Difficulty">
         {DIFFICULTY_KEYS.map((key) => (
           <button
@@ -1292,12 +1574,31 @@ export function MapPicker() {
           </button>
         ))}
       </div>
+      {boards > 1 && (
+        <div className="mt-2 flex items-center gap-2 text-violet">
+          <LaneThumb map={current} className={current.rows > 9 ? "h-16 w-16 shrink-0" : "h-10 w-20 shrink-0"} />
+          <p className="text-xs leading-snug text-muted">
+            <span className="text-fg">{current.name}</span> · {boards} boards, one lane of {current.lanes.map((l) => l.length).join(" and ")} cells
+            {best > 0 ? ` · best wave ${best}` : ""}. <Medal best={best} />
+          </p>
+        </div>
+      )}
       <p className="mt-1.5 text-xs leading-relaxed text-muted">
-        <span className="text-fg">{current.name}</span> ·{" "}
-        {current.lanes.length > 1
-          ? `${current.lanes.length} lanes of ${current.lanes.map((l) => l.length).join(" and ")} cells`
-          : `lane ${current.length} cells`}
-        {best > 0 ? ` · best wave ${best}` : ""}. {current.blurb} {difficulty(level).copy}
+        {boards > 1 ? (
+          <>
+            {current.blurb} Creeps have {Math.round((scale.hp - 1) * 100)}% more life and kills pay{" "}
+            {Math.round((scale.gold - 1) * 100)}% more O/I. {difficulty(level).copy}
+          </>
+        ) : (
+          <>
+            <span className="text-fg">{current.name}</span> ·{" "}
+            {current.lanes.length > 1
+              ? `${current.lanes.length} lanes of ${current.lanes.map((l) => l.length).join(" and ")} cells`
+              : `lane ${current.length} cells`}
+            {best > 0 ? ` · best wave ${best}` : ""}. {current.blurb} {difficulty(level).copy}
+            {stitching ? " Tap another map to join it to this one." : ""}
+          </>
+        )}
       </p>
     </div>
   );

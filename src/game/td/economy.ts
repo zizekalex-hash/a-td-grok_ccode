@@ -10,6 +10,7 @@ import {
   type TdSpellKey,
   type TdCreepKind,
   type TdCreepSpec,
+  type TdCoreStage,
   type TdPerkKey,
   type TdPerkSpec,
   type TdTowerKey,
@@ -63,11 +64,33 @@ export function isVoid(key: TowerKey): boolean {
   return TOWERS[key]?.void === true;
 }
 
-/** What a tower is paid in. */
-export type Currency = "gold" | "flux";
-export function currencyOf(key: TowerKey): Currency {
-  return isVoid(key) ? "flux" : "gold";
+/** Build-menu order of the wake set (paid in ATP), one for each tower above. */
+export const WAKE_TOWER_KEYS: TowerKey[] = [
+  "orexin",
+  "noradrenaline",
+  "glutamate",
+  "caffeine",
+  "acetylcholine",
+  "cortisol",
+  "daybreak",
+  "serotonin",
+  "dopamine",
+  "histamine",
+];
+
+/** A wake tower: built, upgraded and specialized with ATP, not O/I. */
+export function isWake(key: TowerKey): boolean {
+  return TOWERS[key]?.wake === true;
 }
+
+/** What a tower is paid in. */
+export type Currency = "gold" | "flux" | "atp";
+export function currencyOf(key: TowerKey): Currency {
+  return isVoid(key) ? "flux" : isWake(key) ? "atp" : "gold";
+}
+
+/** A currency's short name, for prices and messages. */
+export const CURRENCY_NAME: Record<Currency, string> = { gold: "O/I", flux: "flux", atp: "ATP" };
 
 /** Build-menu order. */
 export const TOWER_KEYS: TowerKey[] = [
@@ -184,6 +207,27 @@ export interface TowerStats {
   execute: number;
   /** Flux paid when a wave clears. */
   fluxIncome: number;
+  /** More creeps it fires at in one volley. */
+  multi: number;
+  /** Seconds a hit stops the creep dead. */
+  stun: number;
+  /** Every spikeEvery-th shot hits spikeMult times as hard (0 for none). */
+  spikeEvery: number;
+  spikeMult: number;
+  /** Seconds a hit creep cannot mend. */
+  block: number;
+  /** Damage an instant strike keeps on each jump (0: the usual falloff). */
+  chainKeep: number;
+  /** Armor a hit strips for good. */
+  corrode: number;
+  /** Share of the life a creep has left that each hit also takes. */
+  rend: number;
+  /** Extra range for towers that fire in its circle. */
+  reach: number;
+  /** ATP paid when a wave clears. */
+  atpIncome: number;
+  /** How much slower creeps in its circle move. */
+  mire: number;
 }
 
 /** A tower that does not fire but affects everything in its circle (Muse, Eraser). */
@@ -245,13 +289,25 @@ export function towerStats(
   if (a) applyMods(out, a);
   out.slow = Math.min(0.85, out.slow);
   out.shred = Math.min(1, out.shred);
-  if (isSupport(key)) out.range = Math.min(TD.maxSupportRange, out.range);
+  // A circle's growth by level stops at td.maxSupportRange (in baseStats). What a path or an
+  // Ascension adds ("a wider circle") goes on top of that, so it always shows and always counts.
   out.pierce = Math.min(1, out.pierce);
   out.execute = Math.min(0.35, out.execute);
   out.chain = Math.round(out.chain);
   out.maxRamp = Math.round(out.maxRamp);
+  out.multi = Math.round(out.multi);
+  out.stun = Math.min(MAX_STUN, out.stun);
+  out.mire = Math.min(MAX_MIRE, out.mire);
+  out.reach = Math.min(MAX_REACH, out.reach);
+  out.rend = Math.min(0.05, out.rend);
+  out.corrode = Math.min(0.25, out.corrode);
   return out;
 }
+
+/** Limits on what levels, paths and Ascensions can add up to. */
+const MAX_STUN = 1.5;
+const MAX_MIRE = 0.6;
+const MAX_REACH = 1.6;
 
 function baseStats(key: TowerKey, level: number, perks: Perks): TowerStats {
   const spec = TOWERS[key];
@@ -289,7 +345,78 @@ function baseStats(key: TowerKey, level: number, perks: Perks): TowerStats {
     shred: spec.shred ?? 0,
     execute: spec.execute ?? 0,
     fluxIncome: spec.fluxIncome ? spec.fluxIncome + (g.fluxIncome ?? 0) * up : 0,
+    multi: spec.multi ?? 0,
+    stun: spec.stun ?? 0,
+    spikeEvery: spec.spikeEvery ?? 0,
+    spikeMult: spec.spikeMult ?? 0,
+    block: spec.block ?? 0,
+    chainKeep: spec.chainKeep ?? 0,
+    corrode: spec.corrode ?? 0,
+    rend: spec.rend ?? 0,
+    reach: spec.reach ? Math.min(MAX_REACH, spec.reach + (g.reach ?? 0) * up) : 0,
+    atpIncome: spec.atpIncome ? spec.atpIncome + (g.atpIncome ?? 0) * up : 0,
+    mire: spec.mire ? Math.min(MAX_MIRE, spec.mire + (g.mire ?? 0) * up) : 0,
   };
+}
+
+// ---- The wake core: levels bought with ATP ----
+
+const C = TD.core;
+export type CoreStage = TdCoreStage;
+
+/** What the core does at a level. */
+export interface CoreStats {
+  level: number;
+  /** The stage it has reached, and the next one to come (if any). */
+  stage: CoreStage;
+  next: CoreStage | undefined;
+  /** True once it pulses. */
+  pulses: boolean;
+  /** Damage of one pulse, seconds between pulses, and the circle it reaches (cells). */
+  damage: number;
+  every: number;
+  range: number;
+  /** From its stages: the pulse's slow, the damage bonus for towers in its circle, lives mended a wave, armor ignored. */
+  slow: number;
+  slowTime: number;
+  aura: number;
+  mend: number;
+  pierce: number;
+  /** ATP it makes each time a wave clears. */
+  atp: number;
+}
+
+/** The core's stages in order of level. */
+export const CORE_STAGES: CoreStage[] = [...C.stages].sort((a, b) => a.level - b.level);
+
+export function coreStats(level: number): CoreStats {
+  const L = Math.max(1, Math.floor(level));
+  const P = C.pulse;
+  const reached = CORE_STAGES.filter((st) => L >= st.level);
+  const stage = reached[reached.length - 1] ?? CORE_STAGES[0] ?? { level: 1, name: "Core", copy: "" };
+  const past = Math.max(0, L - P.fromLevel);
+  const pulses = L >= P.fromLevel;
+  const rate = reached.reduce((m, st) => Math.max(m, st.rate ?? 1), 1);
+  return {
+    level: L,
+    stage,
+    next: CORE_STAGES.find((st) => st.level > L),
+    pulses,
+    damage: pulses ? P.damage * P.damageGrowth ** past : 0,
+    every: P.every / Math.max(0.1, rate),
+    range: Math.min(P.maxRange, P.range + P.rangePerLevel * past),
+    slow: Math.min(0.85, reached.reduce((m, st) => Math.max(m, st.slow ?? 0), 0)),
+    slowTime: reached.reduce((m, st) => Math.max(m, st.slowTime ?? 0), 0),
+    aura: reached.reduce((sum, st) => sum + (st.aura ?? 0), 0),
+    mend: reached.reduce((sum, st) => sum + (st.mend ?? 0), 0),
+    pierce: Math.min(1, reached.reduce((m, st) => Math.max(m, st.pierce ?? 0), 0)),
+    atp: Math.round(C.atpPerWave + C.atpPerLevel * (L - 1)),
+  };
+}
+
+/** ATP to raise the core from `level` to the next. */
+export function coreCost(level: number): number {
+  return Math.round(C.cost * C.costGrowth ** (Math.max(1, Math.floor(level)) - 1));
 }
 
 /** Price of an Ascension: several times the tower's own price. */
@@ -353,6 +480,8 @@ export interface WaveSpec {
   armorBonus: number;
   /** Multiplier on the O/I each creep pays. */
   goldScale: number;
+  /** Multiplier on the ATP a creep drops. */
+  atpScale: number;
 }
 
 /** Small seeded generator, so wave n is the same wave every run. */
@@ -424,6 +553,7 @@ export function waveSpec(wave: number): WaveSpec {
         ? Math.min(w.maxArmorBonus, w.armorPerWave * (n - w.armorFromWave + 1))
         : 0,
     goldScale: 1 + w.goldPerWave * k,
+    atpScale: 1 + Math.max(0, w.atpPerWave ?? 0) * k,
   };
 }
 

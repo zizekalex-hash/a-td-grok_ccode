@@ -19,6 +19,30 @@ left or needed.
 
 ## Notes
 
+### 2026-11-11 (later) · Claude
+
+Rehearse, asked for by the owner: every text and phrase shown, a refresh, and a clearer reset button.
+
+- **No limits.** Gone: 30 loose texts and 300 folder texts (`engine.ts`), 2,000 lines and 1,000,000 letters a text and the "longer than 4 letters" rule (`codex.ts`: `keepsLine` keeps any line with a letter or a digit), 300 files a .zip (`unzip.ts`), 5,000 phrases, 2,000 letters a phrase and 2,000 texts' places (`rehearse.ts`). What can still run out is the device's storage for the app (localStorage); `persistShared` says so.
+- **Refresh** above Rehearse's lists (`refresh` in `RehearseTab.tsx`): reads azs-folder again, takes in .txt files changed outside, offers new ones, finds .wav files again.
+- The bottom button is now "Reset all progress: every text back to phrase 1, 0 passes, 0 reps", with a line saying the texts stay.
+- The lists' rows are `TextRow` and `PhraseRow` (memo), so a tap redraws in one frame with thousands of texts.
+
+Checked: new tests in `rehearse.test.ts`, `texts.test.ts`, `unzip.test.ts` (now in `npm test`, with `readview.test.ts` and `alarm.test.ts`); a browser run with 650 texts and a 6,000-line text, kept over a reload.
+
+### 2026-11-11 · Claude
+
+Tower defense, asked for by the owner: a third set of towers and creeps, a core that advances, maps joined together, and the circle bug.
+
+- **Wake set**: ten towers paid in ATP, a third currency (`wake: true` in `td.towers`; `WAKE_TOWER_KEYS` in `economy.ts`). New stats in `TowerStats`: `multi`, `stun`, `spikeEvery`/`spikeMult`, `block`, `chainKeep`, `corrode`, `rend`, `reach`, `atpIncome`, `mire`. Hits apply them in `afflict` (`sim.ts`).
+- **Dream set**: six creeps from wave 12 and three bosses in the rotation (`ward`, `dash*`, `phase*`, `guard`, `jam*`, `rush`, `lull` in `TdCreepSpec`). They, every boss and Adenosine drop ATP.
+- **Core levels**: `td.core`; `coreStats`, `coreCost` in `economy.ts`; `raiseCore`, `pulseCore` in `sim.ts`; the panel is `CorePanel` in `TdHud.tsx`.
+- **Stitched maps**: `stitch`, `findMap`, `stitchKey` in `map.ts`. A stitched map's key is its maps' keys joined with "+". Its lane is one connected line: `linkCorner` picks the way from one board's end to the next one's gate. A map now has `cols`, `rows`, `sections` and `joins`; `COLS` and `ROWS` are one board. `tdgame.ts` can show all of it or one board (`view`).
+- **Circle fix**: `towerStats` no longer clamps a circle to `td.maxSupportRange` after a path or an Ascension has added to it; only growth by level stops there.
+- The build menu's buttons now fit a phone (`.btn-tower`, `.btn-tab` in `styles.css`), with an info switch to read about a tower first.
+
+Checked: `src/game/td/wake.test.ts` (new, 40 tests), the other tower defense and config tests, type check, lint, both builds, and phone-size browser runs of a stitched map, the three build tabs, the core panel, a late wave and a saved run continued. Old saved runs load: the core starts at level 1 and ATP at 0.
+
 ### 2026-10-31 (night) · Claude
 
 The owner asked for a dark fantasy look (references: dark purple painted art of Azshara and Xal'atath, WoW night elves with glowing eyes). New `src/game/court/darkstyle.ts`, switched by `court.portraits.style` ("dark" is the default, "classic" the earlier look):

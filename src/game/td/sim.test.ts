@@ -106,6 +106,14 @@ function put(s: TdState, kind: CreepKind, dist: number, hp?: number): TdCreep {
     exec: 0,
     execBy: 0,
     summoned: false,
+    stun: 0,
+    stunGrace: 0,
+    block: 0,
+    age: 0,
+    faded: false,
+    guard: 0,
+    mire: 0,
+    jamTimer: 0,
   };
   s.creeps.push(c);
   return c;
@@ -488,6 +496,10 @@ describe("tower effects", () => {
       burnTime: 0,
       pierce: 0,
       text: "x",
+      corrode: 0,
+      rend: 0,
+      stun: 0,
+      block: 0,
     });
     step(s, 0.01, 1, text);
     assert.equal(a.hp, 30);
@@ -519,6 +531,10 @@ describe("tower effects", () => {
       burnTime: 0,
       pierce,
       text: "x",
+      corrode: 0,
+      rend: 0,
+      stun: 0,
+      block: 0,
     });
     s.shots.push(shot(plain.id, 0, 901), shot(pierced.id, 1, 902));
     step(s, 0.01, 1, text);

@@ -134,7 +134,11 @@ export type TdView = {
     level: number;
     damage: number;
     rate: number;
+    /** How far it reaches now, with what a Serotonin near it adds (reach). */
     range: number;
+    reach: number;
+    /** Stopped for a moment by an Atonia slain near it, or by Nyx. */
+    jammed: boolean;
     upgradeCost: number;
     /** O/I back on a sale: everything, when the build can still be undone. */
     sellValue: number;
@@ -159,7 +163,7 @@ export type TdView = {
     /** Damage dealt and creeps finished so far. */
     dealt: number;
     kills: number;
-    /** What it is paid in: O/I, or flux for a void tower. */
+    /** What it is paid in: O/I, flux for a void tower, ATP for a wake tower. */
     currency: Currency;
   } | null;
   difficulty: DifficultyKey;
@@ -184,6 +188,38 @@ export type TdView = {
   /** O/I to summon a Rift Titan now, and the flux slaying it pays. */
   summonCost: number;
   summonReward: number;
+  /** ATP, the third currency. */
+  atp: number;
+  /** The wake core: its level and stage, what the next level costs, and what it does now. */
+  core: {
+    level: number;
+    stage: string;
+    /** The stage to come, if any. */
+    next: { level: number; name: string; copy: string } | null;
+    cost: number;
+    /** Levels the ATP buys right now with Max, and their price. */
+    maxLevels: number;
+    maxCost: number;
+    pulses: boolean;
+    damage: number;
+    every: number;
+    range: number;
+    slow: number;
+    aura: number;
+    mend: number;
+    pierce: number;
+    /** ATP it makes each time a wave clears. */
+    atp: number;
+    dealt: number;
+    kills: number;
+    /** Towers a Radiant core boosts now. */
+    boosts: number;
+  };
+  /** The core is the selected cell. */
+  coreSelected: boolean;
+  /** On a stitched map: its boards' names, and the one looked at (-1 for all). */
+  boards: string[];
+  board: number;
   message: string;
 };
 
@@ -453,6 +489,30 @@ export const useGame = create<State>(() => ({
     voidPerks: { yield: 0, power: 0, reach: 0, tithe: 0 },
     summonCost: CONFIG.td.void.summonGold,
     summonReward: CONFIG.td.void.summonFlux,
+    atp: 0,
+    core: {
+      level: 1,
+      stage: "",
+      next: null,
+      cost: CONFIG.td.core.cost,
+      maxLevels: 0,
+      maxCost: 0,
+      pulses: false,
+      damage: 0,
+      every: CONFIG.td.core.pulse.every,
+      range: CONFIG.td.core.pulse.range,
+      slow: 0,
+      aura: 0,
+      mend: 0,
+      pierce: 0,
+      atp: CONFIG.td.core.atpPerWave,
+      dealt: 0,
+      kills: 0,
+      boosts: 0,
+    },
+    coreSelected: false,
+    boards: [],
+    board: -1,
     message: "Tap a free cell to raise a tower.",
   },
   courtView: null,

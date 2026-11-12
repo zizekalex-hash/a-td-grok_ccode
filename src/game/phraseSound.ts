@@ -17,7 +17,9 @@ import {
   steadyGain,
   wavCurve,
   wavSampleRate,
+  voiceSpeeds,
   type RehearseSettings,
+  type VoiceShape,
   type WavStyle,
 } from "./rehearse.ts";
 
@@ -399,6 +401,108 @@ export function fileLoop(): FileLoop {
     },
     style(style) {
       restyle(style);
+    },
+    stop() {
+      asked = "";
+      fadeOut(now);
+      now = null;
+    },
+  };
+}
+
+/**
+ * The robot voice played (a .wav the phone's text-to-speech made): copies of it
+ * at once, each spreadMs after the one before and speedUp times faster (pitch and
+ * pace together, so they drift apart as they loop), a gap after each saying, its
+ * loudness rung against a tone (the robot), at its volume. The same voice and
+ * shape again: it goes on as it is.
+ */
+export interface VoicePlayer {
+  play(url: string, shape: VoiceShape): Promise<boolean>;
+  stop(): void;
+}
+
+export function voicePlayer(): VoicePlayer {
+  let now: { nodes: AudioScheduledSourceNode[]; out: GainNode; key: string } | null = null;
+  const made = new Map<string, AudioBuffer>();
+  let asked = "";
+
+  const fadeOut = (n: typeof now) => {
+    if (!n) return;
+    try {
+      const t = n.out.context.currentTime;
+      n.out.gain.cancelScheduledValues(t);
+      n.out.gain.setValueAtTime(n.out.gain.value, t);
+      n.out.gain.linearRampToValueAtTime(0, t + FADE);
+      for (const x of n.nodes) x.stop(t + FADE + 0.01);
+    } catch {
+      /* over already */
+    }
+  };
+
+  return {
+    async play(url, shape) {
+      const key = JSON.stringify([url, shape]);
+      asked = key;
+      if (now?.key === key) return true;
+      const ctx = context();
+      if (!ctx) return false;
+      let buf = made.get(url);
+      if (!buf) {
+        try {
+          buf = await ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+        } catch {
+          return false;
+        }
+        made.set(url, buf);
+        if (made.size > 16) made.delete(made.keys().next().value!);
+      }
+      if (asked !== key) return false;
+      try {
+        // The saying and the gap after it, one channel.
+        const gap = shape.voiceLoop ? Math.round((buf.sampleRate * shape.voiceGapMs) / 1000) : 0;
+        const one = ctx.createBuffer(1, buf.length + gap, buf.sampleRate);
+        const mono = one.getChannelData(0);
+        for (let c = 0; c < buf.numberOfChannels; c++) {
+          const d = buf.getChannelData(c);
+          for (let i = 0; i < d.length; i++) mono[i] = mono[i]! + d[i]! / buf.numberOfChannels;
+        }
+        const t = ctx.currentTime;
+        const out = ctx.createGain();
+        out.gain.setValueAtTime(0, t);
+        out.gain.linearRampToValueAtTime(Math.max(0, shape.voiceVolume), t + FADE);
+        out.connect(ctx.destination);
+        const nodes: AudioScheduledSourceNode[] = [];
+        let into: AudioNode = out;
+        if (shape.voiceRobot > 0) {
+          // Rung: its loudness times (1 - robot) + robot x a tone of robotHz.
+          const ring = ctx.createGain();
+          ring.gain.value = 1 - shape.voiceRobot;
+          const tone = ctx.createOscillator();
+          tone.frequency.value = shape.voiceRobotHz;
+          const amount = ctx.createGain();
+          amount.gain.value = shape.voiceRobot;
+          tone.connect(amount).connect(ring.gain);
+          ring.connect(out);
+          tone.start(t);
+          nodes.push(tone);
+          into = ring;
+        }
+        voiceSpeeds(shape).forEach((speed, k) => {
+          const src = ctx.createBufferSource();
+          src.buffer = one;
+          src.loop = shape.voiceLoop;
+          src.playbackRate.value = speed;
+          src.connect(into);
+          src.start(t + (k * shape.voiceSpreadMs) / 1000);
+          nodes.push(src);
+        });
+        fadeOut(now);
+        now = { nodes, out, key };
+        return true;
+      } catch {
+        return false;
+      }
     },
     stop() {
       asked = "";

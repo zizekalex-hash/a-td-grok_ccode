@@ -12,11 +12,14 @@ import { flashToast, grantSkillXp } from "@/game/engine";
 import { levelForXp, repXp } from "@/game/recite";
 import { wordsOf } from "@/game/reps";
 import { useGame } from "@/game/store";
+import { browserSay, voiceFile, voiceHere } from "@/game/voice";
 import {
   fileLoop,
   holdAudio,
   phraseLoop,
+  voicePlayer,
   wakeAudio,
+  type VoicePlayer,
   type FileLoop,
   type LoopSound,
   type PhraseLoop,
@@ -41,6 +44,7 @@ import {
   loadRehearse,
   newRehearse,
   REHEARSE_KEY,
+  voiceShapeOf,
   wavStyleOf,
   type LibText,
   type RehearseState,
@@ -241,7 +245,7 @@ let watchdog = 0;
 
 /** Playing in the background or not: the app kept running (and asked once to be Unrestricted), the players kept awake. */
 function keep() {
-  const on = !!(loopText || wavUrl) && rehearseState().settings.background;
+  const on = !!(loopText || wavUrl || voiceText) && rehearseState().settings.background;
   if (on === alive) return;
   alive = on;
   void keepAlive(on);
@@ -315,6 +319,58 @@ export function wavStyle(style: WavStyle) {
 export function stopRehearseSound() {
   playNonstop(null);
   void playWav(null);
+  void playVoice(null);
+}
+
+// ---- The robot voice ----
+
+let voice: VoicePlayer | null = null;
+let voiceText = "";
+let voiceAsk = 0;
+let browserStop: (() => void) | null = null;
+
+/**
+ * The robot voice saying a phrase, over and over with its gap (or once), shaped
+ * by Rehearse's settings; null (or the voice off) stops it. Gives back why it
+ * could not ("" when it plays).
+ */
+export async function playVoice(text: string | null): Promise<string> {
+  const set = rehearseState().settings;
+  const ask = ++voiceAsk;
+  if (!text || !set.voice) {
+    voice?.stop();
+    browserStop?.();
+    browserStop = null;
+    voiceText = "";
+    keep();
+    return "";
+  }
+  const where = await voiceHere();
+  if (ask !== voiceAsk) return "";
+  if (where === "browser") {
+    browserStop?.();
+    browserStop = browserSay(text, set);
+    voiceText = text;
+    keep();
+    return "";
+  }
+  if (!where) return "No voice here: this browser has no text-to-speech.";
+  voiceText = text;
+  keep();
+  try {
+    const url = await voiceFile(text, set);
+    if (ask !== voiceAsk) return "";
+    voice ??= voicePlayer();
+    const ok = await voice.play(url, voiceShapeOf(set));
+    return ok || ask !== voiceAsk ? "" : "The voice's sound could not be played.";
+  } catch (e) {
+    if (ask === voiceAsk) {
+      voice?.stop();
+      voiceText = "";
+      keep();
+    }
+    return String((e as Error)?.message ?? e);
+  }
 }
 
 /** The tab opened or closed: closed, the sound plays on (Background on) or stops. */
@@ -356,6 +412,8 @@ async function playClosed() {
   const ask = ++playing;
   const a = activeOf(s, rehearseLibrary());
   const set = s.settings;
+  // The robot voice follows the phrase too.
+  void playVoice(set.voice && a.text ? a.text : null);
   // The reader has the phrase player meanwhile.
   if (reading) {
     /* its phrase plays */

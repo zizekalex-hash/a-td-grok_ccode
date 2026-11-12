@@ -1,7 +1,7 @@
 import { sfx } from "@/game/audio";
 import { Backdrop } from "@/game/backdrop";
 import { drawCoreImage } from "@/game/coreImage";
-import { DEFAULT_CODEX, MAX_LINES, parseCodex } from "@/game/codex";
+import { DEFAULT_CODEX, keepsLine, parseCodex } from "@/game/codex";
 import { CONFIG } from "@/game/config";
 import { pickCouncilLine, QUEEN } from "@/game/council";
 import { FrameLimiter, frameStats, renderDpr } from "@/game/frameLimiter";
@@ -254,7 +254,7 @@ function persistShared() {
     // The device's storage is full: say so (once), so texts are not lost unseen.
     if (!storageWarned && /quota/i.test(String((e as Error)?.name ?? e))) {
       storageWarned = true;
-      flashToast("Storage full: your newest texts may not be kept. Take out texts you no longer need.");
+      flashToast("The app's storage on this device is full: your newest texts will not be kept after a restart. Take out texts you no longer need.");
     }
   }
 }
@@ -296,11 +296,8 @@ export function nudgeSetting(key: FieldKey, dir: number) {
   updateSetting(key, next as Settings[typeof key]);
 }
 
-/** Most text files kept at once. */
-export const MAX_TEXTS = 30;
-
-/** Most texts in all the folders (from .zip files) together. */
-export const MAX_FOLDER_TEXTS = 300;
+// There is no limit on how many texts are kept, in the list or in the folders, nor on a
+// text's length: only the device's own storage for the app can run out (persistShared says so).
 
 /**
  * Loads the .txt files of a .zip as a folder of its own in the Read tab, apart
@@ -318,11 +315,9 @@ export function loadTextFolder(zipName: string, files: { name: string; raw: stri
   }
   const { folders } = useGame.getState();
   const old = folders.find((f) => f.name === name);
-  const elsewhere = folders.reduce((n, f) => n + (f === old ? 0 : f.texts.length), 0);
-  const room = Math.max(0, MAX_FOLDER_TEXTS - elsewhere);
-  const r = mergeTexts(old?.texts ?? [], incoming, room);
+  const r = mergeTexts(old?.texts ?? [], incoming, Infinity);
   if (!r.added) {
-    flashToast(r.full ? `${MAX_FOLDER_TEXTS} folder texts at most: remove a folder first` : `“${name}” has those texts already`);
+    flashToast(`“${name}” has those texts already`);
     return;
   }
   const folder: TextFolder = { name, texts: r.texts };
@@ -330,7 +325,7 @@ export function loadTextFolder(zipName: string, files: { name: string; raw: stri
     folders: old ? folders.map((f) => (f === old ? folder : f)) : [...folders, folder],
   });
   flashToast(
-    `Folder “${name}”: ${r.added} text${r.added === 1 ? "" : "s"} added${r.already ? `, ${r.already} already there` : ""}${r.full ? `, ${r.full} over the limit` : ""}`,
+    `Folder “${name}”: ${r.added} text${r.added === 1 ? "" : "s"} added${r.already ? `, ${r.already} already there` : ""}`,
   );
   schedulePersist();
 }
@@ -373,15 +368,9 @@ export function loadCodexTexts(files: { name: string; raw: string }[]) {
   // Loading adds: the texts already loaded stay until removed with their ✕.
   const { texts: have, custom, textIndex } = useGame.getState();
   const base = custom ? have : [];
-  const r = mergeTexts(base, incoming, MAX_TEXTS);
+  const r = mergeTexts(base, incoming, Infinity);
   if (!r.added) {
-    flashToast(
-      r.full
-        ? `${MAX_TEXTS} texts at most: remove some with ✕ first`
-        : r.already > 1
-          ? "Those texts are loaded already"
-          : "That text is loaded already",
-    );
+    flashToast(r.already > 1 ? "Those texts are loaded already" : "That text is loaded already");
     return;
   }
   // The text in use stays in use; with only the built-in text, the first new one starts.
@@ -390,12 +379,7 @@ export function loadCodexTexts(files: { name: string; raw: string }[]) {
   useGame.setState({ texts, textIndex: index, lines: texts[index]!.lines, custom: true });
   if (!base.length) getGame()?.onCodex(texts[index]!.lines.length);
   const total = texts.reduce((n, t) => n + t.lines.length, 0);
-  const extra = [
-    r.already ? `${r.already} already loaded` : "",
-    r.full ? `${r.full} over the ${MAX_TEXTS}-text limit` : "",
-  ]
-    .filter(Boolean)
-    .join(", ");
+  const extra = r.already ? `${r.already} already loaded` : "";
   flashToast(
     `Added ${r.added} text${r.added === 1 ? "" : "s"}: ${texts.length} loaded, ${total} sectors${extra ? ` (${extra})` : ""}`,
   );
@@ -871,7 +855,7 @@ export class Engine implements GameBase {
         applySound(useGame.getState().settings);
       }
       const clean = (v: unknown) =>
-        Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 4).slice(0, MAX_LINES) : [];
+        Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && keepsLine(x)) : [];
       const texts: LoadedText[] = data.custom && Array.isArray(data.texts)
         ? data.texts
             .map((t) => {
@@ -879,7 +863,6 @@ export class Engine implements GameBase {
               return { name: typeof o.name === "string" ? o.name.slice(0, 120) : "Text", lines: clean(o.lines) };
             })
             .filter((t) => t.lines.length > 0)
-            .slice(0, MAX_TEXTS)
         : [];
       if (texts.length) {
         const i = Math.max(0, Math.min(texts.length - 1, Math.floor(Number(data.textIndex) || 0)));
@@ -891,7 +874,6 @@ export class Engine implements GameBase {
       }
       // The Read tab's folders (from .zip files), each text checked like the others.
       if (Array.isArray(data.folders)) {
-        let left = MAX_FOLDER_TEXTS;
         const folders: TextFolder[] = [];
         for (const f of data.folders) {
           const o = (typeof f === "object" && f !== null ? f : {}) as { name?: unknown; texts?: unknown };
@@ -901,9 +883,7 @@ export class Engine implements GameBase {
               const x = (typeof t === "object" && t !== null ? t : {}) as { name?: unknown; lines?: unknown };
               return { name: typeof x.name === "string" ? x.name.slice(0, 120) : "Text", lines: clean(x.lines) };
             })
-            .filter((t) => t.lines.length > 0)
-            .slice(0, left);
-          left -= texts.length;
+            .filter((t) => t.lines.length > 0);
           if (texts.length) folders.push({ name: o.name.slice(0, 120), texts });
         }
         useGame.setState({ folders });

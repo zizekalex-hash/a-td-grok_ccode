@@ -57,7 +57,17 @@ export type TdTowerKey =
   | "quasar"
   | "wormhole"
   | "reactor"
-  | "singularity";
+  | "singularity"
+  | "orexin"
+  | "noradrenaline"
+  | "glutamate"
+  | "caffeine"
+  | "acetylcholine"
+  | "cortisol"
+  | "daybreak"
+  | "serotonin"
+  | "dopamine"
+  | "histamine";
 
 export type TdCreepKind =
   | "adenosine"
@@ -72,7 +82,16 @@ export type TdCreepKind =
   | "pressure"
   | "circadian"
   | "somnus"
-  | "rift";
+  | "rift"
+  | "delta"
+  | "kcomplex"
+  | "microsleep"
+  | "cytokine"
+  | "atonia"
+  | "debt"
+  | "hypnos"
+  | "morpheus"
+  | "nyx";
 
 export type TdPerkKey = "damage" | "rate" | "range" | "interest" | "lives" | "thrift";
 /** Upgrades bought with flux. */
@@ -119,6 +138,29 @@ export interface TdTowerSpec {
   /** Extra damage creeps in range take (0.15 = +15%), and the share of their armor they lose. */
   vuln?: number;
   shred?: number;
+  /** A wake tower: built, upgraded and specialized with ATP (td.atp), not O/I. */
+  wake?: boolean;
+  /** More creeps it fires at in one volley (1 = two creeps at once). */
+  multi?: number;
+  /** Seconds a hit stops the creep dead. Bosses resist like a slow. */
+  stun?: number;
+  /** Every spikeEvery-th shot hits spikeMult times as hard. */
+  spikeEvery?: number;
+  spikeMult?: number;
+  /** Seconds a hit creep cannot mend: no regeneration, no healing from others. */
+  block?: number;
+  /** Damage an instant strike keeps on each jump (1 = all of it; left out, the usual falloff). */
+  chainKeep?: number;
+  /** Armor a hit strips from the creep for good (0.03 = 3 points of 100). */
+  corrode?: number;
+  /** Share of the life a creep has left that each hit also takes. Bosses lose a quarter of that. */
+  rend?: number;
+  /** Extra range, in cells, for towers that fire in its circle. Several do not stack: the widest counts. */
+  reach?: number;
+  /** ATP paid when a wave clears. */
+  atpIncome?: number;
+  /** Creeps in its circle move this much slower (0.15 = 15%). Bosses resist like a slow. */
+  mire?: number;
   /** The two specializations offered at the top level. */
   paths?: TdPathSpec[];
   /** The two Ascensions offered at td.ascendLevel, after a path. */
@@ -146,7 +188,16 @@ export type TdPathAdd =
   | "vuln"
   | "shred"
   | "execute"
-  | "fluxIncome";
+  | "fluxIncome"
+  | "multi"
+  | "stun"
+  | "spikeMult"
+  | "block"
+  | "corrode"
+  | "rend"
+  | "reach"
+  | "atpIncome"
+  | "mire";
 
 /** A tower specialization: multipliers and additions on its stats. */
 export interface TdPathSpec {
@@ -186,6 +237,47 @@ export interface TdCreepSpec {
   summon?: string;
   summonEvery?: number;
   summonCount?: number;
+  /** ATP it drops when slain (the dream set and every boss). */
+  atp?: number;
+  /** Most of its full life one hit can take (0.12 = 12%). Burns are not capped. */
+  ward?: number;
+  /** Sprints: every dashEvery seconds, dashTime seconds at dashSpeed times its pace. */
+  dashEvery?: number;
+  dashTime?: number;
+  dashSpeed?: number;
+  /** Fades: every phaseEvery seconds, phaseTime seconds in which no tower can aim at it (blasts, burns and circles still reach it). */
+  phaseEvery?: number;
+  phaseTime?: number;
+  /** Armor it lends every other creep within guardRange. */
+  guard?: number;
+  guardRange?: number;
+  /** Towers within jamRange stop for jam seconds: when it is slain, or every jamEvery seconds while it walks. */
+  jam?: number;
+  jamRange?: number;
+  jamEvery?: number;
+  /** Speed it gains for every second on the board (0.05 = 5%), up to rushMax more. */
+  rush?: number;
+  rushMax?: number;
+  /** Towers within lullRange fire this much slower (0.3 = 30%). */
+  lull?: number;
+  lullRange?: number;
+}
+
+/** A stage the wake core reaches at a level: what it adds to the core from then on. */
+export interface TdCoreStage {
+  level: number;
+  name: string;
+  copy: string;
+  /** The pulse slows what it hits by this much, for slowTime seconds. */
+  slow?: number;
+  slowTime?: number;
+  /** Towers in the core's circle deal this much more damage. */
+  aura?: number;
+  /** Lives that come back each time a wave clears. */
+  mend?: number;
+  /** The pulse comes this many times as often, and ignores this share of armor. */
+  rate?: number;
+  pierce?: number;
 }
 
 export interface TdMapSpec {
@@ -521,6 +613,9 @@ export interface GameConfig {
       income: number;
       vuln: number;
       fluxIncome: number;
+      reach: number;
+      atpIncome: number;
+      mire: number;
     };
     upgradeCostFactor: number;
     masteryCostGrowth: number;
@@ -567,6 +662,8 @@ export interface GameConfig {
       extraBossEvery: number;
       bossHpPerBossWave: number;
       swarmSize: number;
+      /** ATP a creep drops grows by this share with every wave. */
+      atpPerWave: number;
       /** First wave each kind can appear in. Kinds missing here only arrive as splits or summons. */
       unlocks: Record<string, number>;
       /** How often each kind is picked, relative to the others. */
@@ -594,6 +691,28 @@ export interface GameConfig {
       summonBoostMax: number;
       perks: Record<TdVoidPerkKey, TdPerkSpec>;
     };
+    /** ATP, the third currency: what a run starts with (see td.atp._about). */
+    atp: { start: number };
+    /** The wake core's levels, bought with ATP (see td.core._about). */
+    core: {
+      cost: number;
+      costGrowth: number;
+      livesPerLevel: number;
+      atpPerWave: number;
+      atpPerLevel: number;
+      pulse: {
+        fromLevel: number;
+        every: number;
+        damage: number;
+        damageGrowth: number;
+        range: number;
+        rangePerLevel: number;
+        maxRange: number;
+      };
+      stages: TdCoreStage[];
+    };
+    /** Maps joined into one board (see td.stitch._about). */
+    stitch: { maxMaps: number; hpPerBoard: number; goldPerBoard: number; startGoldPerBoard: number };
   };
   chess: {
     startHp: number;

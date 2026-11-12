@@ -78,6 +78,13 @@ describe("zip folders of texts", () => {
     assert.equal((await unzipTexts(zip, 1)).length, 1, "at most so many");
   });
 
+  it("reads every .txt of a big zip: there is no limit on how many", async () => {
+    const zip = makeZip(Array.from({ length: 750 }, (_, i) => ({ path: `set/phrase ${i}.txt`, text: `Phrase ${i}.` })));
+    const texts = await unzipTexts(zip);
+    assert.equal(texts.length, 750);
+    assert.equal(texts[749]!.text, "Phrase 749.");
+  });
+
   it("knows a text file, and names texts by their paths", () => {
     assert.ok(isTextPath("a/b.TXT"));
     assert.ok(!isTextPath("a/b.md"));

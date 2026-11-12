@@ -24,6 +24,11 @@ export interface BubbleSetup {
   passes: number;
   /** Locked in the app: on the window too only the tap works (‹ › ◐ ◢ wait). */
   locked: boolean;
+  /** Its look: the phrase's, top bar's and bottom line's letters (sp), and the bottom line shown. */
+  phraseSp: number;
+  barSp: number;
+  bottomSp: number;
+  showBottom: boolean;
 }
 
 export interface BubbleReps {
@@ -40,6 +45,7 @@ interface RepBubbleApi {
   hide(): Promise<void>;
   takeReps(): Promise<BubbleReps>;
   keepAlive(o: { on: boolean }): Promise<void>;
+  resetPlace(): Promise<void>;
   battery(): Promise<{ unrestricted: boolean }>;
   unrestrict(): Promise<{ unrestricted: boolean }>;
   addListener(event: "reps", fn: () => void): Promise<{ remove: () => Promise<void> }>;
@@ -154,4 +160,10 @@ export async function askUnrestricted(): Promise<boolean | null> {
   } catch {
     return null;
   }
+}
+
+/** The window back in the middle of the screen at its first size (now if open, else next time it opens). */
+export async function resetBubblePlace() {
+  const b = await bubble();
+  if (b) await b.api.resetPlace().catch(() => {});
 }

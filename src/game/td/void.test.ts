@@ -23,6 +23,7 @@ import {
   VOID_PERKS,
   VOID_TOWER_KEYS,
   voidPerkCost,
+  WAKE_TOWER_KEYS,
 } from "./economy.ts";
 import { batchMs, clampBatch, defaultRepUi, loadRepUi } from "./repui.ts";
 import { restore, serialize } from "./save.ts";
@@ -76,7 +77,7 @@ describe("the void", () => {
     assert.equal(new Set([...TOWER_KEYS, ...VOID_TOWER_KEYS]).size, 2 * TOWER_KEYS.length);
     for (const k of VOID_TOWER_KEYS) assert.ok(isVoid(k), k);
     for (const k of TOWER_KEYS) assert.ok(!isVoid(k), k);
-    assert.deepEqual(Object.keys(TOWERS).sort(), [...TOWER_KEYS, ...VOID_TOWER_KEYS].sort());
+    assert.deepEqual(Object.keys(TOWERS).sort(), [...TOWER_KEYS, ...VOID_TOWER_KEYS, ...WAKE_TOWER_KEYS].sort());
   });
 
   it("pays flux for a rep, only once the rep's time has passed", () => {
@@ -226,6 +227,14 @@ describe("the void", () => {
         exec: 0,
         execBy: 0,
         summoned: false,
+        stun: 0,
+        stunGrace: 0,
+        block: 0,
+        age: 0,
+        faded: false,
+        guard: 0,
+        mire: 0,
+        jamTimer: 0,
       });
     }
     step(s, 0.06, 1, text);

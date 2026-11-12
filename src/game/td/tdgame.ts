@@ -41,10 +41,17 @@ import {
   musesOf,
   refundFor,
   undoable,
+  coreOf,
+  coreRaises,
+  inCore,
+  raiseCore,
+  raiseCoreMax,
+  rangeOf,
+  reachBonus,
   type TdEvent,
   type TdState,
 } from "./sim.ts";
-import { buildable, COLS, inGrid, mapFor, MAPS, pointAt, ROWS } from "./map.ts";
+import { boardCount, buildable, COLS, findMap, inGrid, mapFor, pointAt, ROWS } from "./map.ts";
 import {
   bossesFor,
   CREEPS,
@@ -56,9 +63,13 @@ import {
   ascensionsOf,
   pathCost,
   pathsOf,
+  coreCost,
+  CORE_STAGES,
+  CURRENCY_NAME,
   currencyOf,
   fluxPerRep,
   isVoid,
+  isWake,
   repGold,
   summonCost,
   summonReward,
@@ -110,12 +121,12 @@ function readSave(): TdSave {
     const data: unknown = raw ? JSON.parse(raw) : null;
     if (typeof data !== "object" || data === null) return save;
     const d = data as { map?: unknown; difficulty?: unknown; bests?: unknown; bestWave?: unknown };
-    if (typeof d.map === "string" && MAPS[d.map]) save.map = d.map;
+    if (typeof d.map === "string" && findMap(d.map)) save.map = d.map;
     if (isDifficulty(d.difficulty)) save.difficulty = d.difficulty;
     if (typeof d.bests === "object" && d.bests !== null) {
       for (const [key, n] of Object.entries(d.bests as Record<string, unknown>)) {
         const [map, diff] = key.split(":");
-        const known = map && MAPS[map] && (diff === undefined || isDifficulty(diff));
+        const known = map && findMap(map) && (diff === undefined || isDifficulty(diff));
         if (known && typeof n === "number" && Number.isFinite(n) && n > 0) save.bests[key] = n;
       }
     }
@@ -179,6 +190,10 @@ export class TdGame implements GameBase {
   private oy = 0;
   private w = 1;
   private h = 1;
+  /** On a stitched map: the board looked at (its number from 0), or -1 for all of them at once. */
+  private view = -1;
+  /** The part of the board on screen, in px: all of it, or what fits the field when one board is looked at. */
+  private vis = { x: 0, y: 0, w: 1, h: 1 };
   /** The grid and the lane, drawn once per size. */
   private board: HTMLCanvasElement = document.createElement("canvas");
   private boardKey = "";
@@ -224,6 +239,8 @@ export class TdGame implements GameBase {
     else if (key === "q") this.tdSpell("storm");
     else if (key === "e") this.tdSpell("still");
     else if (key === "r") this.tdRepBatch();
+    else if (key === "c") this.tdSelectCore();
+    else if (key === "v") this.tdCycleView();
     else if (e.key === "Escape" && this.selected) {
       // Clearing the selection uses up the key; the next Esc opens the menu.
       e.preventDefault();
@@ -276,6 +293,7 @@ export class TdGame implements GameBase {
     const { tdMap, tdDifficulty } = useGame.getState();
     this.sim = createGame(mapFor(tdMap), tdDifficulty);
     this.selected = null;
+    this.view = -1;
     this.speed = 1;
     this.floaters = [];
     this.spellFx = [];
@@ -297,6 +315,7 @@ export class TdGame implements GameBase {
     }
     this.sim = run;
     this.selected = null;
+    this.view = -1;
     this.speed = 1;
     this.floaters = [];
     this.spellFx = [];
@@ -345,6 +364,7 @@ export class TdGame implements GameBase {
     const { tdMap, tdDifficulty } = useGame.getState();
     this.sim = createGame(mapFor(tdMap), tdDifficulty);
     this.selected = null;
+    this.view = -1;
     useGame.setState({ phase: "title", paused: false, tomeOpen: false, drawer: false });
     this.pushView(true);
   }
@@ -435,7 +455,8 @@ export class TdGame implements GameBase {
     const t = towerAt(this.sim, this.selected.col, this.selected.row);
     const undo = t ? undoable(this.sim, t) : false;
     const r = sell(this.sim, this.selected.col, this.selected.row);
-    this.note(r.ok ? (undo ? "Build undone: every O/I back." : "Tower sold.") : r.reason);
+    const unit = t ? CURRENCY_NAME[currencyOf(t.key)] : "O/I";
+    this.note(r.ok ? (undo ? `Build undone: every ${unit} back.` : "Tower sold.") : r.reason);
   }
 
   tdTarget() {
@@ -576,6 +597,51 @@ export class TdGame implements GameBase {
     this.saveRun();
   }
 
+  /** Raises the wake core a level, for ATP. */
+  tdRaiseCore() {
+    const r = raiseCore(this.sim);
+    if (r.ok) sfx.ready();
+    if (!r.ok) this.note(r.reason);
+    this.drainEvents();
+    this.saveRun();
+    this.pushView(true);
+  }
+
+  /** Every core level the ATP allows, in one tap. */
+  tdRaiseCoreMax() {
+    const r = raiseCoreMax(this.sim);
+    if (r.ok) sfx.ready();
+    if (!r.ok) this.note(r.reason);
+    this.drainEvents();
+    this.saveRun();
+    this.pushView(true);
+  }
+
+  /** Selects the core, to see what it does and raise it (tapping it does the same). */
+  tdSelectCore() {
+    if (useGame.getState().phase !== "battle") return;
+    const [col, row] = this.sim.map.core;
+    this.selected = { col, row };
+    // On a stitched map, look at the core's board if another one is on screen.
+    if (this.view >= 0) this.view = boardCount(this.sim.map) - 1;
+    this.pushView(true);
+  }
+
+  /** On a stitched map: looks at one board (its number from 0), or at all of them (-1). */
+  tdSetView(view: number) {
+    const boards = boardCount(this.sim.map);
+    this.view = boards > 1 && view >= 0 && view < boards ? Math.floor(view) : -1;
+    this.boardKey = "";
+    this.pushView(true);
+  }
+
+  /** All boards, then each one in turn. */
+  tdCycleView() {
+    const boards = boardCount(this.sim.map);
+    if (boards < 2) return;
+    this.tdSetView(this.view + 1 >= boards ? -1 : this.view + 1);
+  }
+
   private note(message: string) {
     this.message = message;
     this.pushView(true);
@@ -583,10 +649,20 @@ export class TdGame implements GameBase {
 
   private geometry() {
     const box = this.backdrop.fieldBox(useGame.getState().chrome);
-    const cell = Math.max(10, Math.min(box.w / COLS, box.h / ROWS));
+    const map = this.sim.map;
+    // One board of a stitched map fills the field when it is the one looked at; its neighbours show at the edges.
+    const sec = this.view >= 0 ? map.sections[this.view] : undefined;
+    const cols = sec ? COLS : map.cols;
+    const rows = sec ? ROWS : map.rows;
+    const cell = Math.max(sec ? 10 : 6, Math.min(box.w / cols, box.h / rows));
     this.cell = cell;
-    this.ox = Math.round(box.x + (box.w - COLS * cell) / 2);
-    this.oy = Math.round(box.y + (box.h - ROWS * cell) / 2);
+    this.ox = Math.round(box.x + (box.w - cols * cell) / 2 - (sec ? sec.col * cell : 0));
+    this.oy = Math.round(box.y + (box.h - rows * cell) / 2 - (sec ? sec.row * cell : 0));
+    const x0 = sec ? Math.max(box.x, this.ox) : this.ox;
+    const y0 = sec ? Math.max(box.y, this.oy) : this.oy;
+    const x1 = sec ? Math.min(box.x + box.w, this.ox + map.cols * cell) : this.ox + map.cols * cell;
+    const y1 = sec ? Math.min(box.y + box.h, this.oy + map.rows * cell) : this.oy + map.rows * cell;
+    this.vis = { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
   }
 
   private select(x: number, y: number) {
@@ -600,14 +676,14 @@ export class TdGame implements GameBase {
       const ui = readRepUi();
       const [cc, cr] = this.sim.map.core;
       const onCore = Math.hypot(fx - cc - 0.5, fy - cr - 0.5) <= 0.9;
-      if ((ui.coreTap && onCore) || (ui.offTap && !inGrid(col, row))) {
+      if ((ui.coreTap && onCore) || (ui.offTap && !inGrid(col, row, this.sim.map))) {
         this.selected = null;
         this.tdRepBatch();
         return;
       }
     }
     const same = this.selected && this.selected.col === col && this.selected.row === row;
-    this.selected = !inGrid(col, row) || same ? null : { col, row };
+    this.selected = !inGrid(col, row, this.sim.map) || same ? null : { col, row };
     this.pushView(true);
   }
 
@@ -661,6 +737,7 @@ export class TdGame implements GameBase {
       this.sim = createGame(picked, level);
       this.save.difficulty = level;
       this.selected = null;
+      this.view = -1;
       this.save.map = this.sim.map.key;
       this.persist();
       this.pushView(true);
@@ -702,7 +779,7 @@ export class TdGame implements GameBase {
         this.saveRun();
       } else if (e.type === "waveCleared") {
         const total = e.bonus + e.income + e.interest;
-        this.float(core.x, core.y - 0.6, `Wave ${e.wave} · +${total}`, PAL.gold);
+        this.float(core.x, core.y - 0.6, `Wave ${e.wave} · +${total}${e.atp ? ` · +${e.atp} ATP` : ""}`, PAL.gold);
         sfx.ready();
         this.recordBest();
         this.saveRun();
@@ -720,8 +797,15 @@ export class TdGame implements GameBase {
         this.bannerLife = 2.4;
       } else if (e.type === "bossKilled") {
         sfx.kill(true);
-        this.float(core.x, core.y + 0.6, `${CREEPS[e.kind].name} down · +${e.gold}`, PAL.gold);
+        this.float(core.x, core.y + 0.6, `${CREEPS[e.kind].name} down · +${e.gold}${e.atp ? ` · +${e.atp} ATP` : ""}`, PAL.gold);
         this.say("kill", true);
+      } else if (e.type === "coreRaised") {
+        this.message = e.stage ? `The core is ${e.stage}: level ${e.level}.` : `The core is level ${e.level}.`;
+        if (e.stage) {
+          sfx.bless();
+          this.banner = `CORE · ${e.stage.toUpperCase()}`;
+          this.bannerLife = 2.2;
+        }
       } else if (e.type === "spell") {
         const spec = CONFIG.td.spells[e.key];
         // Stillness lingers as long as its slow; the storm is a flash.
@@ -771,6 +855,8 @@ export class TdGame implements GameBase {
     const busy = sim.spawners.length > 0 || sim.creeps.length > 0;
     const plan = tower ? maxUpgrades(sim, tower) : { levels: 0, cost: 0 };
     const boss = leadBoss(sim);
+    const core = coreOf(sim);
+    const corePlan = coreRaises(sim);
     const view: TdView = {
       phase: sim.phase,
       gold: sim.gold,
@@ -796,13 +882,19 @@ export class TdGame implements GameBase {
             level: tower.level,
             damage: tower.stats.damage * auraBonus(sim, tower),
             rate: tower.stats.rate,
-            range: tower.stats.range,
+            range: rangeOf(sim, tower),
+            reach: reachBonus(sim, tower),
+            jammed: tower.jam > 0,
             upgradeCost: upgradeCost(tower.key, tower.level, sim.perks),
             sellValue: refundFor(sim, tower),
             undo: undoable(sim, tower),
             maxLevels: plan.levels,
             maxCost: plan.cost,
-            boosts: tower.stats.aura > 0 || tower.stats.haste > 0 ? sim.towers.filter((o) => o !== tower && inCircle(tower, o)).length : 0,
+            // Only towers that fire are boosted, the ones marked with gold corners.
+            boosts:
+              tower.stats.aura > 0 || tower.stats.haste > 0 || tower.stats.reach > 0
+                ? sim.towers.filter((o) => o !== tower && o.stats.rate > 0 && inCircle(tower, o)).length
+                : 0,
             muses: musesOf(sim, tower).length,
             targeting: tower.targeting,
             aura: auraBonus(sim, tower) - 1,
@@ -831,6 +923,30 @@ export class TdGame implements GameBase {
       voidPerks: { ...sim.voidPerks },
       summonCost: summonCost(sim.wave),
       summonReward: summonReward(sim.wave),
+      atp: sim.atp,
+      core: {
+        level: core.level,
+        stage: core.stage.name,
+        next: core.next ? { level: core.next.level, name: core.next.name, copy: core.next.copy } : null,
+        cost: coreCost(core.level),
+        maxLevels: corePlan.levels,
+        maxCost: corePlan.cost,
+        pulses: core.pulses,
+        damage: core.damage,
+        every: core.every,
+        range: core.range,
+        slow: core.slow,
+        aura: core.aura,
+        mend: core.mend,
+        pierce: core.pierce,
+        atp: core.atp,
+        dealt: sim.core.dealt,
+        kills: sim.core.kills,
+        boosts: core.aura > 0 ? sim.towers.filter((t) => t.stats.rate > 0 && inCore(sim, t, core)).length : 0,
+      },
+      coreSelected: !!sel && sel.col === sim.map.core[0] && sel.row === sim.map.core[1],
+      boards: sim.map.sections.length > 1 ? sim.map.sections.map((b) => b.name) : [],
+      board: this.view,
       message: this.message,
     };
     useGame.setState({ tdView: view });
@@ -868,10 +984,25 @@ export class TdGame implements GameBase {
       settings,
       this.time * (this.reduce ? CONFIG.rain.reducedMotionSpeed : CONFIG.rain.speed),
     );
+    // One board of a stitched map on screen: the rest is cut off at the field's edge.
+    const clip = this.view >= 0;
+    const cut = () => {
+      if (!clip) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(this.vis.x, this.vis.y, this.vis.w, this.vis.h);
+      ctx.clip();
+    };
+    const uncut = () => {
+      if (clip) ctx.restore();
+    };
+    cut();
     this.drawBoard(ctx);
     this.drawRange(ctx);
     this.drawTowers(ctx);
+    this.drawJoins(ctx);
     this.drawCore(ctx, lines);
+    uncut();
     // The text goes over the board, so nothing on it hides a word. The word-opacity setting keeps it readable.
     this.backdrop.drawField(
       ctx,
@@ -882,12 +1013,15 @@ export class TdGame implements GameBase {
       this.reduce,
     );
     this.fontNow = "";
+    cut();
     this.drawCreeps(ctx);
     this.drawBeams(ctx);
     this.drawShots(ctx);
     this.drawSpells(ctx);
     this.drawSelection(ctx);
     this.drawFloaters(ctx);
+    uncut();
+    this.fontNow = "";
     this.drawBanner(ctx);
   }
 
@@ -900,13 +1034,13 @@ export class TdGame implements GameBase {
     if (key !== this.boardKey) {
       this.boardKey = key;
       const b = this.board;
-      b.width = Math.ceil(COLS * s * dpr) + 2;
-      b.height = Math.ceil(ROWS * s * dpr) + 2;
+      b.width = Math.ceil(map.cols * s * dpr) + 2;
+      b.height = Math.ceil(map.rows * s * dpr) + 2;
       const g = b.getContext("2d");
       if (g) {
         g.setTransform(dpr, 0, 0, dpr, 0, 0);
-        for (let c = 0; c < COLS; c++) {
-          for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < map.cols; c++) {
+          for (let r = 0; r < map.rows; r++) {
             const lane = map.lane.has(`${c},${r}`);
             g.fillStyle = lane ? "rgba(168, 85, 247, 0.14)" : "rgba(0, 255, 255, 0.035)";
             g.fillRect(c * s, r * s, s, s);
@@ -915,7 +1049,7 @@ export class TdGame implements GameBase {
             g.strokeRect(c * s + 0.5, r * s + 0.5, s - 1, s - 1);
           }
         }
-        // Each lane's centre line, with a soft glow, from its gate to the core.
+        // Each lane's centre line, with a soft glow, from its gate to the core: one line, across every board.
         g.beginPath();
         for (const lane of map.lanes) {
           lane.waypoints.forEach(([c, r], i) => {
@@ -938,8 +1072,38 @@ export class TdGame implements GameBase {
         g.textAlign = "center";
         g.textBaseline = "middle";
         g.fillStyle = PAL.violet;
-        for (const lane of map.lanes)
-          g.fillText("GATE", (lane.gate[0] + 0.5) * s, (lane.gate[1] + 0.5) * s);
+        // The gate the creeps come in by; on a stitched map, also where the lane enters each further board.
+        map.sections.forEach((sec, i) => {
+          for (const gate of sec.gates)
+            g.fillText(i === 0 ? "GATE" : `IN ${i + 1}`, (gate[0] + 0.5) * s, (gate[1] + 0.5) * s);
+        });
+        if (map.sections.length > 1) {
+          // Each board's frame and number, so the join shows.
+          g.textAlign = "left";
+          g.textBaseline = "top";
+          g.font = `${Math.max(8, s * 0.3)}px ${DISPLAY}`;
+          map.sections.forEach((sec, i) => {
+            g.strokeStyle = "rgba(232, 200, 114, 0.4)";
+            g.lineWidth = 1.5;
+            g.strokeRect(sec.col * s + 1, sec.row * s + 1, COLS * s - 2, ROWS * s - 2);
+            g.fillStyle = "rgba(232, 200, 114, 0.75)";
+            // The number sits on a cell the lane leaves free, in one of the board's corners.
+            const corners: [number, number][] = [
+              [0, 0],
+              [COLS - 1, 0],
+              [0, ROWS - 1],
+              [COLS - 1, ROWS - 1],
+            ];
+            const [fc, fr] = corners.find(([c, r]) => !map.lane.has(`${sec.col + c},${sec.row + r}`)) ?? [0, 0];
+            g.textAlign = fc === 0 ? "left" : "right";
+            g.textBaseline = fr === 0 ? "top" : "bottom";
+            g.fillText(
+              String(i + 1),
+              (sec.col + fc + (fc === 0 ? 0.14 : 0.86)) * s,
+              (sec.row + fr + (fr === 0 ? 0.12 : 0.9)) * s,
+            );
+          });
+        }
       }
     }
     ctx.drawImage(this.board, this.ox, this.oy, this.board.width / dpr, this.board.height / dpr);
@@ -949,13 +1113,18 @@ export class TdGame implements GameBase {
     const sel = this.selected;
     if (!sel) return;
     const t = towerAt(this.sim, sel.col, sel.row);
-    if (!t || t.stats.range <= 0) return;
+    if (!t) {
+      this.drawCoreRange(ctx, sel);
+      return;
+    }
+    if (t.stats.range <= 0) return;
     const cx = this.px(t.col + 0.5);
     const cy = this.py(t.row + 0.5);
     const color = TOWERS[t.key].color;
     const support = t.stats.rate <= 0;
     ctx.beginPath();
-    ctx.arc(cx, cy, t.stats.range * this.cell, 0, Math.PI * 2);
+    // A firing tower's circle is its own range and what a Serotonin near it adds.
+    ctx.arc(cx, cy, rangeOf(this.sim, t) * this.cell, 0, Math.PI * 2);
     ctx.fillStyle = support ? "rgba(232, 200, 114, 0.07)" : "rgba(0, 255, 255, 0.05)";
     ctx.fill();
     ctx.setLineDash([5, 5]);
@@ -963,28 +1132,11 @@ export class TdGame implements GameBase {
     ctx.strokeStyle = color;
     ctx.stroke();
     ctx.setLineDash([]);
-    const s = this.cell;
     // A Muse: mark every tower it boosts. Any other tower: link it to the Muses boosting it.
-    if (t.stats.aura > 0 || t.stats.haste > 0) {
-      ctx.strokeStyle = PAL.gold;
-      ctx.lineWidth = 2;
+    if (t.stats.aura > 0 || t.stats.haste > 0 || t.stats.reach > 0) {
       for (const o of this.sim.towers) {
         if (o === t || o.stats.rate <= 0 || !inCircle(t, o)) continue;
-        const x = this.px(o.col);
-        const y = this.py(o.row);
-        const k = s * 0.22;
-        ctx.beginPath();
-        for (const [ax, ay, dx, dy] of [
-          [x + 2, y + 2, 1, 1],
-          [x + s - 2, y + 2, -1, 1],
-          [x + 2, y + s - 2, 1, -1],
-          [x + s - 2, y + s - 2, -1, -1],
-        ] as const) {
-          ctx.moveTo(ax + dx * k, ay);
-          ctx.lineTo(ax, ay);
-          ctx.lineTo(ax, ay + dy * k);
-        }
-        ctx.stroke();
+        this.drawCorners(ctx, o.col, o.row);
       }
     } else if (!support) {
       ctx.strokeStyle = "rgba(232, 200, 114, 0.7)";
@@ -998,6 +1150,75 @@ export class TdGame implements GameBase {
       }
       ctx.setLineDash([]);
     }
+  }
+
+  /** Gold corners on a cell: a tower a selected Muse (or the core) boosts. */
+  private drawCorners(ctx: CanvasRenderingContext2D, col: number, row: number) {
+    const s = this.cell;
+    const x = this.px(col);
+    const y = this.py(row);
+    const k = s * 0.22;
+    ctx.strokeStyle = PAL.gold;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (const [ax, ay, dx, dy] of [
+      [x + 2, y + 2, 1, 1],
+      [x + s - 2, y + 2, -1, 1],
+      [x + 2, y + s - 2, 1, -1],
+      [x + s - 2, y + s - 2, -1, -1],
+    ] as const) {
+      ctx.moveTo(ax + dx * k, ay);
+      ctx.lineTo(ax, ay);
+      ctx.lineTo(ax, ay + dy * k);
+    }
+    ctx.stroke();
+  }
+
+  /** The core selected: the circle its pulse reaches, and the towers a Radiant core boosts. */
+  private drawCoreRange(ctx: CanvasRenderingContext2D, sel: { col: number; row: number }) {
+    const [cc, cr] = this.sim.map.core;
+    if (sel.col !== cc || sel.row !== cr) return;
+    const core = coreOf(this.sim);
+    ctx.beginPath();
+    ctx.arc(this.px(cc + 0.5), this.py(cr + 0.5), core.range * this.cell, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(232, 200, 114, 0.07)";
+    ctx.fill();
+    ctx.setLineDash([5, 5]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = core.pulses ? PAL.gold : "rgba(232, 200, 114, 0.45)";
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (core.aura <= 0) return;
+    for (const o of this.sim.towers) {
+      if (o.stats.rate > 0 && inCore(this.sim, o, core)) this.drawCorners(ctx, o.col, o.row);
+    }
+  }
+
+  /**
+   * On a stitched map: where each board's own lane ends and the lane runs on to the
+   * next board, a small violet ring with that board's number.
+   */
+  private drawJoins(ctx: CanvasRenderingContext2D) {
+    const map = this.sim.map;
+    if (!map.joins.length) return;
+    const s = this.cell;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    map.joins.forEach(([c, r], i) => {
+      const cx = this.px(c + 0.5);
+      const cy = this.py(r + 0.5);
+      const rad = s * 0.36;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(2, 0, 5, 0.9)";
+      ctx.fill();
+      ctx.strokeStyle = PAL.violet;
+      ctx.lineWidth = Math.max(1.5, s * 0.06);
+      ctx.stroke();
+      ctx.fillStyle = PAL.fg;
+      this.font(ctx, `${Math.max(7, s * 0.26)}px ${DISPLAY}`);
+      ctx.fillText(`→${i + 2}`, cx, cy);
+    });
   }
 
   private drawTowers(ctx: CanvasRenderingContext2D) {
@@ -1039,6 +1260,27 @@ export class TdGame implements GameBase {
         ctx.arc(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad, Math.max(1.5, s * 0.05), 0, Math.PI * 2);
         ctx.fillStyle = color;
         ctx.fill();
+      } else if (isWake(t.key)) {
+        // The wake set: a six-sided ring, like the molecules it is named for, lit from inside.
+        const cx = x + s / 2;
+        const cy = y + s / 2;
+        const rad = s / 2 - pad * 0.6;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+          if (i === 0) ctx.moveTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+          else ctx.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+        }
+        ctx.closePath();
+        ctx.fillStyle = "rgba(14, 8, 2, 0.9)";
+        ctx.fill();
+        ctx.globalAlpha = 0.14 + (this.reduce ? 0 : Math.sin(this.time * 2.4 + t.id) * 0.05);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = t.level >= MAX_TOWER_LEVEL ? 2.4 : 1.6;
+        ctx.stroke();
       } else {
         ctx.fillStyle = "rgba(2, 0, 5, 0.86)";
         ctx.fillRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
@@ -1062,6 +1304,14 @@ export class TdGame implements GameBase {
         this.font(ctx, `${Math.max(7, s * 0.18)}px ${FONT}`);
         ctx.fillStyle = PAL.gold;
         ctx.fillText(`★${mastery}`, x + s - pad - s * 0.13, y + pad + s * 0.12);
+      }
+      if (t.jam > 0) {
+        // Jammed (an Atonia slain near it, or Nyx passing): dimmed and marked until it wakes.
+        ctx.fillStyle = "rgba(2, 0, 5, 0.6)";
+        ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
+        ctx.fillStyle = PAL.fg;
+        this.font(ctx, `${Math.max(8, s * 0.3)}px ${DISPLAY}`);
+        ctx.fillText("zz", x + s / 2, y + s / 2);
       }
     }
   }
@@ -1093,6 +1343,49 @@ export class TdGame implements GameBase {
     ctx.strokeStyle = frac < 0.35 ? PAL.danger : PAL.cyan;
     ctx.arc(cx, cy, r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
     ctx.stroke();
+    // The core's stages: one more gold ring turning round it for each one reached past the first.
+    const core = coreOf(this.sim);
+    const stage = Math.max(0, CORE_STAGES.indexOf(core.stage));
+    if (stage > 0) {
+      ctx.strokeStyle = PAL.gold;
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < stage; i++) {
+        const rr = r + 9 + i * 3.5;
+        const a = (this.reduce ? 0 : this.time * (0.5 + i * 0.12) * (i % 2 ? -1 : 1)) + i;
+        ctx.globalAlpha = 0.75;
+        ctx.beginPath();
+        ctx.arc(cx, cy, rr, a, a + Math.PI * 0.85);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(cx, cy, rr, a + Math.PI, a + Math.PI * 1.85);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    // A pulse: a ring running out to the edge of the core's circle.
+    const flash = this.sim.core.flash;
+    if (flash > 0) {
+      const u = 1 - Math.max(0, Math.min(1, flash / 0.4));
+      ctx.globalAlpha = (1 - u) * 0.8;
+      ctx.strokeStyle = PAL.gold;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + (core.range * s - r) * u, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (core.level > 1) {
+      const size = Math.max(7, s * 0.2);
+      this.font(ctx, `${size}px ${DISPLAY}`);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(2, 0, 5, 0.85)";
+      ctx.fillStyle = PAL.gold;
+      const label = `LV ${core.level}`;
+      ctx.strokeText(label, cx, cy + r + 12 + stage * 3.5);
+      ctx.fillText(label, cx, cy + r + 12 + stage * 3.5);
+    }
   }
 
   /**
@@ -1109,11 +1402,14 @@ export class TdGame implements GameBase {
     for (const c of this.sim.creeps) {
       const spec = CREEPS[c.kind];
       if (spec.boss) {
+        // A faded boss (Morpheus) shows as a ghost: nothing can aim at it then.
+        if (c.faded) ctx.globalAlpha = 0.35;
         this.drawBoss(ctx, c.kind, this.px(c.x), this.py(c.y), c.hp / c.maxHp);
+        ctx.globalAlpha = 1;
         continue;
       }
       // Spread creeps across three thin lanes, so stacked waves do not sit on top of each other.
-      const ahead = pointAt(this.sim.map, c.dist + 0.05);
+      const ahead = pointAt(this.sim.map, c.dist + 0.05, c.lane);
       const dx = ahead.x - c.x;
       const dy = ahead.y - c.y;
       const len = Math.hypot(dx, dy);
@@ -1121,16 +1417,19 @@ export class TdGame implements GameBase {
       const px = this.px(c.x + (len > 0 ? (-dy / len) * lane : 0));
       const py = this.py(c.y + (len > 0 ? (dx / len) * lane : 0));
       const r = Math.max(2, s * spec.size * 0.6);
-      const color = c.slowTime > 0 ? "#9fd3ff" : c.burnTime > 0 ? "#ff9f43" : spec.color;
+      const tint = c.stun > 0 ? "#ffffff" : c.slowTime > 0 || c.mire > 0 ? "#9fd3ff" : c.burnTime > 0 ? "#ff9f43" : spec.color;
+      // Faded creeps (a Microsleep out of sight) are drawn faint, in a batch of their own.
+      const color = c.faded ? `~${tint}` : tint;
       let list = dots.get(color);
       if (!list) dots.set(color, (list = []));
       list.push(px, py, r);
       if (c.hp < c.maxHp) bars.push(px - r, py - r - 4, 2 * r * Math.max(0, c.hp / c.maxHp));
       if (c.vuln > 0 || c.shred > 0) marks.push(px, py, r + 2);
     }
-    ctx.globalAlpha = 0.9;
     for (const [color, list] of dots) {
-      ctx.fillStyle = color;
+      const faded = color.startsWith("~");
+      ctx.globalAlpha = faded ? 0.28 : 0.9;
+      ctx.fillStyle = faded ? color.slice(1) : color;
       ctx.beginPath();
       for (let i = 0; i < list.length; i += 3) {
         const x = list[i]!;
@@ -1196,8 +1495,8 @@ export class TdGame implements GameBase {
     const nw = ctx.measureText(name).width;
     // Above the boss, or below it when that would leave the board.
     const above = py - r - 15;
-    const ny = above < this.oy + 6 ? py + r + 12 : above;
-    ctx.fillText(name, clampCenter(px, nw, this.ox, this.ox + COLS * s), ny);
+    const ny = above < this.vis.y + 6 ? py + r + 12 : above;
+    ctx.fillText(name, clampCenter(px, nw, this.vis.x, this.vis.x + this.vis.w), ny);
   }
 
   private drawBeams(ctx: CanvasRenderingContext2D) {
@@ -1254,9 +1553,9 @@ export class TdGame implements GameBase {
       this.phraseFits.clear();
       this.phraseCell = this.cell;
     }
-    const left = this.ox + 2;
-    const right = this.ox + COLS * this.cell - 2;
-    const id = `${size}|${text}`;
+    const left = this.vis.x + 2;
+    const right = this.vis.x + this.vis.w - 2;
+    const id = `${size}|${Math.round(right - left)}|${text}`;
     let fit = this.phraseFits.get(id);
     if (!fit) {
       fit = fitPhrase(
@@ -1270,8 +1569,8 @@ export class TdGame implements GameBase {
     if (!fit.rows.length) return;
     const lh = fit.size * 1.25;
     const cx = clampCenter(x, fit.width, left, right);
-    const top = this.oy + lh / 2;
-    const bottom = this.oy + ROWS * this.cell - lh / 2 - (fit.rows.length - 1) * lh;
+    const top = this.vis.y + lh / 2;
+    const bottom = this.vis.y + this.vis.h - lh / 2 - (fit.rows.length - 1) * lh;
     const y0 = Math.max(top, Math.min(bottom, y - ((fit.rows.length - 1) * lh) / 2));
     this.font(ctx, `${fit.size}px ${FONT}`);
     ctx.textAlign = "center";
@@ -1303,27 +1602,26 @@ export class TdGame implements GameBase {
 
   /** Ink Storm flashes the board with its phrase; Stillness tints it blue while it holds. */
   private drawSpells(ctx: CanvasRenderingContext2D) {
-    const w = COLS * this.cell;
-    const h = ROWS * this.cell;
+    const { x: vx, y: vy, w, h } = this.vis;
     for (const fx of this.spellFx) {
       const a = Math.max(0, Math.min(1, fx.life / fx.total));
       if (fx.key === "storm") {
         ctx.globalAlpha = a * a * 0.35;
         ctx.fillStyle = PAL.cyan;
-        ctx.fillRect(this.ox, this.oy, w, h);
+        ctx.fillRect(vx, vy, w, h);
       } else {
         ctx.globalAlpha = Math.min(1, a * 2) * 0.16;
         ctx.fillStyle = "#4f8cff";
-        ctx.fillRect(this.ox, this.oy, w, h);
+        ctx.fillRect(vx, vy, w, h);
       }
       ctx.globalAlpha = Math.min(1, a * 1.6);
       if (fx.text) {
         this.drawWord(
           ctx,
           fx.text,
-          this.ox + w / 2,
-          this.oy + h * 0.62,
-          Math.max(12, this.cell * 0.42),
+          vx + w / 2,
+          vy + h * 0.62,
+          Math.max(12, Math.min(this.vis.w / 22, this.cell * 0.42)),
           fx.key === "storm" ? PAL.cyan : "#9fd3ff",
         );
       }
@@ -1335,7 +1633,9 @@ export class TdGame implements GameBase {
     const sel = this.selected;
     if (!sel) return;
     const s = this.cell;
-    const ok = buildable(this.sim.map, sel.col, sel.row) || towerAt(this.sim, sel.col, sel.row);
+    const [cc, cr] = this.sim.map.core;
+    const ok =
+      buildable(this.sim.map, sel.col, sel.row) || towerAt(this.sim, sel.col, sel.row) || (sel.col === cc && sel.row === cr);
     ctx.strokeStyle = ok ? PAL.gold : PAL.danger;
     ctx.lineWidth = 2;
     ctx.strokeRect(this.px(sel.col) + 1, this.py(sel.row) + 1, s - 2, s - 2);
@@ -1357,9 +1657,9 @@ export class TdGame implements GameBase {
     this.font(ctx, `700 ${size}px ${DISPLAY}`);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    // Mid-board, just above the core, clear of the gate where bosses enter.
-    const x = this.ox + (COLS * this.cell) / 2;
-    const y = this.oy + this.cell * 3.3;
+    // Mid-board, a little above the middle, clear of the gate where bosses enter.
+    const x = this.vis.x + this.vis.w / 2;
+    const y = this.vis.y + this.vis.h * 0.37;
     ctx.lineWidth = 4;
     ctx.strokeStyle = "rgba(2, 0, 5, 0.85)";
     ctx.strokeText(this.banner, x, y);

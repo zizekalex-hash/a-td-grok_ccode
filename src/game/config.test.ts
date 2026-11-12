@@ -78,10 +78,10 @@ describe("config.json", () => {
         positive(`td.towers.${key}.range`, t.range);
       } else {
         assert.ok(
-          t.aura || t.income || t.vuln || t.shred || t.fluxIncome || t.haste || t.execute,
+          t.aura || t.income || t.vuln || t.shred || t.fluxIncome || t.haste || t.execute || t.atpIncome || t.reach || t.mire,
           `td.towers.${key} neither fires nor helps`,
         );
-        if (t.aura || t.vuln || t.shred) positive(`td.towers.${key}.range`, t.range);
+        if (t.aura || t.vuln || t.shred || t.reach || t.mire) positive(`td.towers.${key}.range`, t.range);
       }
     }
     for (const [kind, c] of Object.entries(td.creeps)) {
@@ -114,7 +114,7 @@ describe("config.json", () => {
   it("has tower paths, spells and difficulties that can be played", () => {
     const td = CONFIG.td;
     const mults = ["damage", "rate", "burn"];
-    const adds = ["range", "splash", "slow", "slowTime", "chain", "burn", "burnTime", "pierce", "ramp", "maxRamp", "aura", "income", "haste", "bounty", "vuln", "shred", "execute", "fluxIncome"];
+    const adds = ["range", "splash", "slow", "slowTime", "chain", "burn", "burnTime", "pierce", "ramp", "maxRamp", "aura", "income", "haste", "bounty", "vuln", "shred", "execute", "fluxIncome", "multi", "stun", "spikeMult", "block", "corrode", "rend", "reach", "atpIncome", "mire"];
     for (const [key, tower] of Object.entries(td.towers)) {
       assert.equal(tower.paths?.length, 2, `td.towers.${key}.paths needs two paths`);
       for (const [i, p] of (tower.paths ?? []).entries()) {
@@ -155,6 +155,37 @@ describe("config.json", () => {
       positive(`td.difficulties.${key}.lives`, d.lives);
     }
     assert.ok(td.difficulties.easy.hp < td.difficulties.hard.hp, "easy creeps must be softer than hard ones");
+  });
+
+  it("has a wake set, a core and stitching the tower defense can use", () => {
+    const td = CONFIG.td;
+    assert.ok(td.atp.start >= 0, "td.atp.start cannot be below 0");
+    assert.ok(td.waves.atpPerWave >= 0);
+    // Something must drop ATP, or the wake set and the core's levels could never be bought.
+    assert.ok(Object.values(td.creeps).some((c) => (c.atp ?? 0) > 0) || td.core.atpPerWave > 0);
+    for (const [kind, c] of Object.entries(td.creeps)) {
+      if (c.ward !== undefined) assert.ok(c.ward > 0 && c.ward <= 1, `td.creeps.${kind}.ward is a share of life`);
+      if (c.dashEvery !== undefined) assert.ok((c.dashTime ?? 0) > 0 && (c.dashTime ?? 0) < c.dashEvery, `td.creeps.${kind} sprints for part of its cycle`);
+      if (c.phaseEvery !== undefined) assert.ok((c.phaseTime ?? 0) > 0 && (c.phaseTime ?? 0) < c.phaseEvery, `td.creeps.${kind} fades for part of its cycle`);
+      if (c.lull !== undefined) assert.ok(c.lull > 0 && c.lull < 1, `td.creeps.${kind}.lull is a share`);
+    }
+    for (const [key, t] of Object.entries(td.towers)) {
+      assert.ok(!(t.void && t.wake), `td.towers.${key} is paid in one currency`);
+      if (t.spikeEvery !== undefined) assert.ok(t.spikeEvery >= 2 && (t.spikeMult ?? 0) > 1, `td.towers.${key} spikes`);
+    }
+    const core = td.core;
+    positive("td.core.cost", core.cost);
+    assert.ok(core.costGrowth > 1, "the core must get dearer, or its levels never run out of value");
+    assert.ok(core.atpPerWave >= 0 && core.atpPerLevel >= 0 && core.livesPerLevel >= 0);
+    positive("td.core.pulse.every", core.pulse.every);
+    positive("td.core.pulse.damage", core.pulse.damage);
+    positive("td.core.pulse.range", core.pulse.range);
+    assert.ok(core.pulse.fromLevel >= 1 && core.pulse.damageGrowth >= 1 && core.pulse.maxRange >= core.pulse.range);
+    assert.ok(core.stages.length >= 1 && core.stages.some((st) => st.level === 1), "the core needs a stage at level 1");
+    for (const [i, st] of core.stages.entries())
+      assert.ok(st.level >= 1 && st.name.trim() && st.copy.trim(), `td.core.stages.${i} needs a level, a name and copy`);
+    assert.ok(td.stitch.maxMaps >= 2 && td.stitch.maxMaps <= 4, "td.stitch.maxMaps is 2 to 4");
+    assert.ok(td.stitch.hpPerBoard >= 0 && td.stitch.goldPerBoard >= 0 && td.stitch.startGoldPerBoard >= 0);
   });
 
   it("has auto chess pieces, odds and enemies that can be played", () => {

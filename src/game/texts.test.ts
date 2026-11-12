@@ -37,4 +37,12 @@ describe("loaded texts", () => {
     assert.equal(r.full, 2);
     assert.equal(mergeTexts([], [t("e")], 5).added, 0, "an empty text is not added");
   });
+
+  it("keeps every text when there is no limit", () => {
+    const many = Array.from({ length: 1500 }, (_, i) => t(`text ${i}`, `line ${i}`));
+    const r = mergeTexts([], many, Infinity);
+    assert.equal(r.added, 1500);
+    assert.equal(r.full, 0);
+    assert.equal(r.texts.length, 1500);
+  });
 });
