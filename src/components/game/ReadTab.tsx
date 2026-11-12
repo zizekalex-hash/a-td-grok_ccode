@@ -21,6 +21,7 @@ import {
   Download,
   FolderArchive,
   Eye,
+  Layers,
   EyeOff,
   Lock,
   LockOpen,
@@ -117,6 +118,17 @@ import {
   wrapWords,
 } from "@/game/readview";
 import { savedSound } from "@/game/phraseSound";
+import {
+  overlayAuto,
+  overlayHere,
+  overlayHide,
+  overlayLook,
+  overlayPlace,
+  overlayPrepare,
+  overlayResetPlace,
+  overlayShow,
+  overlayTake,
+} from "@/game/readOverlay";
 import {
   backToRehearse,
   readerSound,
@@ -1204,6 +1216,79 @@ function Reader({
       m.api.enter(MINI_SHAPE).catch((e: unknown) => flashToast(String((e as Error)?.message ?? e)));
     });
   };
+
+  // The see-through window over other apps (Android): this text read on by itself in it, as
+  // see-through as set; where it got to comes back here when you come back.
+  const [hasOverlay, setHasOverlay] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void overlayHere().then((ok) => {
+      if (live) setHasOverlay(ok);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const look = {
+    bg: reader.overlayBg,
+    words: reader.overlayWords,
+    size: reader.overlaySize,
+    through: reader.overlayThrough,
+  };
+  useEffect(() => {
+    if (!hasOverlay) return;
+    void overlayPrepare({
+      key,
+      title: text.name,
+      units: phrases,
+      index,
+      wordMs: wordTime(reader),
+      passes: reader.passes,
+      perHit: reader.perHit,
+      silenceMs: reader.silence * 1000,
+      phraseSilenceMs: reader.phraseSilence * 1000,
+      auto: reader.auto,
+      ...look,
+    });
+    // The text and how it is read; the place and the look go on their own (below).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    hasOverlay,
+    key,
+    phrases,
+    reader.wordMs,
+    reader.speed,
+    reader.passes,
+    reader.perHit,
+    reader.silence,
+    reader.phraseSilence,
+    reader.auto,
+  ]);
+  useEffect(() => {
+    if (hasOverlay) void overlayPlace(index);
+  }, [hasOverlay, index]);
+  useEffect(() => {
+    if (hasOverlay) void overlayLook(look);
+    // look is these four.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    hasOverlay,
+    reader.overlayBg,
+    reader.overlayWords,
+    reader.overlaySize,
+    reader.overlayThrough,
+  ]);
+  // "See-through on leaving": on while this text is open, off when it closes.
+  useEffect(() => {
+    if (!hasOverlay) return;
+    void overlayAuto(reader.overlayAuto);
+    return () => void overlayAuto(false);
+  }, [hasOverlay, reader.overlayAuto]);
+  const openOverlay = () => {
+    void overlayShow().then((msg) => {
+      if (msg) flashToast(msg);
+    });
+  };
   // The room the flash has: clear of the header and the panel while they show.
   const headerRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -1302,6 +1387,29 @@ function Reader({
     restart();
     save(setPlace(reader, key, next));
   };
+
+  // Back in the app: what the see-through window read comes here (its place, its passes as
+  // reps, a whole text as a pass) and the window closes; the reading goes on here.
+  const takeOverlay = useRef(async () => {});
+  takeOverlay.current = async () => {
+    const r = await overlayTake();
+    if (!r || r.key !== key) return;
+    if (r.shown) await overlayHide();
+    if (r.reps) {
+      grantSkillXp("recitation", repXp(Math.max(1, words.length), r.reps));
+      rehearseUpdate((st) => textRep(st, key, Date.now(), r.reps));
+    }
+    for (let k = 0; k < r.texts; k++) rehearseUpdate((st) => textPass(st, key));
+    if (r.index !== index && total > 0) goTo(Math.min(r.index, total - 1));
+  };
+  useEffect(() => {
+    void takeOverlay.current();
+    const back = () => {
+      if (!document.hidden) void takeOverlay.current();
+    };
+    document.addEventListener("visibilitychange", back);
+    return () => document.removeEventListener("visibilitychange", back);
+  }, []);
 
   /** A pass done: Recitation XP; then the next pass, or the next phrase, or the end. */
   const complete = () => {
@@ -1813,9 +1921,78 @@ function Reader({
                 <PictureInPicture2 className="size-4" aria-hidden />
                 Mini window now
               </button>
-              <Toggle on={reader.miniAuto} onClick={() => set({ miniAuto: !reader.miniAuto })}>
+              <Toggle
+                on={reader.miniAuto}
+                onClick={() => set({ miniAuto: !reader.miniAuto, overlayAuto: false })}
+              >
                 Mini on leaving: {reader.miniAuto ? "on" : "off"}
               </Toggle>
+            </>
+          )}
+          {hasOverlay && (
+            <>
+              <button type="button" className="btn min-h-10 px-1" onClick={openOverlay}>
+                <Layers className="size-4" aria-hidden />
+                See-through window now
+              </button>
+              <Toggle
+                on={reader.overlayAuto}
+                onClick={() => set({ overlayAuto: !reader.overlayAuto, miniAuto: false })}
+              >
+                See-through on leaving: {reader.overlayAuto ? "on" : "off"}
+              </Toggle>
+              <Stepper
+                label="see-through: background"
+                value={`${Math.round(reader.overlayBg * 100)}%`}
+                raw={reader.overlayBg}
+                onLess={() =>
+                  set({ overlayBg: Math.max(0, Math.round((reader.overlayBg - 0.05) * 100) / 100) })
+                }
+                onMore={() =>
+                  set({ overlayBg: Math.min(1, Math.round((reader.overlayBg + 0.05) * 100) / 100) })
+                }
+                onType={(v) => set({ overlayBg: Math.max(0, Math.min(1, v)) })}
+              />
+              <Stepper
+                label="see-through: words"
+                value={`${Math.round(reader.overlayWords * 100)}%`}
+                raw={reader.overlayWords}
+                onLess={() =>
+                  set({
+                    overlayWords: Math.max(
+                      0.1,
+                      Math.round((reader.overlayWords - 0.05) * 100) / 100,
+                    ),
+                  })
+                }
+                onMore={() =>
+                  set({
+                    overlayWords: Math.min(1, Math.round((reader.overlayWords + 0.05) * 100) / 100),
+                  })
+                }
+                onType={(v) => set({ overlayWords: Math.max(0.1, Math.min(1, v)) })}
+              />
+              <Stepper
+                label="see-through: words size"
+                value={`${reader.overlaySize}`}
+                raw={reader.overlaySize}
+                onLess={() => set({ overlaySize: Math.max(8, reader.overlaySize - 1) })}
+                onMore={() => set({ overlaySize: Math.min(96, reader.overlaySize + 1) })}
+                onType={(v) => set({ overlaySize: Math.max(8, Math.min(96, Math.round(v))) })}
+              />
+              <Toggle
+                on={reader.overlayThrough}
+                onClick={() => set({ overlayThrough: !reader.overlayThrough })}
+              >
+                Touches through it: {reader.overlayThrough ? "on" : "off"}
+              </Toggle>
+              <button
+                type="button"
+                className="btn min-h-10 px-1"
+                onClick={() => void overlayResetPlace()}
+              >
+                See-through: reset its place
+              </button>
             </>
           )}
         </div>
@@ -2158,6 +2335,17 @@ function Reader({
               >
                 <PictureInPicture2 className="size-4" aria-hidden />
               </button>
+              {hasOverlay && (
+                <button
+                  type="button"
+                  className="btn px-2"
+                  onClick={openOverlay}
+                  aria-label="See-through window, over other apps"
+                  title="See-through window"
+                >
+                  <Layers className="size-4" aria-hidden />
+                </button>
+              )}
               <button
                 type="button"
                 className="btn px-2"

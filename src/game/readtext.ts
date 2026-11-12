@@ -85,6 +85,17 @@ export interface ReaderState {
   centered: boolean;
   /** Android: into the mini window (picture in picture) when you leave the app while reading. */
   miniAuto: boolean;
+  /**
+   * Android: the see-through window over other apps, reading on by itself: its
+   * background's and its words' opacity (0 to 1), its words' size (sp), opened
+   * when you leave the app while reading, and letting touches through it to the
+   * app below.
+   */
+  overlayBg: number;
+  overlayWords: number;
+  overlaySize: number;
+  overlayAuto: boolean;
+  overlayThrough: boolean;
   /** The current phrase's raw bytes as sound while reading, as Rehearse shapes it (steady or the rising cycle). */
   phraseSound: boolean;
   /** The whole text's bytes as a picture behind it all: three layers, each at its own opacity, and one over all. */
@@ -156,6 +167,11 @@ export function newReader(): ReaderState {
     phraseChars: clampPhraseChars(R.phraseChars),
     centered: R.centered !== false,
     miniAuto: R.miniAuto === true,
+    overlayBg: 0.25,
+    overlayWords: 1,
+    overlaySize: 22,
+    overlayAuto: false,
+    overlayThrough: false,
     phraseSound: false,
     bytes: R.bytes !== false,
     bytesOpacity: clampOpacity(R.bytesOpacity),
@@ -345,6 +361,11 @@ export function loadReader(data: unknown): ReaderState {
   s.phraseChars = clampPhraseChars(num(d.phraseChars, s.phraseChars));
   if (typeof d.centered === "boolean") s.centered = d.centered;
   if (typeof d.miniAuto === "boolean") s.miniAuto = d.miniAuto;
+  s.overlayBg = clamp(Math.round(num(d.overlayBg, s.overlayBg) * 100) / 100, 0, 1);
+  s.overlayWords = clamp(Math.round(num(d.overlayWords, s.overlayWords) * 100) / 100, 0.1, 1);
+  s.overlaySize = clamp(Math.round(num(d.overlaySize, s.overlaySize)), 8, 96);
+  if (typeof d.overlayAuto === "boolean") s.overlayAuto = d.overlayAuto;
+  if (typeof d.overlayThrough === "boolean") s.overlayThrough = d.overlayThrough;
   s.bytesOpacity = clampOpacity(num(d.bytesOpacity, s.bytesOpacity));
   const layers = (d.layers && typeof d.layers === "object" ? d.layers : {}) as Record<
     string,

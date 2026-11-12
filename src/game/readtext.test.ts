@@ -112,3 +112,24 @@ describe("read tab", () => {
     assert.equal(clampFps(0), 1);
   });
 });
+
+describe("read tab: the see-through window", () => {
+  it("starts mostly see-through, its words solid, off on leaving; keeps what is set, within sense", () => {
+    const d = newReader();
+    assert.deepEqual(
+      [d.overlayBg, d.overlayWords, d.overlaySize, d.overlayAuto, d.overlayThrough],
+      [0.25, 1, 22, false, false],
+    );
+    const back = loadReader({
+      overlayBg: 2,
+      overlayWords: 0,
+      overlaySize: 500,
+      overlayAuto: true,
+      overlayThrough: true,
+    });
+    assert.deepEqual(
+      [back.overlayBg, back.overlayWords, back.overlaySize, back.overlayAuto, back.overlayThrough],
+      [1, 0.1, 96, true, true],
+    );
+  });
+});
