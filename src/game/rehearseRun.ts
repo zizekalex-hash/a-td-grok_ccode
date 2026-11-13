@@ -9,6 +9,8 @@
  * where you are.
  */
 import { flashToast, grantSkillXp } from "@/game/engine";
+import { checkState, markChecked, readReader, writeReader } from "@/game/readtext";
+import { saveConfirmed } from "@/game/textFiles";
 import { levelForXp, repXp } from "@/game/recite";
 import { wordsOf } from "@/game/reps";
 import { useGame } from "@/game/store";
@@ -24,7 +26,7 @@ import {
   type LoopSound,
   type PhraseLoop,
 } from "@/game/phraseSound";
-import { folderFileUrl, folderName } from "@/game/azsFolder";
+import { folderFileUrl, folderLoop, folderLoopVolume, folderName } from "@/game/azsFolder";
 import {
   askUnrestricted,
   batteryUnrestricted,
@@ -40,11 +42,12 @@ import {
 import {
   activeOf,
   applyBubble,
+  passedThrough,
   libraryOf,
   loadRehearse,
   newRehearse,
   REHEARSE_KEY,
-  voiceLayersOf,
+  liveVoiceLayers,
   voiceShapeOf,
   wavStyleOf,
   type LibText,
@@ -74,7 +77,8 @@ export function rehearseState(): RehearseState {
 
 /** A change to it: kept on the device at once, and shown wherever it is open. */
 export function rehearseUpdate(fn: (s: RehearseState) => RehearseState) {
-  const next = fn(rehearseState());
+  const before = rehearseState();
+  const next = fn(before);
   if (next === state) return;
   state = next;
   try {
@@ -87,7 +91,31 @@ export function rehearseUpdate(fn: (s: RehearseState) => RehearseState) {
   keep();
   // Moved on elsewhere (the reader, the window) with the tab closed: the sound follows.
   if (!open && alive) queueClosed();
+  // A text read through to its end (here, in the reader or a window): checked, its copy saved.
+  // Just after, so a place saved in the same step (the reader's) is kept with it.
+  const through = passedThrough(before, next);
+  if (through.length && typeof window !== "undefined")
+    window.setTimeout(() => through.forEach(autoCheck), 0);
 }
+
+/**
+ * A text read through: checked as the Read tab checks it (so it shows ✓ there and
+ * here), and its confirmed copy saved (Documents/confirmed_txt, in the phone app).
+ * Already checked as it is now: nothing to do.
+ */
+function autoCheck(key: string) {
+  const t = rehearseLibrary().find((x) => x.key === key);
+  if (!t) return;
+  const reader = readReader();
+  if (checkState(reader, t.name, t.lines, t.folder) === "checked") return;
+  writeReader(markChecked(reader, t.name, t.lines, Date.now(), t.folder));
+  window.dispatchEvent(new Event(READER_CHANGED));
+  flashToast(`“${t.name}” read through: checked ✓`);
+  void saveConfirmed(t.name, t.lines, t.folder, true);
+}
+
+/** Sent when the Read tab's state (its checks) changed away from it: read it again. */
+export const READER_CHANGED = "azshara-reader-changed";
 
 let closedTimer = 0;
 function queueClosed() {
@@ -215,6 +243,10 @@ export function startRehearseBackground() {
   });
   // Playing in the background when the phone closed the app: it plays on.
   if (wasPlaying() && rehearseState().settings.background) void playClosed();
+  // A .tts.wav made while the tab is closed: it loops (the tab, open, starts it itself).
+  window.addEventListener("azshara-tts-made", () => {
+    if (!open && rehearseState().settings.background) void playClosed();
+  });
 }
 
 // ---- The sound ----
@@ -246,7 +278,7 @@ let watchdog = 0;
 
 /** Playing in the background or not: the app kept running (and asked once to be Unrestricted), the players kept awake. */
 function keep() {
-  const on = !!(loopText || wavUrl || voiceText) && rehearseState().settings.background;
+  const on = !!(loopText || wavUrl || voiceText || ttsKey) && rehearseState().settings.background;
   if (on === alive) return;
   alive = on;
   void keepAlive(on);
@@ -321,6 +353,75 @@ export function stopRehearseSound() {
   playNonstop(null);
   void playWav(null);
   void playVoice(null);
+  void playTts(null);
+}
+
+// ---- The .tts.wav loop ----
+
+/** What loops now: its path in the azs-folder (the phone plays it) or its address (a browser). */
+let ttsKey = "";
+let ttsWeb: FileLoop | null = null;
+let ttsAsk = 0;
+
+/**
+ * A .tts.wav looped as it is (null: off). On the phone a file of the azs-folder
+ * (by its path there), played by the phone itself a piece at a time: any length
+ * and rate, in the background too. In a browser, a file picked by hand.
+ */
+export async function playTts(
+  where: { path: string } | { url: string } | null,
+  volume = 1,
+): Promise<boolean> {
+  const ask = ++ttsAsk;
+  const key = where ? ("path" in where ? where.path : where.url) : "";
+  if (!where || !key) {
+    if (ttsKey) {
+      void folderLoop(null);
+      ttsWeb?.stop();
+    }
+    ttsKey = "";
+    keep();
+    return false;
+  }
+  const was = ttsKey;
+  ttsKey = key;
+  keep();
+  let ok: boolean;
+  if ("path" in where) {
+    if (was && was !== key) ttsWeb?.stop();
+    ok = await folderLoop(where.path, volume);
+  } else {
+    if (was && was !== key) void folderLoop(null);
+    ttsWeb ??= fileLoop();
+    ok = await ttsWeb.play(where.url, volume);
+  }
+  // Not there (or not playable): whatever looped before stops too.
+  if (!ok && ask === ttsAsk && ttsKey === key) {
+    void folderLoop(null);
+    ttsWeb?.stop();
+    ttsKey = "";
+    keep();
+  }
+  return ok;
+}
+
+export function ttsGain(volume: number) {
+  if (!ttsKey) return;
+  void folderLoopVolume(volume);
+  ttsWeb?.gain(volume);
+}
+
+/** The phrase's (or text's) .tts.wav with the tab closed, if it loops. */
+async function closedTts(a: { dir: string; name: string }, on: boolean, volume: number) {
+  if (!on || !a.name) {
+    void playTts(null);
+    return;
+  }
+  const file = `${a.name}.tts.wav`;
+  const url = pickedWavs.get(file.toLowerCase());
+  if (url) void playTts({ url }, volume);
+  else if (await folderName()) void playTts({ path: `${a.dir}/${file}` }, volume);
+  else void playTts(null);
 }
 
 // ---- The robot voice ----
@@ -339,7 +440,9 @@ let browserStop: (() => void) | null = null;
 export async function playVoice(text: string | null): Promise<string> {
   const set = rehearseState().settings;
   const ask = ++voiceAsk;
-  if (!text || !set.voice) {
+  // The layers that say the phrase: those reading the whole text are in its .tts.wav, not played here.
+  const layers = liveVoiceLayers(set, rehearseState().view === "texts");
+  if (!text || !set.voice || !layers.length) {
     for (const v of voices) v.stop();
     browserStop?.();
     browserStop = null;
@@ -350,8 +453,9 @@ export async function playVoice(text: string | null): Promise<string> {
   const where = await voiceHere();
   if (ask !== voiceAsk) return "";
   if (where === "browser") {
+    // The browser's own voice: the first such layer's voice, rate, pitch, loop and volume.
     browserStop?.();
-    browserStop = browserSay(text, set);
+    browserStop = browserSay(text, { ...set, ...layers[0]! });
     voiceText = text;
     keep();
     return "";
@@ -361,7 +465,6 @@ export async function playVoice(text: string | null): Promise<string> {
   keep();
   try {
     // Each layer: its own voice said, played with its own shape; layers no longer there stop.
-    const layers = voiceLayersOf(set);
     const urls = await Promise.all(
       layers.map((l) =>
         voiceFile(text, {
@@ -437,6 +540,7 @@ async function playClosed() {
     /* its phrase plays */
   } else if (set.nonstop && set.sound && a.text) playNonstop(a.text, set);
   else playNonstop(null);
+  void closedTts(a, set.ttsLoop, set.ttsVolume);
   if (!set.wavLoop || !a.name) {
     void playWav(null);
     return;

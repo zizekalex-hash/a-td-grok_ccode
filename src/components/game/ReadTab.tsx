@@ -131,6 +131,7 @@ import {
 } from "@/game/readOverlay";
 import {
   backToRehearse,
+  READER_CHANGED,
   readerSound,
   rehearseState,
   rehearseUpdate,
@@ -335,6 +336,12 @@ export function ReadTab() {
     setReader(next);
     writeReader(next);
   };
+  // A text checked away from here (read through in Rehearse or its window): shown at once.
+  useEffect(() => {
+    const again = () => setReader(readReader());
+    window.addEventListener(READER_CHANGED, again);
+    return () => window.removeEventListener(READER_CHANGED, again);
+  }, []);
 
   const openText = (t: OpenText) => {
     if (!readUnits(t.lines).length) {

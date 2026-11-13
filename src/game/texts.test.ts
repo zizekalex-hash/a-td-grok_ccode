@@ -46,3 +46,20 @@ describe("loaded texts", () => {
     assert.equal(r.texts.length, 1500);
   });
 });
+
+describe("loaded texts: one cut when loaded, loaded again in full", () => {
+  it("is completed in place (its name kept), not added again", () => {
+    const lines = Array.from({ length: 416 }, (_, i) => `line ${i + 1}.`);
+    const have = [t("a", "one"), { name: "416.graph", lines: lines.slice(0, 400) }];
+    const r = mergeTexts(have, [{ name: "416.graph", lines }], Infinity);
+    assert.equal(r.completed, 1);
+    assert.equal(r.added, 0);
+    assert.equal(r.texts.length, 2);
+    assert.equal(r.texts[1]!.name, "416.graph");
+    assert.equal(r.texts[1]!.lines.length, 416);
+    // Another name, or other lines: a text of its own, as before.
+    const other = mergeTexts(have, [{ name: "x", lines }, t("416.graph", "else")], Infinity);
+    assert.equal(other.completed, 0);
+    assert.equal(other.added, 2);
+  });
+});

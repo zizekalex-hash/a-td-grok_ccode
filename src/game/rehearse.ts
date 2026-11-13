@@ -123,7 +123,18 @@ export interface RehearseSettings {
   /** Recorded once (every copy, each layer), this many seconds, then looped: light for the phone. */
   voiceRecord: boolean;
   voiceRecordSec: number;
+  /** The first layer says the whole text (made into a file), not the phrase (texts only). */
+  voiceWhole: boolean;
+  /** The voice made into a .wav (a .tts.wav): its sample rate (Hz). */
+  ttsRate: TtsRate;
+  /** The phrase's (or text's) .tts.wav looped as it is, at this volume. */
+  ttsLoop: boolean;
+  ttsVolume: number;
 }
+
+/** The rates a .tts.wav is made at: higher keeps the fast copies' highs. */
+export const TTS_RATES = [48_000, 96_000, 192_000, 384_000] as const;
+export type TtsRate = (typeof TTS_RATES)[number];
 
 /** Single phrases, or whole texts (the Read tab's) phrase after phrase. */
 export type RehearseView = "phrases" | "texts";
@@ -156,6 +167,11 @@ export interface RehearseState {
   text: string;
   /** Each text's place and counts, by its key. */
   progress: Record<string, TextProgress>;
+  /**
+   * When each text was first read through to its end (ms since 1970), by its key:
+   * kept whatever is reset, the mark that it has been read (and checked) at least once.
+   */
+  done: Record<string, number>;
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -233,6 +249,10 @@ export function defaultSettings(): RehearseSettings {
     voiceLayers: [],
     voiceRecord: false,
     voiceRecordSec: 30,
+    voiceWhole: false,
+    ttsRate: 48_000,
+    ttsLoop: true,
+    ttsVolume: 1,
   };
 }
 
@@ -245,6 +265,7 @@ export function newRehearse(): RehearseState {
     view: "phrases",
     text: "",
     progress: {},
+    done: {},
   };
 }
 
@@ -281,6 +302,9 @@ export function loadRehearse(data: unknown): RehearseState {
       last: Math.max(0, num(r.last, 0)),
       spentMs: Math.max(0, num(r.spentMs, 0)),
     };
+  }
+  for (const [key, when] of Object.entries(obj(d.done))) {
+    if (key && typeof when === "number" && Number.isFinite(when) && when > 0) s.done[key] = when;
   }
   const t = obj(d.settings);
   const u = s.settings;
@@ -342,6 +366,10 @@ export function loadRehearse(data: unknown): RehearseState {
   u.voiceRecordSec = clampRecordSec(num(t.voiceRecordSec, u.voiceRecordSec));
   if (Array.isArray(t.voiceLayers))
     u.voiceLayers = t.voiceLayers.slice(0, MAX_VOICE_LAYERS - 1).map(loadVoiceLayer);
+  if (typeof t.voiceWhole === "boolean") u.voiceWhole = t.voiceWhole;
+  if (TTS_RATES.includes(t.ttsRate as TtsRate)) u.ttsRate = t.ttsRate as TtsRate;
+  if (typeof t.ttsLoop === "boolean") u.ttsLoop = t.ttsLoop;
+  u.ttsVolume = clampAmp(num(t.ttsVolume, u.ttsVolume));
   return s;
 }
 
@@ -777,7 +805,7 @@ export function textTap(
   const p = textProgress(s, key);
   const here = Math.max(0, Math.min(total - 1, Math.floor(at)));
   const wrap = here + 1 >= total;
-  return {
+  const next = {
     ...withProgress(s, key, {
       at: wrap ? 0 : here + 1,
       passes: p.passes + (wrap ? 1 : 0),
@@ -787,6 +815,26 @@ export function textTap(
     }),
     lastTap: now,
   };
+  return wrap ? markDone(next, key, now) : next;
+}
+
+/** A text read through to its end: marked so (the first time is kept, whatever is reset). */
+export function markDone(s: RehearseState, key: string, now: number): RehearseState {
+  if (s.done[key]) return s;
+  return { ...s, done: { ...s.done, [key]: now } };
+}
+
+/**
+ * The texts that got through to their end between two states (a pass more): each
+ * is checked then (and its confirmed copy saved), the first time and after an edit.
+ */
+export function passedThrough(before: RehearseState, after: RehearseState): string[] {
+  if (before.progress === after.progress && before.done === after.done) return [];
+  return Object.keys(after.progress).filter(
+    (k) =>
+      (after.progress[k]?.passes ?? 0) > (before.progress[k]?.passes ?? 0) ||
+      (!!after.done[k] && !before.done[k]),
+  );
 }
 
 /** A phrase of a text read through in the Read tab's reader: a rep of it (the place moves with textGo). */
@@ -801,9 +849,9 @@ export function textRep(s: RehearseState, key: string, now: number, n = 1): Rehe
 }
 
 /** A whole text read through in the reader: a pass, and back to its first phrase. */
-export function textPass(s: RehearseState, key: string): RehearseState {
+export function textPass(s: RehearseState, key: string, now = Date.now()): RehearseState {
   const p = textProgress(s, key);
-  return withProgress(s, key, { ...p, at: 0, passes: p.passes + 1 });
+  return markDone(withProgress(s, key, { ...p, at: 0, passes: p.passes + 1 }), key, now);
 }
 
 /** How far through a text, in percent (to one decimal): its phrases before the one it is at. */
@@ -1154,8 +1202,11 @@ export function voiceSpeeds(s: Pick<VoiceShape, "voiceCopies" | "voiceSpeedUp">)
   );
 }
 
-/** A layer of voices: its own voice (in the same engine) and shape. */
-export type VoiceLayer = VoiceShape & { voiceName: string };
+/**
+ * A layer of voices: its own voice (in the same engine) and shape; and whether
+ * it says the whole text (texts only: made into a file, not played live).
+ */
+export type VoiceLayer = VoiceShape & { voiceName: string; voiceWhole: boolean };
 
 /** A saved layer, each value checked. */
 export function loadVoiceLayer(raw: unknown): VoiceLayer {
@@ -1164,6 +1215,7 @@ export function loadVoiceLayer(raw: unknown): VoiceLayer {
   const n = (k: keyof VoiceShape) => num(r[k], d[k] as number);
   return {
     voiceName: typeof r.voiceName === "string" ? r.voiceName.slice(0, 200) : "",
+    voiceWhole: r.voiceWhole === true,
     voiceRate: clampVoiceRate(n("voiceRate")),
     voicePitch: clampVoicePitch(n("voicePitch")),
     voiceCopies: clampVoiceCopies(n("voiceCopies")),
@@ -1181,7 +1233,10 @@ export function loadVoiceLayer(raw: unknown): VoiceLayer {
 
 /** Every layer of voices: the first (the settings themselves), then the others. */
 export function voiceLayersOf(s: RehearseSettings): VoiceLayer[] {
-  return [{ ...voiceShapeOf(s), voiceName: s.voiceName }, ...s.voiceLayers];
+  return [
+    { ...voiceShapeOf(s), voiceName: s.voiceName, voiceWhole: s.voiceWhole },
+    ...s.voiceLayers,
+  ];
 }
 
 /** The settings with layer i changed (0: the first, kept in the settings themselves). */
@@ -1208,6 +1263,14 @@ export function deleteVoiceLayer(s: RehearseSettings, i: number): Partial<Rehear
   if (all.length <= 1) return {};
   const rest = all.filter((_, k) => k !== i);
   return { ...rest[0]!, voiceLayers: rest.slice(1) };
+}
+
+/**
+ * The layers played live, on the phrase: all of them, except (with whole texts)
+ * those that say the whole text, which are made into its file instead.
+ */
+export function liveVoiceLayers(s: RehearseSettings, texts: boolean): VoiceLayer[] {
+  return voiceLayersOf(s).filter((l) => !texts || !l.voiceWhole);
 }
 
 /** Voices in all: each layer's copies added up. */

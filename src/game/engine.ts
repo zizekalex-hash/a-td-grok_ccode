@@ -316,7 +316,7 @@ export function loadTextFolder(zipName: string, files: { name: string; raw: stri
   const { folders } = useGame.getState();
   const old = folders.find((f) => f.name === name);
   const r = mergeTexts(old?.texts ?? [], incoming, Infinity);
-  if (!r.added) {
+  if (!r.added && !r.completed) {
     flashToast(`“${name}” has those texts already`);
     return;
   }
@@ -325,7 +325,7 @@ export function loadTextFolder(zipName: string, files: { name: string; raw: stri
     folders: old ? folders.map((f) => (f === old ? folder : f)) : [...folders, folder],
   });
   flashToast(
-    `Folder “${name}”: ${r.added} text${r.added === 1 ? "" : "s"} added${r.already ? `, ${r.already} already there` : ""}`,
+    `Folder “${name}”: ${r.added} text${r.added === 1 ? "" : "s"} added${r.completed ? `, ${r.completed} completed (cut before, now whole)` : ""}${r.already ? `, ${r.already} already there` : ""}`,
   );
   schedulePersist();
 }
@@ -369,7 +369,7 @@ export function loadCodexTexts(files: { name: string; raw: string }[]) {
   const { texts: have, custom, textIndex } = useGame.getState();
   const base = custom ? have : [];
   const r = mergeTexts(base, incoming, Infinity);
-  if (!r.added) {
+  if (!r.added && !r.completed) {
     flashToast(r.already > 1 ? "Those texts are loaded already" : "That text is loaded already");
     return;
   }
@@ -379,7 +379,10 @@ export function loadCodexTexts(files: { name: string; raw: string }[]) {
   useGame.setState({ texts, textIndex: index, lines: texts[index]!.lines, custom: true });
   if (!base.length) getGame()?.onCodex(texts[index]!.lines.length);
   const total = texts.reduce((n, t) => n + t.lines.length, 0);
-  const extra = r.already ? `${r.already} already loaded` : "";
+  const extra = [
+    r.completed ? `${r.completed} completed: cut before, now whole` : "",
+    r.already ? `${r.already} already loaded` : "",
+  ].filter(Boolean).join(", ");
   flashToast(
     `Added ${r.added} text${r.added === 1 ? "" : "s"}: ${texts.length} loaded, ${total} sectors${extra ? ` (${extra})` : ""}`,
   );

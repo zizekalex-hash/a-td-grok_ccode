@@ -63,9 +63,16 @@ export async function exportText(name: string, lines: string[]) {
 /**
  * A text read through and confirmed: saved once into the phone's
  * Documents/confirmed_txt (the folder is made if it is not there). If the phone
- * will not take it there, the share sheet; in a browser, a download.
+ * will not take it there, the share sheet; in a browser, a download (quiet:
+ * neither, only the phone's folder).
  */
-export async function saveConfirmed(name: string, lines: string[], sub?: string) {
+export async function saveConfirmed(
+  name: string,
+  lines: string[],
+  sub?: string,
+  /** Only where it is saved without asking (the phone app): no download in a browser. */
+  quiet = false,
+) {
   const folder = (CONFIG.reader.confirmedFolder || "confirmed_txt").replace(/[\\/:*?"<>|]+/g, "-");
   const file = fileName(name);
   const body = `${lines.join("\n")}\n`;
@@ -89,10 +96,11 @@ export async function saveConfirmed(name: string, lines: string[], sub?: string)
     }
   } catch {
     if (native) {
-      await saveFile(file, blob(), "Save the checked text");
+      if (!quiet) await saveFile(file, blob(), "Save the checked text");
       return;
     }
   }
+  if (quiet) return;
   await saveFile(
     `${folder}_${sub ? `${sub.replace(/[\\/:*?"<>|]+/g, "-")}_` : ""}${file}`,
     blob(),

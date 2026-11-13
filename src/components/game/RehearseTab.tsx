@@ -61,13 +61,24 @@ import {
 } from "@/game/repBubble";
 import { voiceEngines, voiceHere, voiceList, type VoiceInfo } from "@/game/voice";
 import {
+  startTts,
+  stopTts,
+  subscribeTts,
+  TTS_MADE,
+  ttsStatus,
+  type TtsJob,
+} from "@/game/ttsExport";
+import {
   bubbleShown,
+  READER_CHANGED,
   hideBubble,
   pickedWavs,
   playNonstop,
   playVoice,
   requestReader,
   playWav,
+  playTts,
+  ttsGain,
   rehearseOpen,
   rehearseState,
   rehearseUpdate,
@@ -151,6 +162,7 @@ import {
   textFileNames,
   textProgress,
   textPercent,
+  TTS_RATES,
   textStep,
   textTap,
   WAV_PRESETS,
@@ -503,6 +515,12 @@ export function RehearseTab() {
   /** The phrase being rewritten (texts), and the check (read with the Read tab's, after a change). */
   const [editing, setEditing] = useState<string | null>(null);
   const [checkTick, setCheckTick] = useState(0);
+  // Checked away from this tab (a text read through, here, in the reader or a window).
+  useEffect(() => {
+    const again = () => setCheckTick((t) => t + 1);
+    window.addEventListener(READER_CHANGED, again);
+    return () => window.removeEventListener(READER_CHANGED, again);
+  }, []);
   const checked = useMemo(
     () =>
       textNow ? checkState(readReader(), textNow.name, textNow.lines, textNow.folder) : "unchecked",
@@ -556,8 +574,10 @@ export function RehearseTab() {
     set.voiceName,
     voiceShapeOf(set),
     set.voiceLayers,
+    set.voiceWhole,
     set.voiceRecord,
     set.voiceRecordSec,
+    st.view,
     phraseText,
   ]);
   useEffect(() => {
@@ -594,6 +614,8 @@ export function RehearseTab() {
   const [folder, setFolder] = useState<string | null>(null);
   /** The .wav files found, as "<folder>/<file>" (lower case). */
   const [wavs, setWavs] = useState<Set<string>>(() => new Set());
+  /** The .tts.wav files found (the robot voice made into a file here), the same way. */
+  const [ttsWavs, setTtsWavs] = useState<Set<string>>(() => new Set());
   /** The .txt files in input_perphrase (lower case), once looked at: each phrase is saved there by itself. */
   const [txts, setTxts] = useState<Set<string> | null>(null);
   /** The .txt files in input_pertext (as named), once looked at: each text is saved there by itself. */
@@ -610,14 +632,19 @@ export function RehearseTab() {
     const lower = ph.map((f) => f.name.toLowerCase());
     const lowerT = tx.map((f) => f.name.toLowerCase());
     const wavOf = (d: string, list: string[]) =>
-      list.filter((f) => f.endsWith(".wav")).map((f) => `${d}/${f}`);
+      list.filter((f) => f.endsWith(".wav") && !f.endsWith(".tts.wav")).map((f) => `${d}/${f}`);
+    const ttsOf = (d: string, list: string[]) =>
+      list.filter((f) => f.endsWith(".tts.wav")).map((f) => `${d}/${f}`);
     const found = new Set([...wavOf(PHRASE_FOLDER, lower), ...wavOf(TEXT_FOLDER, lowerT)]);
     setWavs(found);
+    setTtsWavs(new Set([...ttsOf(PHRASE_FOLDER, lower), ...ttsOf(TEXT_FOLDER, lowerT)]));
     setTxts(new Set(lower.filter((f) => f.endsWith(".txt"))));
     setTextTxts(tx.map((f) => f.name).filter((f) => /\.txt$/i.test(f)));
     return {
       [PHRASE_FOLDER]: wavOf(PHRASE_FOLDER, lower).length,
       [TEXT_FOLDER]: wavOf(TEXT_FOLDER, lowerT).length,
+      [`${PHRASE_FOLDER}:tts`]: ttsOf(PHRASE_FOLDER, lower).length,
+      [`${TEXT_FOLDER}:tts`]: ttsOf(TEXT_FOLDER, lowerT).length,
     } as Record<string, number>;
   };
   useEffect(() => {
@@ -850,6 +877,10 @@ export function RehearseTab() {
     const key = `${base}.wav`.toLowerCase();
     return wavs.has(`${d}/${key}`) || picked.has(key);
   };
+  const hasTts = (base: string, d = dir) => {
+    const key = `${base}.tts.wav`.toLowerCase();
+    return ttsWavs.has(`${d}/${key}`) || picked.has(key);
+  };
   const choose = async () => {
     try {
       const n = await pickFolder();
@@ -942,6 +973,60 @@ export function RehearseTab() {
   useEffect(() => wavGain(wavVolume), [wavVolume]);
   // A new style: from the next loop (or the file again from its start, if that is far off).
   useEffect(() => setWavStyle(styleNow.current), [styleKey]);
+
+  // Its .tts.wav (the robot voice made into a file here), looped as it is: on the phone the
+  // phone plays it from the azs-folder itself, a piece at a time (any length, any rate).
+  const { ttsLoop, ttsVolume } = set;
+  const ttsHere = !!name && hasTts(name);
+  const ttsVolumeNow = useRef(ttsVolume);
+  ttsVolumeNow.current = ttsVolume;
+  const [ttsPlaying, setTtsPlaying] = useState(false);
+  /** Counts the .tts.wav files made: one made again starts again, new. */
+  const [ttsMadeTick, setTtsMadeTick] = useState(0);
+  useEffect(() => {
+    if (!name || !ttsLoop || !ttsHere) {
+      void playTts(null);
+      setTtsPlaying(false);
+      return;
+    }
+    let live = true;
+    const file = `${name}.tts.wav`;
+    const url = picked.get(file.toLowerCase());
+    void playTts(url ? { url } : { path: `${dir}/${file}` }, ttsVolumeNow.current).then(
+      (ok) => live && setTtsPlaying(ok),
+    );
+    return () => {
+      live = false;
+    };
+  }, [ttsLoop, name, dir, ttsHere, picked, ttsMadeTick]);
+  useEffect(() => ttsGain(ttsVolume), [ttsVolume]);
+  // A .tts.wav just made (even while away from the tab): found, and looped.
+  useEffect(() => {
+    const made = (e: Event) => {
+      const path = String((e as CustomEvent).detail ?? "");
+      if (!path) return;
+      setTtsWavs((old) => new Set([...old, path.toLowerCase()]));
+      rehearseUpdate((s) => ({ ...s, settings: { ...s.settings, ttsLoop: true } }));
+      setTtsMadeTick((t) => t + 1);
+    };
+    window.addEventListener(TTS_MADE, made);
+    return () => window.removeEventListener(TTS_MADE, made);
+  }, []);
+  /** What "Make it" makes: this phrase's .tts.wav, or the whole text's. */
+  const ttsJob = useMemo((): TtsJobHere | null => {
+    if (!name) return null;
+    if (textsView)
+      return units.length
+        ? {
+            kind: "text",
+            phrases: units.map((u) => u.text),
+            path: `${TEXT_FOLDER}/${name}.tts.wav`,
+          }
+        : null;
+    return item
+      ? { kind: "phrase", phrases: [item.text], path: `${PHRASE_FOLDER}/${name}.tts.wav` }
+      : null;
+  }, [name, textsView, units, item]);
 
   const update = (fn: (s: RehearseState) => RehearseState) => rehearseUpdate(fn);
   const setOpt = (next: Partial<RehearseSettings>) =>
@@ -1328,11 +1413,27 @@ export function RehearseTab() {
                 {prog.passes.toLocaleString()} pass{prog.passes === 1 ? "" : "es"} ·{" "}
                 {prog.reps.toLocaleString()} reps · {textPercent(at, total)}% ·{" "}
                 {clock(prog.spentMs)} on it
+                {st.done[textKeyNow] ? (
+                  <span className="text-emerald-400">
+                    {" "}
+                    · read through ✓ {dayOf(st.done[textKeyNow])}
+                  </span>
+                ) : null}
               </span>
             )}
             {tapNote && (
               <span className="text-xs text-gold" role="status">
                 {tapNote}
+              </span>
+            )}
+            {ttsHere && (
+              <span className="text-[0.65rem] text-violet">
+                ♫ {name}.tts.wav{" "}
+                {ttsLoop
+                  ? ttsPlaying
+                    ? `looping at ${Math.round(ttsVolume * 100)}%`
+                    : "loading…"
+                  : "(off)"}
               </span>
             )}
             {wavHere && (
@@ -1422,8 +1523,10 @@ export function RehearseTab() {
       {textsView && passDone === textKeyNow && textNow && (
         <div className="glass mt-2 space-y-2 border border-gold/60 p-3" role="status">
           <p className="text-sm text-gold">
-            ✓ Pass {prog.passes} through “{textNow.name}” done · {clock(prog.spentMs)} on it in all.
-            Is it all written right, no mistypes?
+            ✓ Pass {prog.passes} through “{textNow.name}” done · {clock(prog.spentMs)} on it in all.{" "}
+            {checked === "checked"
+              ? "Read through, so it is checked ✓ (in the phone app also saved in Documents/confirmed_txt). Spotted a mistype? Edit the phrase: it is checked again after the next pass."
+              : "Is it all written right, no mistypes?"}
           </p>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -1451,7 +1554,7 @@ export function RehearseTab() {
               className="btn tracking-normal normal-case"
               onClick={() => setPassDone(null)}
             >
-              Not now
+              {checked === "checked" ? "OK" : "Not now"}
             </button>
           </div>
         </div>
@@ -1649,6 +1752,22 @@ export function RehearseTab() {
                   ? "Battery: Unrestricted ✓, the app always runs (tap: its settings)"
                   : "Battery: optimized, the phone may stop it. Tap: Unrestricted"}
               </button>
+            )}
+            {ttsHere && (
+              <div className="mt-2 space-y-1.5">
+                <Toggle
+                  label={`Its TTS file in a loop (${name}.tts.wav)`}
+                  on={ttsLoop}
+                  flip={() => setOpt({ ttsLoop: !ttsLoop })}
+                />
+                <Num
+                  label="TTS file volume (1 as it was made; above 1 the phone may clip)"
+                  value={ttsVolume}
+                  step={0.05}
+                  digits={2}
+                  set={(v) => setOpt({ ttsVolume: clampAmp(v) })}
+                />
+              </div>
             )}
             {wavHere && (
               <div className="mt-2 space-y-1.5">
@@ -1913,7 +2032,8 @@ export function RehearseTab() {
               , its loudest point at {set.amp}.
             </p>
           )}
-          <VoicePanel set={set} setOpt={setOpt} note={voiceNote} />
+          <VoicePanel set={set} setOpt={setOpt} note={voiceNote} texts={textsView} />
+          {set.voice && <TtsMake set={set} setOpt={setOpt} job={ttsJob} phone={phone} />}
           <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
             THE PICTURE: ITS BYTES, THREE LAYERS
           </p>
@@ -2075,11 +2195,14 @@ export function RehearseTab() {
                     onClick={() =>
                       void lookForWavs().then((found) => {
                         const n = found[dir] ?? 0;
-                        setFolderNote(`${n} .wav file${n === 1 ? "" : "s"} in ${dir}.`);
+                        const t = found[`${dir}:tts`] ?? 0;
+                        setFolderNote(
+                          `${n} .wav file${n === 1 ? "" : "s"} and ${t} TTS file${t === 1 ? "" : "s"} (.tts.wav) in ${dir}.`,
+                        );
                       })
                     }
                   >
-                    Look for .wav files
+                    Look for .wav and TTS files
                   </button>
                 </div>
               )}
@@ -2184,7 +2307,10 @@ export function RehearseTab() {
                     folder={t.folder ?? ""}
                     current={t.key === textKeyNow}
                     wav={hasWav(textNames[i] ?? "", TEXT_FOLDER)}
+                    tts={hasTts(textNames[i] ?? "", TEXT_FOLDER)}
                     checked={rowChecks[i] === "checked"}
+                    doneAt={st.done[t.key] ?? 0}
+                    cut={!t.builtIn && t.lines.length === OLD_LINE_LIMIT}
                     at={Math.min(p.at, Math.max(0, n - 1))}
                     total={n}
                     passes={p.passes}
@@ -2230,6 +2356,7 @@ export function RehearseTab() {
                     count={it.count}
                     current={it.id === item?.id}
                     wav={hasWav(names[i] ?? "")}
+                    tts={hasTts(names[i] ?? "")}
                     armed={armed === `rm-${it.id}`}
                     onPick={pickPhrase}
                     onReset={resetPhraseRow}
@@ -2268,6 +2395,14 @@ export function RehearseTab() {
   );
 }
 
+/** The texts the app cut when it loaded them, before 2 Nov: at most this many lines. */
+const OLD_LINE_LIMIT = 400;
+
+/** A day, short: "12 Nov". */
+function dayOf(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
 /** A text in the list: its name, where you are in it, its reps, and the button that starts it over. */
 const TextRow = memo(function TextRow(p: {
   tkey: string;
@@ -2276,7 +2411,12 @@ const TextRow = memo(function TextRow(p: {
   folder: string;
   current: boolean;
   wav: boolean;
+  tts: boolean;
   checked: boolean;
+  /** When it was first read through to the end (0: not yet). Kept through every reset. */
+  doneAt: number;
+  /** Exactly 400 lines: maybe cut when it was loaded (the old limit). */
+  cut: boolean;
   at: number;
   total: number;
   passes: number;
@@ -2297,6 +2437,7 @@ const TextRow = memo(function TextRow(p: {
       >
         <span className="block truncate">
           <span className="text-muted">{p.index + 1}.</span> {p.wav ? "♪ " : ""}
+          {p.tts ? "♫ " : ""}
           {p.checked ? "✓ " : ""}
           {p.folder ? <span className="text-muted">{p.folder} / </span> : null}
           {p.name}
@@ -2304,7 +2445,17 @@ const TextRow = memo(function TextRow(p: {
         <span className="block text-[0.65rem] text-muted">
           phrase {(p.at + 1).toLocaleString()} of {p.total.toLocaleString()} · {p.passes} pass
           {p.passes === 1 ? "" : "es"}
+          {p.doneAt ? (
+            <span className="text-emerald-400"> · read through ✓ {dayOf(p.doneAt)}</span>
+          ) : null}
         </span>
+        {p.cut && (
+          <span className="block text-[0.65rem] leading-snug text-gold">
+            400 lines: if the text is longer, it was cut when it was loaded (the app kept 400 lines
+            before 2 Nov). Put the whole .txt in {TEXT_FOLDER} and tap Refresh, or Import it again:
+            the rest is added, your place and passes stay.
+          </span>
+        )}
       </button>
       <span className="w-12 text-right font-display text-xs text-cyan">
         {p.reps.toLocaleString()}
@@ -2335,6 +2486,7 @@ const PhraseRow = memo(function PhraseRow(p: {
   count: number;
   current: boolean;
   wav: boolean;
+  tts: boolean;
   armed: boolean;
   onPick: (id: string) => void;
   onReset: (id: string) => void;
@@ -2351,6 +2503,7 @@ const PhraseRow = memo(function PhraseRow(p: {
         aria-current={p.current}
       >
         <span className="text-muted">{p.index + 1}.</span> {p.wav ? "♪ " : ""}
+        {p.tts ? "♫ " : ""}
         {p.text}
       </button>
       <span className="w-12 text-right font-display text-xs text-cyan">
@@ -2448,10 +2601,13 @@ function VoicePanel({
   set,
   setOpt,
   note,
+  texts,
 }: {
   set: RehearseSettings;
   setOpt: (next: Partial<RehearseSettings>) => void;
   note: string;
+  /** Whole texts: a layer may say the whole text (into its .tts.wav) instead of the phrase. */
+  texts: boolean;
 }) {
   const [where, setWhere] = useState<"phone" | "browser" | null>(null);
   const [engines, setEngines] = useState<{ name: string; label: string }[]>([]);
@@ -2479,6 +2635,7 @@ function VoicePanel({
   const L = layers[at]!;
   const setL = (patch: Partial<VoiceLayer>) => setOpt(setVoiceLayer(set, at, patch));
   const preset = voicePresetOf(L);
+  const whole = layers.filter((l) => l.voiceWhole).length;
   return (
     <>
       <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
@@ -2506,7 +2663,8 @@ function VoicePanel({
                 className="btn px-2 text-[0.65rem] tracking-normal normal-case"
                 onClick={() => setLayer(k)}
               >
-                Layer {k + 1} ({l.voiceCopies})
+                Layer {k + 1} ({l.voiceCopies}
+                {texts && l.voiceWhole ? ", whole text" : ""})
               </button>
             ))}
             <button
@@ -2546,9 +2704,41 @@ function VoicePanel({
             />
           )}
           <p className="text-[0.65rem] text-muted">
-            {layers.length} layer{layers.length === 1 ? "" : "s"}, {voiceCount(set)} voices in all,
-            all at once. Below: layer {at + 1}.
+            {layers.length} layer{layers.length === 1 ? "" : "s"}, {voiceCount(set)} voice
+            {voiceCount(set) === 1 ? "" : "s"} in all, all at once
+            {texts && whole
+              ? ` (${whole} reading the whole text: in its .tts.wav, made below, not live${whole === layers.length ? "; none says the phrase live" : ""})`
+              : ""}
+            . Below: layer {at + 1}.
           </p>
+          {texts && (
+            <div
+              className="grid grid-cols-2 gap-1"
+              role="radiogroup"
+              aria-label={`What layer ${at + 1} says`}
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={!L.voiceWhole}
+                data-on={!L.voiceWhole}
+                className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+                onClick={() => setL({ voiceWhole: false })}
+              >
+                Says the phrase (live, each in turn)
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={L.voiceWhole}
+                data-on={L.voiceWhole}
+                className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+                onClick={() => setL({ voiceWhole: true })}
+              >
+                Reads the whole text (into its file)
+              </button>
+            </div>
+          )}
           {where === "phone" && (
             <label className="block text-xs">
               <span className="text-muted">Voice engine</span>
@@ -2634,7 +2824,11 @@ function VoicePanel({
             set={(v) => setL({ voiceSpeedUp: clampVoiceSpeedUp(v) })}
           />
           <Toggle
-            label="Over and over while on the phrase"
+            label={
+              texts && L.voiceWhole
+                ? "Again from the top (the fast copies, till the slowest is through)"
+                : "Over and over while on the phrase"
+            }
             on={L.voiceLoop}
             flip={() => setL({ voiceLoop: !L.voiceLoop })}
           />
@@ -2690,6 +2884,97 @@ function VoicePanel({
           )}
         </>
       )}
+    </>
+  );
+}
+
+type TtsJobHere = Omit<TtsJob, "rate">;
+
+/** The robot voice made into a .tts.wav (float32, at the rate chosen), saved next to the .txt and looped. */
+function TtsMake({
+  set,
+  setOpt,
+  job,
+  phone,
+}: {
+  set: RehearseSettings;
+  setOpt: (next: Partial<RehearseSettings>) => void;
+  job: TtsJobHere | null;
+  /** The phone app (it is made there). */
+  phone: boolean;
+}) {
+  const status = useSyncExternalStore(subscribeTts, ttsStatus, ttsStatus);
+  const file = job ? (job.path.split("/").pop() ?? job.path) : "";
+  const layers = voiceLayersOf(set);
+  const whole = layers.filter((l) => l.voiceWhole).length;
+  return (
+    <>
+      <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
+        THE VOICE MADE INTO A FILE: .TTS.WAV, FLOAT32
+      </p>
+      <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label="Its sample rate">
+        {TTS_RATES.map((r) => (
+          <button
+            key={r}
+            type="button"
+            role="radio"
+            aria-checked={set.ttsRate === r}
+            data-on={set.ttsRate === r}
+            className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+            disabled={status.busy}
+            onClick={() => setOpt({ ttsRate: r })}
+          >
+            {r / 1000} kHz
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="btn w-full tracking-normal normal-case"
+        disabled={!job || status.busy}
+        onClick={() => job && void startTts({ ...job, rate: set.ttsRate }, set)}
+      >
+        {!job
+          ? "Choose a phrase or a text first"
+          : job.kind === "text"
+            ? `Make “${file}”: the whole text, ${job.phrases.length.toLocaleString()} phrases`
+            : `Make “${file}”: this phrase`}
+      </button>
+      {status.busy && (
+        <div className="space-y-1">
+          <div className="h-1.5 w-full overflow-hidden rounded bg-cyan/15">
+            <div
+              className="h-full bg-cyan"
+              style={{ width: `${Math.round(status.part * 100)}%` }}
+            />
+          </div>
+          <button
+            type="button"
+            className="btn w-full tracking-normal normal-case"
+            onClick={stopTts}
+          >
+            Stop making it (nothing is saved)
+          </button>
+        </div>
+      )}
+      {status.note && (
+        <p className="text-xs text-gold" role="status">
+          {status.note}
+        </p>
+      )}
+      <p className="text-[0.65rem] leading-snug text-muted">
+        {job?.kind === "text"
+          ? `The whole text through: the layers that say the phrase take each phrase in turn (the next once every copy has said it, and its silence), ${whole ? `and the ${whole} reading the whole text go through it at their own speeds, drifting apart` : "and a layer set to read the whole text goes through it at its own speed"}; then it is saved as ${TEXT_FOLDER}/<text>.tts.wav and loops. `
+          : `This phrase with every layer, once round (till the slowest copy has said it, and its silence); the faster copies say it again till then. Saved as ${PHRASE_FOLDER}/<phrase>.tts.wav, then it loops. `}
+        Float32: values above 1 are kept (volumes above 1 make them). One channel, or two when a
+        layer turns left-right. A higher rate keeps the sped-up copies' highs (at 48 kHz, copies
+        over about ×2 fold back, as they do live). Each phrase is said once for each voice and kept:
+        made again (another rate, other copies), nothing is said again. The phone plays it at its
+        own 48 kHz; the file keeps everything for a player that goes higher (UAPP with a USB DAC).
+        {phone
+          ? ""
+          : " Made in the Android app (with the azs-folder chosen): its voice makes the sayings."}
+      </p>
     </>
   );
 }

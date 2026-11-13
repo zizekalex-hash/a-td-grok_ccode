@@ -14,6 +14,16 @@ interface AzsFolderApi {
   readText(o: { path: string }): Promise<{ text: string }>;
   list(o: { dir: string }): Promise<{ files: FolderFile[] }>;
   cacheFile(o: { path: string }): Promise<{ file: string; size: number; modified: number }>;
+  cacheWrite(o: {
+    name: string;
+    data: string;
+    append: boolean;
+  }): Promise<{ file: string; size: number }>;
+  cacheDrop(o: { name: string }): Promise<void>;
+  saveCached(o: { name: string; path: string }): Promise<{ size: number }>;
+  loopPlay(o: { path: string; volume: number }): Promise<void>;
+  loopVolume(o: { volume: number }): Promise<void>;
+  loopStop(): Promise<void>;
 }
 
 export interface FolderFile {
@@ -99,4 +109,66 @@ export async function folderFileUrl(path: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * A big file made here (a .tts.wav), into the folder: written a piece at a time
+ * into the app's cache (start: from nothing), then saved into the folder at
+ * path (written over if there) and dropped from the cache.
+ */
+export interface FolderWriter {
+  write(bytes: Uint8Array): Promise<void>;
+  /** Saved into the folder: its size. */
+  save(path: string): Promise<number>;
+  /** Thrown away (stopped, or it failed). */
+  drop(): Promise<void>;
+}
+
+function base64(bytes: Uint8Array): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ""));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(new Blob([bytes as Uint8Array<ArrayBuffer>]));
+  });
+}
+
+/** null: not the phone app. */
+export async function folderWriter(name: string): Promise<FolderWriter | null> {
+  const p = await folderPlugin();
+  if (!p) return null;
+  let first = true;
+  return {
+    async write(bytes) {
+      await p.api.cacheWrite({ name, data: await base64(bytes), append: !first });
+      first = false;
+    },
+    async save(path) {
+      return (await p.api.saveCached({ name, path })).size;
+    },
+    async drop() {
+      await p.api.cacheDrop({ name }).catch(() => {});
+    },
+  };
+}
+
+/**
+ * A .wav of the folder looped by the phone itself, read from the file a piece at
+ * a time (any length, any rate, in the background too). False if it cannot.
+ */
+export async function folderLoop(path: string | null, volume = 1): Promise<boolean> {
+  const p = await folderPlugin();
+  if (!p) return false;
+  try {
+    if (!path) await p.api.loopStop();
+    else await p.api.loopPlay({ path, volume });
+    return !!path;
+  } catch {
+    return false;
+  }
+}
+
+export async function folderLoopVolume(volume: number) {
+  const p = await folderPlugin();
+  await p?.api.loopVolume({ volume }).catch(() => {});
 }

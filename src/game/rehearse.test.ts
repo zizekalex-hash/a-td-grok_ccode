@@ -54,6 +54,8 @@ import {
   textPass,
   textPercent,
   SPENT_GAP_MS,
+  markDone,
+  passedThrough,
   VOICE_PRESETS,
   voicePresetOf,
   voiceShapeOf,
@@ -63,6 +65,7 @@ import {
   setVoiceLayer,
   voiceCount,
   voiceLayersOf,
+  liveVoiceLayers,
   libraryOf,
   currentText,
   applyBubble,
@@ -677,6 +680,49 @@ describe("rehearse: the floating window's look and the robot voice", () => {
   });
 });
 
+describe("rehearse: layers that read the whole text, and the .tts.wav", () => {
+  it("a layer reads the whole text: not played live on texts, kept through load", () => {
+    let s = { ...defaultSettings(), voiceCopies: 3 };
+    s = { ...s, ...copyVoiceLayer(s, 0) };
+    s = { ...s, ...setVoiceLayer(s, 1, { voiceWhole: true, voiceCopies: 5 }) };
+    assert.deepEqual(
+      voiceLayersOf(s).map((l) => [l.voiceCopies, l.voiceWhole]),
+      [
+        [3, false],
+        [5, true],
+      ],
+    );
+    assert.deepEqual(
+      liveVoiceLayers(s, true).map((l) => l.voiceCopies),
+      [3],
+    );
+    // Single phrases: every layer says the phrase.
+    assert.equal(liveVoiceLayers(s, false).length, 2);
+    s = { ...s, ...setVoiceLayer(s, 0, { voiceWhole: true }) };
+    assert.equal(s.voiceWhole, true);
+    assert.equal(liveVoiceLayers(s, true).length, 0);
+    const back = loadRehearse(JSON.parse(JSON.stringify({ settings: s }))).settings;
+    assert.equal(back.voiceWhole, true);
+    assert.equal(back.voiceLayers[0]!.voiceWhole, true);
+    // Deleting the first: the second (reading the whole text) takes its place.
+    const d = { ...s, ...deleteVoiceLayer(s, 0) };
+    assert.equal(d.voiceWhole, true);
+    assert.equal(d.voiceCopies, 5);
+  });
+  it("its rate, loop and volume: kept, checked", () => {
+    const d = defaultSettings();
+    assert.deepEqual([d.ttsRate, d.ttsLoop, d.ttsVolume, d.voiceWhole], [48000, true, 1, false]);
+    const ok = loadRehearse({
+      settings: { ttsRate: 384000, ttsLoop: false, ttsVolume: 2.5 },
+    }).settings;
+    assert.deepEqual([ok.ttsRate, ok.ttsLoop, ok.ttsVolume], [384000, false, 2.5]);
+    const bad = loadRehearse({
+      settings: { ttsRate: 44100, ttsLoop: "yes", ttsVolume: -3 },
+    }).settings;
+    assert.deepEqual([bad.ttsRate, bad.ttsLoop, bad.ttsVolume], [48000, true, 0]);
+  });
+});
+
 describe("rehearse: layers of voices", () => {
   it("copies, changes and deletes layers; copies add up", () => {
     let s = { ...defaultSettings(), voiceCopies: 9, voiceName: "a" };
@@ -699,5 +745,29 @@ describe("rehearse: layers of voices", () => {
     assert.equal(back.settings.voiceCopiesVolume, 1);
     assert.equal(defaultSettings().voiceRecord, false);
     assert.equal(loadRehearse({ settings: { voiceRecordSec: 9999 } }).settings.voiceRecordSec, 600);
+  });
+});
+
+describe("rehearse: a text read through", () => {
+  it("is marked when it gets to its end, the first time kept whatever is reset", () => {
+    let s = newRehearse();
+    s = textTap(s, "T", 2, 10);
+    assert.deepEqual(s.done, {});
+    const before = s;
+    s = textTap(s, "T", 2, 20);
+    assert.deepEqual(s.done, { T: 20 }, "the last phrase done: read through");
+    assert.deepEqual(passedThrough(before, s), ["T"]);
+    s = resetText(s, "T");
+    assert.deepEqual(s.done, { T: 20 }, "a reset leaves the mark");
+    s = textTap(textTap(s, "T", 2, 30), "T", 2, 40);
+    assert.equal(s.done.T, 20, "the first time is kept");
+    const again = textPass(s, "T", 50);
+    assert.deepEqual(passedThrough(s, again), ["T"], "every pass more: checked again");
+    assert.equal(again.done.T, 20);
+    assert.deepEqual(textPass(newRehearse(), "U", 7).done, { U: 7 });
+    assert.equal(markDone(s, "T", 99), s);
+    const back = loadRehearse({ done: { T: 20, "": 5, X: "no", Y: -1 } });
+    assert.deepEqual(back.done, { T: 20 });
+    assert.deepEqual(passedThrough(s, s), []);
   });
 });
