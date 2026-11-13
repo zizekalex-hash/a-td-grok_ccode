@@ -61,6 +61,7 @@ import {
 } from "@/game/repBubble";
 import { voiceEngines, voiceHere, voiceList, type VoiceInfo } from "@/game/voice";
 import {
+  finalKind,
   finalPath,
   startStereo,
   startTts,
@@ -373,7 +374,7 @@ function useEmitter(text: string, settings: RehearseSettings) {
 // ---- Small controls ----
 
 /** A number with − and +, and typed exactly. */
-function Num({
+export function Num({
   label,
   value,
   step: by,
@@ -429,7 +430,7 @@ function Num({
   );
 }
 
-function Toggle({ label, on, flip }: { label: string; on: boolean; flip: () => void }) {
+export function Toggle({ label, on, flip }: { label: string; on: boolean; flip: () => void }) {
   return (
     <button
       type="button"
@@ -2898,10 +2899,10 @@ function VoicePanel({
   );
 }
 
-type TtsJobHere = Omit<TtsJob, "rate">;
+export type TtsJobHere = Omit<TtsJob, "rate">;
 
 /** The robot voice made into a .tts.wav (float32, at the rate chosen), saved next to the .txt and looped. */
-function TtsMake({
+export function TtsMake({
   set,
   setOpt,
   job,
@@ -2956,53 +2957,17 @@ function TtsMake({
       <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
         FINAL EXPORT: TWO CHANNELS, FROM THAT FILE (NOTHING MIXED AGAIN)
       </p>
-      <div className="grid grid-cols-2 gap-1" role="radiogroup" aria-label="Its two channels">
-        {(
-          [
-            ["same", "The same both sides"],
-            ["bridged", "Bridged: the right side flipped"],
-          ] as const
-        ).map(([k, label]) => (
-          <button
-            key={k}
-            type="button"
-            role="radio"
-            aria-checked={set.ttsStereo === k}
-            data-on={set.ttsStereo === k}
-            className="btn px-1 text-[0.65rem] tracking-normal normal-case"
-            disabled={status.busy}
-            onClick={() => setOpt({ ttsStereo: k })}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <Toggle
-        label="Turned left-right, at the end"
-        on={set.ttsTurn}
-        flip={() => setOpt({ ttsTurn: !set.ttsTurn })}
-      />
-      {set.ttsTurn && (
-        <Num
-          label="Turns a second"
-          value={set.ttsTurnHz}
-          step={0.5}
-          digits={2}
-          set={(v) => setOpt({ ttsTurnHz: clampPanHz(v) })}
-        />
-      )}
+      <StereoChoices set={set} setOpt={setOpt} busy={status.busy} />
       <button
         type="button"
         className="btn w-full tracking-normal normal-case"
         disabled={!job || !made || status.busy}
-        onClick={() =>
-          job && void startStereo(job.path, set.ttsStereo, set.ttsTurn ? set.ttsTurnHz : 0)
-        }
+        onClick={() => job && void startStereo(job.path, set)}
       >
         {!job
           ? "Choose a phrase or a text first"
           : made
-            ? `Make “${finalPath(file, set.ttsStereo)}” from “${file}”`
+            ? `Make “${finalPath(file, finalKind(set))}” from “${file}”`
             : `Make “${file}” first (above)`}
       </button>
       {status.busy && (
@@ -3045,6 +3010,165 @@ function TtsMake({
         {phone
           ? ""
           : " Made in the Android app (with the azs-folder chosen): its voice makes the sayings."}
+      </p>
+    </>
+  );
+}
+
+/** The final export's two channels and how they turn (each kind with its own settings). */
+export function StereoChoices({
+  set,
+  setOpt,
+  busy,
+}: {
+  set: RehearseSettings;
+  setOpt: (next: Partial<RehearseSettings>) => void;
+  busy: boolean;
+}) {
+  const bridging = set.ttsTurn && set.ttsTurnKind === "bridge";
+  const radio = <K extends string>(
+    label: string,
+    value: K,
+    options: readonly (readonly [K, string])[],
+    pick: (k: K) => void,
+    cols = 2,
+  ) => (
+    <div
+      className={`grid gap-1 ${cols === 3 ? "grid-cols-3" : "grid-cols-2"}`}
+      role="radiogroup"
+      aria-label={label}
+    >
+      {options.map(([k, text]) => (
+        <button
+          key={k}
+          type="button"
+          role="radio"
+          aria-checked={value === k}
+          data-on={value === k}
+          className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+          disabled={busy}
+          onClick={() => pick(k)}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+  return (
+    <>
+      {!bridging &&
+        radio(
+          "Its two channels",
+          set.ttsStereo,
+          [
+            ["same", "The same both sides"],
+            ["bridged", "Bridged: the right side flipped"],
+          ] as const,
+          (k) => setOpt({ ttsStereo: k }),
+        )}
+      <Toggle
+        label="Turned, at the end"
+        on={set.ttsTurn}
+        flip={() => setOpt({ ttsTurn: !set.ttsTurn })}
+      />
+      {set.ttsTurn && (
+        <>
+          {radio(
+            "How it turns",
+            set.ttsTurnKind,
+            [
+              ["bridge", "Bridge rotation"],
+              ["pan", "Left-right"],
+              ["eight", "8D"],
+            ] as const,
+            (k) => setOpt({ ttsTurnKind: k }),
+            3,
+          )}
+          {set.ttsTurnKind === "pan" && (
+            <Num
+              label="Turns a second"
+              value={set.ttsTurnHz}
+              step={0.5}
+              digits={2}
+              set={(v) => setOpt({ ttsTurnHz: clampPanHz(v) })}
+            />
+          )}
+          {set.ttsTurnKind === "eight" && (
+            <>
+              <Num
+                label="Turns a second · EIGHT_D_ROTATION_RATE"
+                value={set.eightHz}
+                step={0.1}
+                digits={3}
+                set={(v) => setOpt({ eightHz: Math.max(0, Math.min(1000, v)) })}
+              />
+              <Num
+                label="Channel gain · EIGHT_D_CHANNEL_GAIN"
+                value={set.eightGain}
+                step={0.1}
+                digits={2}
+                set={(v) => setOpt({ eightGain: Math.max(0, Math.min(10_000, v)) })}
+              />
+            </>
+          )}
+          {set.ttsTurnKind === "bridge" && (
+            <>
+              <Num
+                label="Turns a second · BRIDGE_ROTATION_HZ"
+                value={set.bridgeHz}
+                step={0.1}
+                digits={2}
+                set={(v) => setOpt({ bridgeHz: Math.max(-20_000, Math.min(20_000, v)) })}
+              />
+              <Num
+                label="Starting angle (°; 180 bridged, 0 the same) · BRIDGE_START_DEG"
+                value={set.bridgeStartDeg}
+                step={15}
+                digits={0}
+                set={(v) => setOpt({ bridgeStartDeg: Math.max(-360, Math.min(360, v)) })}
+              />
+              <Toggle
+                label="Dual: + a held duplicate · BRIDGE_DUAL_MIX"
+                on={set.bridgeDual}
+                flip={() => setOpt({ bridgeDual: !set.bridgeDual })}
+              />
+              {set.bridgeDual && (
+                <>
+                  <Num
+                    label="Turning one's weight · BRIDGE_ROT_WEIGHT"
+                    value={set.bridgeRotWeight}
+                    step={0.05}
+                    digits={3}
+                    set={(v) => setOpt({ bridgeRotWeight: Math.max(-10_000, Math.min(10_000, v)) })}
+                  />
+                  <Num
+                    label="Held one's weight · BRIDGE_ORIG_WEIGHT"
+                    value={set.bridgeOrigWeight}
+                    step={0.05}
+                    digits={3}
+                    set={(v) =>
+                      setOpt({ bridgeOrigWeight: Math.max(-10_000, Math.min(10_000, v)) })
+                    }
+                  />
+                  <Num
+                    label="Their sum x · BRIDGE_DUAL_MIX_AMP"
+                    value={set.bridgeDualAmp}
+                    step={0.05}
+                    digits={3}
+                    set={(v) => setOpt({ bridgeDualAmp: Math.max(-10_000, Math.min(10_000, v)) })}
+                  />
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
+      <p className="text-[0.65rem] leading-snug text-muted">
+        Bridge rotation (the expand engine's): the right side is the left turned by an angle at
+        every pitch, the angle going round 360° so many times a second from the starting angle (180°
+        = the plain bridge, the right the left's opposite). Left-right: equal power, ear to ear. 8D
+        (legion9's): each side's loudness rises and falls by its own curve. Each the engines' own
+        sums.
       </p>
     </>
   );

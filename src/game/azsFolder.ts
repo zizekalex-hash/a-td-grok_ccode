@@ -20,21 +20,36 @@ interface AzsFolderApi {
     append: boolean;
   }): Promise<{ file: string; size: number }>;
   cacheDrop(o: { name: string }): Promise<void>;
-  saveCached(o: { name: string; path: string }): Promise<{ size: number }>;
+  saveCached(o: {
+    name: string;
+    path: string;
+    gain?: number;
+    offset?: number;
+  }): Promise<{ size: number }>;
   loopPlay(o: { path: string; volume: number }): Promise<void>;
   loopVolume(o: { volume: number }): Promise<void>;
   loopStop(): Promise<void>;
-  stereoMake(o: {
-    from: string;
-    to: string;
-    bridged: boolean;
-    turnHz: number;
-  }): Promise<{ frames: number; bytes: number }>;
+  stereoMake(o: { from: string; to: string; bridged: boolean } & StereoTurn): Promise<{
+    frames: number;
+    bytes: number;
+  }>;
   stereoStop(): Promise<void>;
   addListener(
     event: "stereoProgress",
     fn: (e: { part: number }) => void,
   ): Promise<{ remove: () => Promise<void> }>;
+}
+
+/** How the final export turns (TtsStereo.Turn): none, left-right, the bridge rotation, or 8D. */
+export interface StereoTurn {
+  turn: "none" | "pan" | "bridge" | "eight";
+  hz: number;
+  startDeg?: number;
+  dual?: boolean;
+  wRot?: number;
+  wOrig?: number;
+  dualAmp?: number;
+  gain?: number;
 }
 
 export interface FolderFile {
@@ -129,8 +144,8 @@ export async function folderFileUrl(path: string): Promise<string | null> {
  */
 export interface FolderWriter {
   write(bytes: Uint8Array): Promise<void>;
-  /** Saved into the folder: its size. */
-  save(path: string): Promise<number>;
+  /** Saved into the folder (each float32 sample (x - offset) x gain on the way): its size. */
+  save(path: string, gain?: number, offset?: number): Promise<number>;
   /** Thrown away (stopped, or it failed). */
   drop(): Promise<void>;
 }
@@ -154,8 +169,8 @@ export async function folderWriter(name: string): Promise<FolderWriter | null> {
       await p.api.cacheWrite({ name, data: await base64(bytes), append: !first });
       first = false;
     },
-    async save(path) {
-      return (await p.api.saveCached({ name, path })).size;
+    async save(path, gain = 1, offset = 0) {
+      return (await p.api.saveCached({ name, path, gain, offset })).size;
     },
     async drop() {
       await p.api.cacheDrop({ name }).catch(() => {});
@@ -194,14 +209,14 @@ export async function folderStereo(
   from: string,
   to: string,
   bridged: boolean,
-  turnHz: number,
+  turn: StereoTurn,
   onPart: (part: number) => void,
 ): Promise<{ frames: number; bytes: number }> {
   const p = await folderPlugin();
   if (!p) throw new Error("Made in the Android app, from the .tts.wav in the azs-folder");
   const h = await p.api.addListener("stereoProgress", (e) => onPart(e.part));
   try {
-    return await p.api.stereoMake({ from, to, bridged, turnHz });
+    return await p.api.stereoMake({ from, to, bridged, ...turn });
   } finally {
     await h.remove().catch(() => {});
   }

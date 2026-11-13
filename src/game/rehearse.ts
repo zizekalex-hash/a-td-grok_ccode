@@ -134,7 +134,20 @@ export interface RehearseSettings {
   ttsStereo: StereoKind;
   ttsTurn: boolean;
   ttsTurnHz: number;
+  /** How it turns: left-right (equal power, ttsTurnHz), the bridge rotation (the expand engine's), or 8D (legion9's). */
+  ttsTurnKind: TurnKind;
+  bridgeHz: number;
+  bridgeStartDeg: number;
+  bridgeDual: boolean;
+  bridgeRotWeight: number;
+  bridgeOrigWeight: number;
+  bridgeDualAmp: number;
+  eightHz: number;
+  eightGain: number;
 }
+
+export const TURN_KINDS = ["pan", "bridge", "eight"] as const;
+export type TurnKind = (typeof TURN_KINDS)[number];
 
 /** "same": the one channel on both sides; "bridged": the right side flipped (its opposite, as a bridged amplifier is driven). */
 export type StereoKind = "same" | "bridged";
@@ -263,6 +276,15 @@ export function defaultSettings(): RehearseSettings {
     ttsStereo: "same",
     ttsTurn: false,
     ttsTurnHz: 3,
+    ttsTurnKind: "bridge",
+    bridgeHz: 36.9,
+    bridgeStartDeg: 180,
+    bridgeDual: true,
+    bridgeRotWeight: 0.999,
+    bridgeOrigWeight: 0.999,
+    bridgeDualAmp: 0.999,
+    eightHz: 0.999,
+    eightGain: 1.89,
   };
 }
 
@@ -383,6 +405,15 @@ export function loadRehearse(data: unknown): RehearseState {
   if (t.ttsStereo === "same" || t.ttsStereo === "bridged") u.ttsStereo = t.ttsStereo;
   if (typeof t.ttsTurn === "boolean") u.ttsTurn = t.ttsTurn;
   u.ttsTurnHz = clampPanHz(num(t.ttsTurnHz, u.ttsTurnHz));
+  if (TURN_KINDS.includes(t.ttsTurnKind as TurnKind)) u.ttsTurnKind = t.ttsTurnKind as TurnKind;
+  u.bridgeHz = clamp(num(t.bridgeHz, u.bridgeHz), -20_000, 20_000);
+  u.bridgeStartDeg = clamp(num(t.bridgeStartDeg, u.bridgeStartDeg), -360, 360);
+  if (typeof t.bridgeDual === "boolean") u.bridgeDual = t.bridgeDual;
+  u.bridgeRotWeight = clamp(num(t.bridgeRotWeight, u.bridgeRotWeight), -10_000, 10_000);
+  u.bridgeOrigWeight = clamp(num(t.bridgeOrigWeight, u.bridgeOrigWeight), -10_000, 10_000);
+  u.bridgeDualAmp = clamp(num(t.bridgeDualAmp, u.bridgeDualAmp), -10_000, 10_000);
+  u.eightHz = clamp(num(t.eightHz, u.eightHz), 0, 1000);
+  u.eightGain = clamp(num(t.eightGain, u.eightGain), 0, 10_000);
   return s;
 }
 

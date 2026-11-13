@@ -31,6 +31,7 @@ export const SAVE_NAMES: Record<string, string> = {
   "azshara-rehearse-v1":
     "The Rehearse tab: its phrases, their counts and the tap's sound and picture",
   "azshara-reader-v1": "The Read tab: its settings and your place in each text",
+  "azshara-legion-v1": "The Legion tab's settings",
   "azshara-chess-v1": "Auto chess",
   "azshara-td-v1": "Tower defense",
   "azshara-td-run-v1": "A tower defense run in progress",

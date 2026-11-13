@@ -432,7 +432,9 @@ export function wavMono(bytes: Uint8Array): { samples: Float32Array; rate: numbe
         let s = 0;
         const at = body + f * width * channels;
         for (let c = 0; c < channels; c++) s += read(at + c * width);
-        out[f] = s / channels;
+        // NaN -> 0, past the guard (Inf) -> the guard: 96 % of float32's largest.
+        const x = s / channels;
+        out[f] = x !== x ? 0 : Math.max(-3.2667e38, Math.min(3.2667e38, x));
       }
       return { samples: out, rate };
     }
