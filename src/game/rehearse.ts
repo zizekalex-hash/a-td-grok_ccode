@@ -120,6 +120,9 @@ export interface RehearseSettings {
   voicePanHz: number;
   /** More voices at once, each a layer of its own (its voice and shape), after the first (the settings above). */
   voiceLayers: VoiceLayer[];
+  /** Recorded once (every copy, each layer), this many seconds, then looped: light for the phone. */
+  voiceRecord: boolean;
+  voiceRecordSec: number;
 }
 
 /** Single phrases, or whole texts (the Read tab's) phrase after phrase. */
@@ -181,6 +184,7 @@ export const clampBubbleSp = (v: number) => clamp(Math.round(v), 6, 72);
 export const clampVoiceRate = (v: number) => clamp(Math.round(v * 100) / 100, 0.1, 10);
 export const clampVoicePitch = (v: number) => clamp(Math.round(v * 100) / 100, 0.1, 4);
 export const clampVoiceCopies = (v: number) => clamp(Math.round(v), 1, 1000);
+export const clampRecordSec = (v: number) => clamp(Math.round(v), 1, 600);
 export const clampPanHz = (v: number) => clamp(Math.round(v * 100) / 100, 0, 100);
 /** The most layers of voices. */
 export const MAX_VOICE_LAYERS = 16;
@@ -227,6 +231,8 @@ export function defaultSettings(): RehearseSettings {
     voiceName: "",
     ...VOICE_PRESETS[0]!.shape,
     voiceLayers: [],
+    voiceRecord: false,
+    voiceRecordSec: 30,
   };
 }
 
@@ -332,6 +338,8 @@ export function loadRehearse(data: unknown): RehearseState {
   u.voiceVolume = clampAmp(num(t.voiceVolume, u.voiceVolume));
   u.voiceCopiesVolume = clampAmp(num(t.voiceCopiesVolume, u.voiceCopiesVolume));
   u.voicePanHz = clampPanHz(num(t.voicePanHz, u.voicePanHz));
+  if (typeof t.voiceRecord === "boolean") u.voiceRecord = t.voiceRecord;
+  u.voiceRecordSec = clampRecordSec(num(t.voiceRecordSec, u.voiceRecordSec));
   if (Array.isArray(t.voiceLayers))
     u.voiceLayers = t.voiceLayers.slice(0, MAX_VOICE_LAYERS - 1).map(loadVoiceLayer);
   return s;

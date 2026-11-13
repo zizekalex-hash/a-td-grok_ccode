@@ -697,5 +697,7 @@ describe("rehearse: layers of voices", () => {
     assert.equal(back.settings.voiceLayers[0]!.voiceCopies, 1000);
     assert.equal(back.settings.voiceLayers[0]!.voicePanHz, 100);
     assert.equal(back.settings.voiceCopiesVolume, 1);
+    assert.equal(defaultSettings().voiceRecord, false);
+    assert.equal(loadRehearse({ settings: { voiceRecordSec: 9999 } }).settings.voiceRecordSec, 600);
   });
 });

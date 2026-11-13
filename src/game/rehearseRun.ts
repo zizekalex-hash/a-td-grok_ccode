@@ -375,7 +375,11 @@ export async function playVoice(text: string | null): Promise<string> {
     if (ask !== voiceAsk) return "";
     while (voices.length < layers.length) voices.push(voicePlayer());
     for (let k = layers.length; k < voices.length; k++) voices[k]!.stop();
-    const oks = await Promise.all(layers.map((l, k) => voices[k]!.play(urls[k]!, voiceShapeOf(l))));
+    const oks = await Promise.all(
+      layers.map((l, k) =>
+        voices[k]!.play(urls[k]!, voiceShapeOf(l), set.voiceRecord ? set.voiceRecordSec : 0),
+      ),
+    );
     return oks.every(Boolean) || ask !== voiceAsk ? "" : "The voice's sound could not be played.";
   } catch (e) {
     if (ask === voiceAsk) {

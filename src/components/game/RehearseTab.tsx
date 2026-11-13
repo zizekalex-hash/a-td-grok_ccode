@@ -134,6 +134,7 @@ import {
   voicePresetOf,
   voiceShapeOf,
   clampPanHz,
+  clampRecordSec,
   copyVoiceLayer,
   deleteVoiceLayer,
   MAX_VOICE_LAYERS,
@@ -555,6 +556,8 @@ export function RehearseTab() {
     set.voiceName,
     voiceShapeOf(set),
     set.voiceLayers,
+    set.voiceRecord,
+    set.voiceRecordSec,
     phraseText,
   ]);
   useEffect(() => {
@@ -2529,6 +2532,19 @@ function VoicePanel({
               Delete layer {at + 1}
             </button>
           </div>
+          <Toggle
+            label="Pre-record it, then loop that (light for the phone)"
+            on={set.voiceRecord}
+            flip={() => setOpt({ voiceRecord: !set.voiceRecord })}
+          />
+          {set.voiceRecord && (
+            <Num
+              label="Recorded length (s), looped"
+              value={set.voiceRecordSec}
+              step={5}
+              set={(v) => setOpt({ voiceRecordSec: clampRecordSec(v) })}
+            />
+          )}
           <p className="text-[0.65rem] text-muted">
             {layers.length} layer{layers.length === 1 ? "" : "s"}, {voiceCount(set)} voices in all,
             all at once. Below: layer {at + 1}.

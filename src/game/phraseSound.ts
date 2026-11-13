@@ -418,7 +418,8 @@ export function fileLoop(): FileLoop {
  * shape again: it goes on as it is.
  */
 export interface VoicePlayer {
-  play(url: string, shape: VoiceShape): Promise<boolean>;
+  /** recordSec above 0: its copies recorded once, that long, then that one sound looped (light for the phone). */
+  play(url: string, shape: VoiceShape, recordSec?: number): Promise<boolean>;
   stop(): void;
 }
 
@@ -441,8 +442,8 @@ export function voicePlayer(): VoicePlayer {
   };
 
   return {
-    async play(url, shape) {
-      const key = JSON.stringify([url, shape]);
+    async play(url, shape, recordSec = 0) {
+      const key = JSON.stringify([url, shape, recordSec]);
       asked = key;
       if (now?.key === key) return true;
       const ctx = context();
@@ -468,47 +469,29 @@ export function voicePlayer(): VoicePlayer {
           for (let i = 0; i < d.length; i++) mono[i] = mono[i]! + d[i]! / buf.numberOfChannels;
         }
         const t = ctx.currentTime;
-        const out = ctx.createGain();
-        out.gain.setValueAtTime(0, t);
-        out.gain.linearRampToValueAtTime(1, t + FADE);
-        const nodes: AudioScheduledSourceNode[] = [];
-        // Turned round left to right and back, panHz times a second.
-        if (shape.voicePanHz > 0 && typeof ctx.createStereoPanner === "function") {
-          const pan = ctx.createStereoPanner();
-          const lfo = ctx.createOscillator();
-          lfo.frequency.value = shape.voicePanHz;
-          lfo.connect(pan.pan);
-          lfo.start(t);
-          nodes.push(lfo);
-          out.connect(pan).connect(ctx.destination);
-        } else out.connect(ctx.destination);
-        let into: AudioNode = out;
-        if (shape.voiceRobot > 0) {
-          // Rung: its loudness times (1 - robot) + robot x a tone of robotHz.
-          const ring = ctx.createGain();
-          ring.gain.value = 1 - shape.voiceRobot;
-          const tone = ctx.createOscillator();
-          tone.frequency.value = shape.voiceRobotHz;
-          const amount = ctx.createGain();
-          amount.gain.value = shape.voiceRobot;
-          tone.connect(amount).connect(ring.gain);
-          ring.connect(out);
-          tone.start(t);
-          nodes.push(tone);
-          into = ring;
-        }
-        voiceSpeeds(shape).forEach((speed, k) => {
+        const fade = ctx.createGain();
+        fade.gain.setValueAtTime(0, t);
+        fade.gain.linearRampToValueAtTime(1, t + FADE);
+        fade.connect(ctx.destination);
+        let nodes: AudioScheduledSourceNode[];
+        if (recordSec && recordSec > 0 && shape.voiceLoop) {
+          // Recorded once (all its copies), then that one sound looped.
+          const off = new OfflineAudioContext(
+            2,
+            Math.max(1, Math.round(one.sampleRate * recordSec)),
+            one.sampleRate,
+          );
+          voiceGraph(off, off.destination, one, shape, 0);
+          const rec = await off.startRendering();
+          if (asked !== key) return false;
           const src = ctx.createBufferSource();
-          src.buffer = one;
-          src.loop = shape.voiceLoop;
-          src.playbackRate.value = speed;
-          // The first is the main voice (its volume); the copies have theirs.
-          const g = ctx.createGain();
-          g.gain.value = Math.max(0, k === 0 ? shape.voiceVolume : shape.voiceCopiesVolume);
-          src.connect(g).connect(into);
-          src.start(t + (k * shape.voiceSpreadMs) / 1000);
-          nodes.push(src);
-        });
+          src.buffer = rec;
+          src.loop = true;
+          src.connect(fade);
+          src.start(t);
+          nodes = [src];
+        } else nodes = voiceGraph(ctx, fade, one, shape, t).nodes;
+        const out = fade;
         fadeOut(now);
         now = { nodes, out, key };
         return true;
@@ -522,4 +505,54 @@ export function voicePlayer(): VoicePlayer {
       now = null;
     },
   };
+}
+
+/** The voice's copies, robot and turning, played from t into dest (live, or recorded). */
+function voiceGraph(
+  c: BaseAudioContext,
+  dest: AudioNode,
+  one: AudioBuffer,
+  shape: VoiceShape,
+  t: number,
+): { nodes: AudioScheduledSourceNode[]; out: GainNode } {
+  const out = c.createGain();
+  const nodes: AudioScheduledSourceNode[] = [];
+  // Turned round left to right and back, panHz times a second.
+  if (shape.voicePanHz > 0 && typeof c.createStereoPanner === "function") {
+    const pan = c.createStereoPanner();
+    const lfo = c.createOscillator();
+    lfo.frequency.value = shape.voicePanHz;
+    lfo.connect(pan.pan);
+    lfo.start(t);
+    nodes.push(lfo);
+    out.connect(pan).connect(dest);
+  } else out.connect(dest);
+  let into: AudioNode = out;
+  if (shape.voiceRobot > 0) {
+    // Rung: its loudness times (1 - robot) + robot x a tone of robotHz.
+    const ring = c.createGain();
+    ring.gain.value = 1 - shape.voiceRobot;
+    const tone = c.createOscillator();
+    tone.frequency.value = shape.voiceRobotHz;
+    const amount = c.createGain();
+    amount.gain.value = shape.voiceRobot;
+    tone.connect(amount).connect(ring.gain);
+    ring.connect(out);
+    tone.start(t);
+    nodes.push(tone);
+    into = ring;
+  }
+  voiceSpeeds(shape).forEach((speed, k) => {
+    const src = c.createBufferSource();
+    src.buffer = one;
+    src.loop = shape.voiceLoop;
+    src.playbackRate.value = speed;
+    // The first is the main voice (its volume); the copies have theirs.
+    const g = c.createGain();
+    g.gain.value = Math.max(0, k === 0 ? shape.voiceVolume : shape.voiceCopiesVolume);
+    src.connect(g).connect(into);
+    src.start(t + (k * shape.voiceSpreadMs) / 1000);
+    nodes.push(src);
+  });
+  return { nodes, out };
 }
