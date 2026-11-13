@@ -61,6 +61,8 @@ import {
 } from "@/game/repBubble";
 import { voiceEngines, voiceHere, voiceList, type VoiceInfo } from "@/game/voice";
 import {
+  finalPath,
+  startStereo,
   startTts,
   stopTts,
   subscribeTts,
@@ -631,8 +633,11 @@ export function RehearseTab() {
     const [ph, tx] = await Promise.all([listFolder(PHRASE_FOLDER), listFolder(TEXT_FOLDER)]);
     const lower = ph.map((f) => f.name.toLowerCase());
     const lowerT = tx.map((f) => f.name.toLowerCase());
+    // Made here: <name>.tts.wav (one channel, looped) and its final .tts.stereo.wav / .tts.bridged.wav.
+    const made = (f: string) => /\.tts(\.[a-z]+)?\.wav$/.test(f);
     const wavOf = (d: string, list: string[]) =>
-      list.filter((f) => f.endsWith(".wav") && !f.endsWith(".tts.wav")).map((f) => `${d}/${f}`);
+      list.filter((f) => f.endsWith(".wav") && !made(f)).map((f) => `${d}/${f}`);
+    const finalOf = (list: string[]) => list.filter((f) => made(f) && !f.endsWith(".tts.wav"));
     const ttsOf = (d: string, list: string[]) =>
       list.filter((f) => f.endsWith(".tts.wav")).map((f) => `${d}/${f}`);
     const found = new Set([...wavOf(PHRASE_FOLDER, lower), ...wavOf(TEXT_FOLDER, lowerT)]);
@@ -645,6 +650,8 @@ export function RehearseTab() {
       [TEXT_FOLDER]: wavOf(TEXT_FOLDER, lowerT).length,
       [`${PHRASE_FOLDER}:tts`]: ttsOf(PHRASE_FOLDER, lower).length,
       [`${TEXT_FOLDER}:tts`]: ttsOf(TEXT_FOLDER, lowerT).length,
+      [`${PHRASE_FOLDER}:final`]: finalOf(lower).length,
+      [`${TEXT_FOLDER}:final`]: finalOf(lowerT).length,
     } as Record<string, number>;
   };
   useEffect(() => {
@@ -2033,7 +2040,9 @@ export function RehearseTab() {
             </p>
           )}
           <VoicePanel set={set} setOpt={setOpt} note={voiceNote} texts={textsView} />
-          {set.voice && <TtsMake set={set} setOpt={setOpt} job={ttsJob} phone={phone} />}
+          {set.voice && (
+            <TtsMake set={set} setOpt={setOpt} job={ttsJob} phone={phone} made={ttsHere} />
+          )}
           <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
             THE PICTURE: ITS BYTES, THREE LAYERS
           </p>
@@ -2196,8 +2205,9 @@ export function RehearseTab() {
                       void lookForWavs().then((found) => {
                         const n = found[dir] ?? 0;
                         const t = found[`${dir}:tts`] ?? 0;
+                        const f = found[`${dir}:final`] ?? 0;
                         setFolderNote(
-                          `${n} .wav file${n === 1 ? "" : "s"} and ${t} TTS file${t === 1 ? "" : "s"} (.tts.wav) in ${dir}.`,
+                          `${n} .wav file${n === 1 ? "" : "s"} and ${t} TTS file${t === 1 ? "" : "s"} (.tts.wav)${f ? `, ${f} of them made two-channel (final)` : ""} in ${dir}.`,
                         );
                       })
                     }
@@ -2866,7 +2876,7 @@ function VoicePanel({
             set={(v) => setL({ voiceCopiesVolume: clampAmp(v) })}
           />
           <Num
-            label="Turning left-right (times a second; 0 still)"
+            label="Turning left-right, live (times a second; 0 still)"
             value={L.voicePanHz}
             step={0.5}
             digits={2}
@@ -2896,12 +2906,15 @@ function TtsMake({
   setOpt,
   job,
   phone,
+  made,
 }: {
   set: RehearseSettings;
   setOpt: (next: Partial<RehearseSettings>) => void;
   job: TtsJobHere | null;
   /** The phone app (it is made there). */
   phone: boolean;
+  /** Its .tts.wav is there (the final export is made from it). */
+  made: boolean;
 }) {
   const status = useSyncExternalStore(subscribeTts, ttsStatus, ttsStatus);
   const file = job ? (job.path.split("/").pop() ?? job.path) : "";
@@ -2940,6 +2953,58 @@ function TtsMake({
             ? `Make “${file}”: the whole text, ${job.phrases.length.toLocaleString()} phrases`
             : `Make “${file}”: this phrase`}
       </button>
+      <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
+        FINAL EXPORT: TWO CHANNELS, FROM THAT FILE (NOTHING MIXED AGAIN)
+      </p>
+      <div className="grid grid-cols-2 gap-1" role="radiogroup" aria-label="Its two channels">
+        {(
+          [
+            ["same", "The same both sides"],
+            ["bridged", "Bridged: the right side flipped"],
+          ] as const
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            role="radio"
+            aria-checked={set.ttsStereo === k}
+            data-on={set.ttsStereo === k}
+            className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+            disabled={status.busy}
+            onClick={() => setOpt({ ttsStereo: k })}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <Toggle
+        label="Turned left-right, at the end"
+        on={set.ttsTurn}
+        flip={() => setOpt({ ttsTurn: !set.ttsTurn })}
+      />
+      {set.ttsTurn && (
+        <Num
+          label="Turns a second"
+          value={set.ttsTurnHz}
+          step={0.5}
+          digits={2}
+          set={(v) => setOpt({ ttsTurnHz: clampPanHz(v) })}
+        />
+      )}
+      <button
+        type="button"
+        className="btn w-full tracking-normal normal-case"
+        disabled={!job || !made || status.busy}
+        onClick={() =>
+          job && void startStereo(job.path, set.ttsStereo, set.ttsTurn ? set.ttsTurnHz : 0)
+        }
+      >
+        {!job
+          ? "Choose a phrase or a text first"
+          : made
+            ? `Make “${finalPath(file, set.ttsStereo)}” from “${file}”`
+            : `Make “${file}” first (above)`}
+      </button>
       {status.busy && (
         <div className="space-y-1">
           <div className="h-1.5 w-full overflow-hidden rounded bg-cyan/15">
@@ -2966,11 +3031,17 @@ function TtsMake({
         {job?.kind === "text"
           ? `The whole text through: the layers that say the phrase take each phrase in turn (the next once every copy has said it, and its silence), ${whole ? `and the ${whole} reading the whole text go through it at their own speeds, drifting apart` : "and a layer set to read the whole text goes through it at its own speed"}; then it is saved as ${TEXT_FOLDER}/<text>.tts.wav and loops. `
           : `This phrase with every layer, once round (till the slowest copy has said it, and its silence); the faster copies say it again till then. Saved as ${PHRASE_FOLDER}/<phrase>.tts.wav, then it loops. `}
-        Float32: values above 1 are kept (volumes above 1 make them). One channel, or two when a
-        layer turns left-right. A higher rate keeps the sped-up copies' highs (at 48 kHz, copies
-        over about ×2 fold back, as they do live). Each phrase is said once for each voice and kept:
-        made again (another rate, other copies), nothing is said again. The phone plays it at its
-        own 48 kHz; the file keeps everything for a player that goes higher (UAPP with a USB DAC).
+        Float32: values above 1 are kept (volumes above 1 make them). One channel all the way (a
+        layer's turning is live only), so it is made, saved and looped lighter; the final export
+        then makes the two-channel file from it, at the very end: the same both sides, or bridged
+        (the right side the left's opposite, as a bridged amplifier is driven: on headphones it
+        sounds wide, inside the head, and the two sides cancel if mixed back to one), turned
+        left-right if you like. It is saved next to it as .tts.stereo.wav (or .tts.bridged.wav) for
+        a player such as UAPP; the app's own loop stays the one-channel file. A higher rate keeps
+        the sped-up copies' highs (at 48 kHz, copies over about ×2 fold back, as they do live). Each
+        phrase is said once for each voice and kept: made again (another rate, other copies),
+        nothing is said again. The phone plays it at its own 48 kHz; the file keeps everything for a
+        player that goes higher (UAPP with a USB DAC).
         {phone
           ? ""
           : " Made in the Android app (with the azs-folder chosen): its voice makes the sayings."}

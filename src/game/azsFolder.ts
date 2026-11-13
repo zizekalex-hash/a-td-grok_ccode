@@ -24,6 +24,17 @@ interface AzsFolderApi {
   loopPlay(o: { path: string; volume: number }): Promise<void>;
   loopVolume(o: { volume: number }): Promise<void>;
   loopStop(): Promise<void>;
+  stereoMake(o: {
+    from: string;
+    to: string;
+    bridged: boolean;
+    turnHz: number;
+  }): Promise<{ frames: number; bytes: number }>;
+  stereoStop(): Promise<void>;
+  addListener(
+    event: "stereoProgress",
+    fn: (e: { part: number }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
 }
 
 export interface FolderFile {
@@ -171,4 +182,32 @@ export async function folderLoop(path: string | null, volume = 1): Promise<boole
 export async function folderLoopVolume(volume: number) {
   const p = await folderPlugin();
   await p?.api.loopVolume({ volume }).catch(() => {});
+}
+
+/**
+ * A .wav of the folder (a finished .tts.wav) made two channels into `to`, by the
+ * phone, a piece at a time: the same both sides, or bridged (the right side
+ * flipped), turned left-right turnHz times a second if above 0. Nothing is
+ * mixed again. Throws why it could not ("Stopped" when stopped).
+ */
+export async function folderStereo(
+  from: string,
+  to: string,
+  bridged: boolean,
+  turnHz: number,
+  onPart: (part: number) => void,
+): Promise<{ frames: number; bytes: number }> {
+  const p = await folderPlugin();
+  if (!p) throw new Error("Made in the Android app, from the .tts.wav in the azs-folder");
+  const h = await p.api.addListener("stereoProgress", (e) => onPart(e.part));
+  try {
+    return await p.api.stereoMake({ from, to, bridged, turnHz });
+  } finally {
+    await h.remove().catch(() => {});
+  }
+}
+
+export async function folderStereoStop() {
+  const p = await folderPlugin();
+  await p?.api.stereoStop().catch(() => {});
 }

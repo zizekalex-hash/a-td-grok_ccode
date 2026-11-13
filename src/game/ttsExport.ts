@@ -5,8 +5,19 @@
  * (ttsRender.ts), and written into the azs-folder a piece at a time, next to
  * the phrase's (or text's) .txt. In the phone app.
  */
-import { folderName, folderWriter, type FolderWriter } from "@/game/azsFolder";
-import { voiceLayersOf, voiceShapeOf, type RehearseSettings } from "@/game/rehearse";
+import {
+  folderName,
+  folderStereo,
+  folderStereoStop,
+  folderWriter,
+  type FolderWriter,
+} from "@/game/azsFolder";
+import {
+  voiceLayersOf,
+  voiceShapeOf,
+  type RehearseSettings,
+  type StereoKind,
+} from "@/game/rehearse";
 import {
   floatWavBytes,
   floatWavHeader,
@@ -33,10 +44,9 @@ export interface TtsJob {
 
 export interface TtsMade {
   path: string;
-  /** Its length (s), size (bytes), channels and rate. */
+  /** Its length (s), size (bytes) and rate (one channel). */
   seconds: number;
   bytes: number;
-  channels: number;
   rate: number;
   /** Sayings in it, and copies left out (too fast or slow). */
   sayings: number;
@@ -170,16 +180,15 @@ export async function makeTts(
   if (!plan.plays.length || plan.total <= 0)
     throw new Error("Nothing to make: every copy is silent, or left out");
   const mix = ttsMixer(plan, layers, (li, p) => sources[voiceOf[li]!]![p] ?? null, job.rate);
-  const bytes = floatWavBytes(mix.frames, mix.channels);
-  if (bytes > MAX_WAV_BYTES) {
-    const two = mix.channels === 2;
+  // One channel all the way: two only at the very end (the final export, from this file).
+  const bytes = floatWavBytes(mix.frames, 1);
+  if (bytes > MAX_WAV_BYTES)
     throw new Error(
-      `It would be ${sizeOf(bytes)} (${clockOf(plan.total)} at ${job.rate / 1000} kHz${two ? ", two channels" : ""}): a .wav holds at most 4 GB. Choose a lower rate${two ? ", or no turning left-right (one channel)" : ""}, or fewer, shorter layers.`,
+      `It would be ${sizeOf(bytes)} (${clockOf(plan.total)} at ${job.rate / 1000} kHz): a .wav holds at most 4 GB. Choose a lower rate, or fewer, shorter layers.`,
     );
-  }
   try {
-    await w.write(floatWavHeader(mix.frames, mix.channels, job.rate));
-    const piece = Math.max(1, Math.floor(PIECE_BYTES / (4 * mix.channels)));
+    await w.write(floatWavHeader(mix.frames, 1, job.rate));
+    const piece = Math.max(1, Math.floor(PIECE_BYTES / 4));
     const t0 = Date.now();
     while (mix.at() < mix.frames) {
       if (stopped()) throw new Error(TTS_STOPPED);
@@ -203,7 +212,6 @@ export async function makeTts(
     path: job.path,
     seconds: plan.total,
     bytes,
-    channels: mix.channels,
     rate: job.rate,
     sayings: plan.plays.length,
     skipped: plan.skipped,
@@ -240,7 +248,9 @@ export function subscribeTts(fn: () => void): () => void {
 }
 
 export function stopTts() {
-  if (status.busy) stopAsked = true;
+  if (!status.busy) return;
+  stopAsked = true;
+  void folderStereoStop();
 }
 
 /** Sent with the path when a .tts.wav is made: it is there, and loops. */
@@ -263,7 +273,7 @@ export async function startTts(job: TtsJob, set: RehearseSettings): Promise<TtsM
     setStatus({
       busy: false,
       part: 0,
-      note: `Saved ${made.path}: ${clockOf(made.seconds)}, ${sizeOf(made.bytes)}, ${made.rate / 1000} kHz float32, ${made.channels === 2 ? "two channels" : "one channel"}, ${made.sayings.toLocaleString()} sayings${made.skipped ? ` (${made.skipped} cop${made.skipped === 1 ? "y" : "ies"} too fast or slow left out)` : ""}. Looping it now.`,
+      note: `Saved ${made.path}: ${clockOf(made.seconds)}, ${sizeOf(made.bytes)}, ${made.rate / 1000} kHz float32, one channel, ${made.sayings.toLocaleString()} sayings${made.skipped ? ` (${made.skipped} cop${made.skipped === 1 ? "y" : "ies"} too fast or slow left out)` : ""}. Looping it now.`,
     });
     window.dispatchEvent(new CustomEvent(TTS_MADE, { detail: made.path }));
     return made;
@@ -271,5 +281,45 @@ export async function startTts(job: TtsJob, set: RehearseSettings): Promise<TtsM
     const m = String((e as Error)?.message ?? e);
     setStatus({ busy: false, part: 0, note: m === TTS_STOPPED ? "Stopped: nothing saved." : m });
     return null;
+  }
+}
+
+/** The final export's file: next to the .tts.wav, .tts.stereo.wav (or .tts.bridged.wav). */
+export function finalPath(ttsPath: string, kind: StereoKind): string {
+  return (
+    ttsPath.replace(/\.tts\.wav$/i, "") +
+    (kind === "bridged" ? ".tts.bridged.wav" : ".tts.stereo.wav")
+  );
+}
+
+/**
+ * The final export (one at a time, with the others): the finished one-channel
+ * .tts.wav made two channels by the phone, the same both sides or bridged, and
+ * turned left-right turnHz times a second if above 0. Nothing is mixed again.
+ */
+export async function startStereo(
+  ttsPath: string,
+  kind: StereoKind,
+  turnHz: number,
+): Promise<boolean> {
+  if (status.busy) return false;
+  stopAsked = false;
+  const to = finalPath(ttsPath, kind);
+  const name = to.split("/").pop() ?? to;
+  setStatus({ busy: true, note: `Making ${name}…`, part: 0 });
+  try {
+    const r = await folderStereo(ttsPath, to, kind === "bridged", turnHz, (part) =>
+      setStatus({ busy: true, note: `Making ${name}: ${Math.floor(part * 100)}%…`, part }),
+    );
+    setStatus({
+      busy: false,
+      part: 0,
+      note: `Saved ${to}: ${sizeOf(r.bytes)}, two channels (${kind === "bridged" ? "bridged, the right side flipped" : "the same both sides"}${turnHz > 0 ? `, turned left-right ${turnHz} times a second` : ""}), from ${ttsPath.split("/").pop()}, nothing mixed again.`,
+    });
+    return true;
+  } catch (e) {
+    const m = String((e as Error)?.message ?? e);
+    setStatus({ busy: false, part: 0, note: m === TTS_STOPPED ? "Stopped: nothing saved." : m });
+    return false;
   }
 }

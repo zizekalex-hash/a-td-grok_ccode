@@ -130,7 +130,14 @@ export interface RehearseSettings {
   /** The phrase's (or text's) .tts.wav looped as it is, at this volume. */
   ttsLoop: boolean;
   ttsVolume: number;
+  /** The final export, two channels from the one-channel .tts.wav: the same both sides or bridged; turned left-right or not, so many times a second. */
+  ttsStereo: StereoKind;
+  ttsTurn: boolean;
+  ttsTurnHz: number;
 }
+
+/** "same": the one channel on both sides; "bridged": the right side flipped (its opposite, as a bridged amplifier is driven). */
+export type StereoKind = "same" | "bridged";
 
 /** The rates a .tts.wav is made at: higher keeps the fast copies' highs. */
 export const TTS_RATES = [48_000, 96_000, 192_000, 384_000] as const;
@@ -253,6 +260,9 @@ export function defaultSettings(): RehearseSettings {
     ttsRate: 48_000,
     ttsLoop: true,
     ttsVolume: 1,
+    ttsStereo: "same",
+    ttsTurn: false,
+    ttsTurnHz: 3,
   };
 }
 
@@ -370,6 +380,9 @@ export function loadRehearse(data: unknown): RehearseState {
   if (TTS_RATES.includes(t.ttsRate as TtsRate)) u.ttsRate = t.ttsRate as TtsRate;
   if (typeof t.ttsLoop === "boolean") u.ttsLoop = t.ttsLoop;
   u.ttsVolume = clampAmp(num(t.ttsVolume, u.ttsVolume));
+  if (t.ttsStereo === "same" || t.ttsStereo === "bridged") u.ttsStereo = t.ttsStereo;
+  if (typeof t.ttsTurn === "boolean") u.ttsTurn = t.ttsTurn;
+  u.ttsTurnHz = clampPanHz(num(t.ttsTurnHz, u.ttsTurnHz));
   return s;
 }
 

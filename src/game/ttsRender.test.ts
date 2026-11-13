@@ -6,6 +6,7 @@ import {
   floatWavBytes,
   floatWavHeader,
   MAX_WAV_BYTES,
+  stereoFrom,
   ttsMixer,
   ttsPlan,
   ttsSource,
@@ -36,7 +37,6 @@ describe("tts plan: one phrase", () => {
     near(p.total, 1.5);
     assert.deepEqual(starts(p), [0, 0.1, 0.2, 0.575, 0.85, 0.95, 1.325]);
     assert.ok(p.plays.every((x) => near(x.tEnd, 1.5) === undefined));
-    assert.equal(p.stereo, false);
     assert.equal(p.skipped, 0);
   });
   it("not looping: each copy says it once", () => {
@@ -61,11 +61,10 @@ describe("tts plan: one phrase", () => {
     const q = ttsPlan([layer({ voiceCopies: 3, voiceCopiesVolume: 0 })], [[1]], false);
     assert.equal(q.plays.length, 1);
   });
-  it("copies too fast are left out, and a turning layer makes it stereo", () => {
-    const p = ttsPlan([layer({ voiceCopies: 6, voiceSpeedUp: 4, voicePanHz: 3 })], [[1]], false);
+  it("copies too fast are left out", () => {
+    const p = ttsPlan([layer({ voiceCopies: 6, voiceSpeedUp: 4 })], [[1]], false);
     // 1, 4, 16, 64, 256 kept; 1024 left out.
     assert.equal(p.skipped, 1);
-    assert.equal(p.stereo, true);
   });
   it("on one phrase, a whole-text layer says the phrase too", () => {
     const p = ttsPlan([layer({}), layer({ voiceCopies: 2 }, true)], [[1], [2]], false);
@@ -143,7 +142,6 @@ describe("tts mixer", () => {
     const plan = ttsPlan(layers, [[1]], false);
     const mix = ttsMixer(plan, layers, () => src, 2000);
     assert.equal(mix.frames, 2000);
-    assert.equal(mix.channels, 1);
     const out = mix.next(5000);
     assert.equal(out.length, 2000);
     near(out[10]!, 1.5, 1e-6);
@@ -178,7 +176,6 @@ describe("tts mixer", () => {
     const plan: TtsPlan = {
       plays: [{ layer: 0, phrase: 0, t0: 0, speed: 2, gain: 1, tEnd: 1 }],
       total: 1,
-      stereo: false,
       skipped: 0,
     };
     const out = ttsMixer(plan, layers, () => src, 1000).next(1000);
@@ -189,26 +186,12 @@ describe("tts mixer", () => {
     const up = ttsMixer(plan, layers, () => src, 4000).next(4000);
     near(up[401]!, 0.2005, 1e-6);
   });
-  it("turning left-right: equal power, the middle at 0.707 each side", () => {
-    const src = ttsSource(flat(1, 1000), 1000);
-    const layers = [layer({ voicePanHz: 1 }), layer({})];
-    const plan = ttsPlan(layers, [[1], [1]], false);
-    const mix = ttsMixer(plan, layers, (l) => (l === 0 ? src : null), 1000);
-    assert.equal(mix.channels, 2);
-    const out = mix.next(1000);
-    // Frame 0: the middle; frame 250: all the way right.
-    near(out[0]!, Math.SQRT1_2, 1e-6);
-    near(out[1]!, Math.SQRT1_2, 1e-6);
-    near(out[500]!, 0, 1e-6);
-    near(out[501]!, 1, 1e-6);
-    for (let m = 0; m < 1000; m += 50) near(out[2 * m]! ** 2 + out[2 * m + 1]! ** 2, 1, 1e-5);
-  });
-  it("a still layer in stereo: the same both sides", () => {
+  it("one channel all the way: a layer's turning is live only", () => {
     const src = ttsSource(flat(0.25, 100), 100);
-    const layers = [layer({}), layer({ voicePanHz: 2 })];
-    const plan = ttsPlan(layers, [[1], [1]], false);
-    const out = ttsMixer(plan, layers, (l) => (l === 0 ? src : null), 100).next(100);
-    assert.equal(out[20], out[21]);
+    const layers = [layer({ voicePanHz: 2 })];
+    const mix = ttsMixer(ttsPlan(layers, [[1]], false), layers, () => src, 100);
+    const out = mix.next(1000);
+    assert.equal(out.length, mix.frames);
     near(out[20]!, 0.25);
   });
   it("the robot: its loudness rung against the tone", () => {
@@ -218,6 +201,42 @@ describe("tts mixer", () => {
     near(out[250]!, 1, 1e-6);
     near(out[750]!, -1, 1e-6);
     near(out[500]!, 0, 1e-6);
+  });
+});
+
+describe("two channels, at the very end", () => {
+  const mono = new Float32Array([0.5, -2, 1, 0.25]);
+  it("the same both sides: one channel twice, as loud", () => {
+    assert.deepEqual(
+      Array.from(stereoFrom(mono, 0, 48000, "same", 0)),
+      [0.5, 0.5, -2, -2, 1, 1, 0.25, 0.25],
+    );
+  });
+  it("bridged: the right side flipped", () => {
+    assert.deepEqual(
+      Array.from(stereoFrom(mono, 0, 48000, "bridged", 0)),
+      [0.5, -0.5, -2, 2, 1, -1, 0.25, -0.25],
+    );
+  });
+  it("turned left-right: equal power, the middle at 0.707 each side", () => {
+    const one = new Float32Array(1000).fill(1);
+    const out = stereoFrom(one, 0, 1000, "same", 1);
+    // Frame 0: the middle; frame 250: all the way right; 750: all the way left.
+    near(out[0]!, Math.SQRT1_2);
+    near(out[1]!, Math.SQRT1_2);
+    near(out[500]!, 0);
+    near(out[501]!, 1);
+    near(out[1500]!, 1);
+    near(out[1501]!, 0);
+    for (let m = 0; m < 1000; m += 50) near(out[2 * m]! ** 2 + out[2 * m + 1]! ** 2, 1, 1e-6);
+    // Bridged and turned: the right side the opposite.
+    near(stereoFrom(one, 0, 1000, "bridged", 1)[501]!, -1);
+  });
+  it("in pieces: the turning goes on from where it was", () => {
+    const one = new Float32Array(600).fill(1);
+    const whole = stereoFrom(one, 0, 1000, "same", 3);
+    const later = stereoFrom(one.subarray(0, 200), 400, 1000, "same", 3);
+    for (let m = 0; m < 200; m += 13) near(later[2 * m]!, whole[2 * (400 + m)]!);
   });
 });
 

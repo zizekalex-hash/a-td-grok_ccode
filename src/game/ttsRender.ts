@@ -1,12 +1,16 @@
 /**
  * The robot voice made into one sound, a .tts.wav: each layer's copies laid out
  * in time (ttsPlan), then mixed at the rate asked for (ttsMixer), a piece at a
- * time, with the robot ring and the turning left-right as they play live
- * (phraseSound.ts voiceGraph). Values above 1 are kept: the file is float32.
- * Each phrase is said once per voice and that one saying is played as often as
- * the copies need (never said again). Pure: no page.
+ * time, with the robot ring as it plays live (phraseSound.ts voiceGraph). One
+ * channel all the way (no layer's turning: that is live only); two only at the
+ * very end, from the finished file (stereoFrom: the same both sides, or bridged,
+ * and turned left-right if asked). Values above 1 are kept: the file is
+ * float32. Each phrase is said once per voice and that one saying is played as
+ * often as the copies need (never said again). Pure: no page.
  */
-import { voiceSpeeds, type VoiceShape } from "./rehearse.ts";
+import { voiceSpeeds, type StereoKind, type VoiceShape } from "./rehearse.ts";
+
+export type { StereoKind };
 
 /** A layer as it is made into the file. */
 export interface TtsLayer {
@@ -30,8 +34,6 @@ export interface TtsPlan {
   plays: TtsPlay[];
   /** Its length (s). */
   total: number;
-  /** Two channels: a layer turns left-right. */
-  stereo: boolean;
   /** Copies left out: faster than MAX_TTS_SPEED (or slower than its 1 / it). */
   skipped: number;
 }
@@ -155,7 +157,7 @@ export function ttsPlan(layers: TtsLayer[], lens: number[][], text: boolean): Tt
     total = Math.max(total, R);
   }
   plays.sort((a, b) => a.t0 - b.t0);
-  return { plays, total, stereo: each.some((l) => l.shape.voicePanHz > 0), skipped };
+  return { plays, total, skipped };
 }
 
 /** A phrase as said: its samples (one channel) at its rate. */
@@ -174,20 +176,13 @@ export function ttsSource(samples: Float32Array, rate: number): TtsSource {
 }
 
 export interface TtsMixer {
-  /** Frames in all, and channels (1, or 2 when a layer turns). */
+  /** Frames in all (one channel). */
   frames: number;
-  channels: 1 | 2;
   /** Frames made so far. */
   at(): number;
-  /** The next frames (at most max; two channels interleaved, left then right). Empty when done. */
+  /** The next frames (at most max). Empty when done. */
   next(max: number): Float32Array;
 }
-
-/** The left side's loudness across the turn (0 left .. PAN_STEPS right): cos of 0..π/2; the right's is it backwards. */
-const PAN_STEPS = 4096;
-const PAN_L = Float64Array.from({ length: PAN_STEPS + 1 }, (_, i) =>
-  Math.cos((i / PAN_STEPS) * (Math.PI / 2)),
-);
 
 /** A sine of hz at rate, from frame `from`: its value now (s), turned on a step at a time. */
 function tone(hz: number, rate: number, from: number) {
@@ -228,14 +223,12 @@ export function ttsMixer(
   rate: number,
 ): TtsMixer {
   const frames = Math.max(0, Math.ceil(plan.total * rate - 1e-6));
-  const channels: 1 | 2 = plan.stereo ? 2 : 1;
   const frameAt = (t: number) => Math.ceil(t * rate - EPS);
   const live: Live[] = [];
   let at = 0;
   let next = 0;
   return {
     frames,
-    channels,
     at: () => at,
     next(max) {
       const a = at;
@@ -289,44 +282,61 @@ export function ttsMixer(
           live.pop();
         }
       }
-      // Each layer's robot ring and turning, into the piece. The tones turned step by
-      // step from where they are at the piece's start (no sine worked out each sample).
-      const out = new Float32Array(n * channels);
+      // Each layer's robot ring, into the piece (its tone turned step by step from
+      // where it is at the piece's start: no sine worked out each sample).
+      const out = new Float32Array(n);
       for (let l = 0; l < sums.length; l++) {
         const x = sums[l];
         if (!x) continue;
-        const sh = layers[l]!.shape;
-        const r = sh.voiceRobot;
-        const ring = tone(sh.voiceRobotHz, rate, a);
-        const turn = tone(sh.voicePanHz, rate, a);
-        const turns = channels === 2 && sh.voicePanHz > 0;
+        const r = layers[l]!.shape.voiceRobot;
+        if (r <= 0) {
+          for (let m = 0; m < n; m++) out[m] = out[m]! + x[m]!;
+          continue;
+        }
+        const ring = tone(layers[l]!.shape.voiceRobotHz, rate, a);
         for (let m = 0; m < n; m++) {
-          let y = x[m]!;
-          if (r > 0) {
-            y *= 1 - r + r * ring.s;
-            ring.step();
-          }
-          if (channels === 1) out[m] = out[m]! + y;
-          else if (turns) {
-            // Equal power, as a stereo panner does: the middle at 0.707 each side.
-            const k = (turn.s + 1) * 0.5 * PAN_STEPS;
-            turn.step();
-            const i = Math.min(PAN_STEPS - 1, Math.max(0, Math.floor(k)));
-            const f = k - i;
-            out[2 * m] = out[2 * m]! + y * (PAN_L[i]! + f * (PAN_L[i + 1]! - PAN_L[i]!));
-            out[2 * m + 1] =
-              out[2 * m + 1]! +
-              y * (PAN_L[PAN_STEPS - i]! + f * (PAN_L[PAN_STEPS - i - 1]! - PAN_L[PAN_STEPS - i]!));
-          } else {
-            out[2 * m] = out[2 * m]! + y;
-            out[2 * m + 1] = out[2 * m + 1]! + y;
-          }
+          out[m] = out[m]! + x[m]! * (1 - r + r * ring.s);
+          ring.step();
         }
       }
       at = b;
       return out;
     },
   };
+}
+
+// ---- Two channels, at the very end ----
+
+/**
+ * The finished one-channel sound made two (left, right interleaved), frames
+ * from `from` on: the same both sides (or the right flipped), and, turnHz above
+ * 0, turned left to right and back that many times a second (equal power, as a
+ * stereo panner: in the middle 0.707 each side; still, 1 each side).
+ * The phone does this to the whole file (AzsFolderPlugin.stereoMake, the same sums).
+ */
+export function stereoFrom(
+  mono: Float32Array,
+  from: number,
+  rate: number,
+  kind: StereoKind,
+  turnHz: number,
+): Float32Array {
+  const out = new Float32Array(mono.length * 2);
+  const sign = kind === "bridged" ? -1 : 1;
+  const w = (2 * Math.PI * turnHz) / rate;
+  for (let m = 0; m < mono.length; m++) {
+    const x = mono[m]!;
+    let l = 1;
+    let r = 1;
+    if (turnHz > 0) {
+      const th = ((Math.sin(w * (from + m)) + 1) * Math.PI) / 4;
+      l = Math.cos(th);
+      r = Math.sin(th);
+    }
+    out[2 * m] = x * l;
+    out[2 * m + 1] = sign * x * r;
+  }
+  return out;
 }
 
 // ---- The .wav ----

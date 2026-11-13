@@ -712,14 +712,34 @@ describe("rehearse: layers that read the whole text, and the .tts.wav", () => {
   it("its rate, loop and volume: kept, checked", () => {
     const d = defaultSettings();
     assert.deepEqual([d.ttsRate, d.ttsLoop, d.ttsVolume, d.voiceWhole], [48000, true, 1, false]);
+    assert.deepEqual([d.ttsStereo, d.ttsTurn, d.ttsTurnHz], ["same", false, 3]);
     const ok = loadRehearse({
-      settings: { ttsRate: 384000, ttsLoop: false, ttsVolume: 2.5 },
+      settings: {
+        ttsRate: 384000,
+        ttsLoop: false,
+        ttsVolume: 2.5,
+        ttsStereo: "bridged",
+        ttsTurn: true,
+        ttsTurnHz: 7.5,
+      },
     }).settings;
-    assert.deepEqual([ok.ttsRate, ok.ttsLoop, ok.ttsVolume], [384000, false, 2.5]);
+    assert.deepEqual(
+      [ok.ttsRate, ok.ttsLoop, ok.ttsVolume, ok.ttsStereo, ok.ttsTurn, ok.ttsTurnHz],
+      [384000, false, 2.5, "bridged", true, 7.5],
+    );
     const bad = loadRehearse({
-      settings: { ttsRate: 44100, ttsLoop: "yes", ttsVolume: -3 },
+      settings: {
+        ttsRate: 44100,
+        ttsLoop: "yes",
+        ttsVolume: -3,
+        ttsStereo: "wide",
+        ttsTurnHz: 900,
+      },
     }).settings;
-    assert.deepEqual([bad.ttsRate, bad.ttsLoop, bad.ttsVolume], [48000, true, 0]);
+    assert.deepEqual(
+      [bad.ttsRate, bad.ttsLoop, bad.ttsVolume, bad.ttsStereo, bad.ttsTurn, bad.ttsTurnHz],
+      [48000, true, 0, "same", false, 100],
+    );
   });
 });
 
