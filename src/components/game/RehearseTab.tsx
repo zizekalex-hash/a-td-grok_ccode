@@ -133,6 +133,14 @@ import {
   VOICE_PRESETS,
   voicePresetOf,
   voiceShapeOf,
+  clampPanHz,
+  copyVoiceLayer,
+  deleteVoiceLayer,
+  MAX_VOICE_LAYERS,
+  setVoiceLayer,
+  voiceCount,
+  voiceLayersOf,
+  type VoiceLayer,
   levelsText,
   parseLevels,
   presetOf,
@@ -546,6 +554,7 @@ export function RehearseTab() {
     set.voiceEngine,
     set.voiceName,
     voiceShapeOf(set),
+    set.voiceLayers,
     phraseText,
   ]);
   useEffect(() => {
@@ -2460,7 +2469,13 @@ function VoicePanel({
       live = false;
     };
   }, [set.voice, set.voiceEngine]);
-  const preset = voicePresetOf(set);
+  // The layer being set: 0 the first (the settings themselves), then the others.
+  const [layer, setLayer] = useState(0);
+  const layers = voiceLayersOf(set);
+  const at = Math.min(layer, layers.length - 1);
+  const L = layers[at]!;
+  const setL = (patch: Partial<VoiceLayer>) => setOpt(setVoiceLayer(set, at, patch));
+  const preset = voicePresetOf(L);
   return (
     <>
       <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
@@ -2473,6 +2488,51 @@ function VoicePanel({
       />
       {set.voice && (
         <>
+          <div
+            className="flex flex-wrap items-center gap-1"
+            role="radiogroup"
+            aria-label="Voice layers"
+          >
+            {layers.map((l, k) => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                aria-checked={k === at}
+                data-on={k === at}
+                className="btn px-2 text-[0.65rem] tracking-normal normal-case"
+                onClick={() => setLayer(k)}
+              >
+                Layer {k + 1} ({l.voiceCopies})
+              </button>
+            ))}
+            <button
+              type="button"
+              className="btn px-2 text-[0.65rem] tracking-normal normal-case"
+              disabled={layers.length >= MAX_VOICE_LAYERS}
+              onClick={() => {
+                setOpt(copyVoiceLayer(set, at));
+                setLayer(layers.length);
+              }}
+            >
+              Copy layer {at + 1}
+            </button>
+            <button
+              type="button"
+              className="btn px-2 text-[0.65rem] tracking-normal normal-case"
+              disabled={layers.length <= 1}
+              onClick={() => {
+                setOpt(deleteVoiceLayer(set, at));
+                setLayer(Math.max(0, at - 1));
+              }}
+            >
+              Delete layer {at + 1}
+            </button>
+          </div>
+          <p className="text-[0.65rem] text-muted">
+            {layers.length} layer{layers.length === 1 ? "" : "s"}, {voiceCount(set)} voices in all,
+            all at once. Below: layer {at + 1}.
+          </p>
           {where === "phone" && (
             <label className="block text-xs">
               <span className="text-muted">Voice engine</span>
@@ -2495,8 +2555,8 @@ function VoicePanel({
             <span className="text-muted">Voice ({voices.length})</span>
             <select
               className="mt-1 w-full rounded border border-cyan/40 bg-bg p-2 text-fg"
-              value={set.voiceName}
-              onChange={(e) => setOpt({ voiceName: e.target.value })}
+              value={L.voiceName}
+              onChange={(e) => setL({ voiceName: e.target.value })}
               aria-label="Voice"
             >
               <option value="">The engine's default</option>
@@ -2518,7 +2578,7 @@ function VoicePanel({
                 aria-checked={preset === p.id}
                 data-on={preset === p.id}
                 className="btn px-1 text-[0.65rem] tracking-normal normal-case"
-                onClick={() => setOpt(p.shape)}
+                onClick={() => setL(p.shape)}
               >
                 {p.name}
               </button>
@@ -2526,67 +2586,81 @@ function VoicePanel({
           </div>
           <Num
             label="Speaking rate (1 as it is)"
-            value={set.voiceRate}
+            value={L.voiceRate}
             step={0.1}
             digits={2}
-            set={(v) => setOpt({ voiceRate: clampVoiceRate(v) })}
+            set={(v) => setL({ voiceRate: clampVoiceRate(v) })}
           />
           <Num
             label="Pitch (1 as it is)"
-            value={set.voicePitch}
+            value={L.voicePitch}
             step={0.1}
             digits={2}
-            set={(v) => setOpt({ voicePitch: clampVoicePitch(v) })}
+            set={(v) => setL({ voicePitch: clampVoicePitch(v) })}
           />
           <Num
             label="Copies at once"
-            value={set.voiceCopies}
+            value={L.voiceCopies}
             step={1}
-            set={(v) => setOpt({ voiceCopies: clampVoiceCopies(v) })}
+            set={(v) => setL({ voiceCopies: clampVoiceCopies(v) })}
           />
           <Num
             label="Each copy starts after (ms)"
-            value={set.voiceSpreadMs}
+            value={L.voiceSpreadMs}
             step={10}
-            set={(v) => setOpt({ voiceSpreadMs: clampVoiceMs(v) })}
+            set={(v) => setL({ voiceSpreadMs: clampVoiceMs(v) })}
           />
           <Num
             label="Each copy faster (×, pitch and pace)"
-            value={set.voiceSpeedUp}
+            value={L.voiceSpeedUp}
             step={0.05}
             digits={2}
-            set={(v) => setOpt({ voiceSpeedUp: clampVoiceSpeedUp(v) })}
+            set={(v) => setL({ voiceSpeedUp: clampVoiceSpeedUp(v) })}
           />
           <Toggle
             label="Over and over while on the phrase"
-            on={set.voiceLoop}
-            flip={() => setOpt({ voiceLoop: !set.voiceLoop })}
+            on={L.voiceLoop}
+            flip={() => setL({ voiceLoop: !L.voiceLoop })}
           />
           <Num
             label="Silence between (ms)"
-            value={set.voiceGapMs}
+            value={L.voiceGapMs}
             step={50}
-            set={(v) => setOpt({ voiceGapMs: clampVoiceMs(v) })}
+            set={(v) => setL({ voiceGapMs: clampVoiceMs(v) })}
           />
           <Num
             label="Robot (0 none, 1 all)"
-            value={set.voiceRobot}
+            value={L.voiceRobot}
             step={0.05}
             digits={2}
-            set={(v) => setOpt({ voiceRobot: clampRobot(v) })}
+            set={(v) => setL({ voiceRobot: clampRobot(v) })}
           />
           <Num
             label="Robot tone (Hz)"
-            value={set.voiceRobotHz}
+            value={L.voiceRobotHz}
             step={5}
-            set={(v) => setOpt({ voiceRobotHz: clampRobotHz(v) })}
+            set={(v) => setL({ voiceRobotHz: clampRobotHz(v) })}
           />
           <Num
-            label="Voice volume (1 as it is; above 1 clips)"
-            value={set.voiceVolume}
+            label="Main voice volume (the first; 1 as it is)"
+            value={L.voiceVolume}
             step={0.1}
             digits={2}
-            set={(v) => setOpt({ voiceVolume: clampAmp(v) })}
+            set={(v) => setL({ voiceVolume: clampAmp(v) })}
+          />
+          <Num
+            label="Copies volume (the others; under the main to hear it)"
+            value={L.voiceCopiesVolume}
+            step={0.05}
+            digits={2}
+            set={(v) => setL({ voiceCopiesVolume: clampAmp(v) })}
+          />
+          <Num
+            label="Turning left-right (times a second; 0 still)"
+            value={L.voicePanHz}
+            step={0.5}
+            digits={2}
+            set={(v) => setL({ voicePanHz: clampPanHz(v) })}
           />
           <p className="text-[0.65rem] leading-snug text-muted">
             {where === "browser"

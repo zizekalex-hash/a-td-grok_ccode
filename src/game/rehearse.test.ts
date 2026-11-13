@@ -58,6 +58,11 @@ import {
   voicePresetOf,
   voiceShapeOf,
   voiceSpeeds,
+  copyVoiceLayer,
+  deleteVoiceLayer,
+  setVoiceLayer,
+  voiceCount,
+  voiceLayersOf,
   libraryOf,
   currentText,
   applyBubble,
@@ -639,7 +644,7 @@ describe("rehearse: the floating window's look and the robot voice", () => {
     assert.equal(voicePresetOf({ ...d, ...robot.shape }), "robot");
     assert.equal(voicePresetOf({ ...d, voiceCopies: 3 }), "custom");
     assert.deepEqual(voiceSpeeds({ voiceCopies: 3, voiceSpeedUp: 1.25 }), [1, 1.25, 1.5625]);
-    assert.deepEqual(Object.keys(voiceShapeOf(d)).length, 10);
+    assert.deepEqual(Object.keys(voiceShapeOf(d)).length, 12);
     const back = loadRehearse({
       settings: {
         voice: true,
@@ -647,7 +652,7 @@ describe("rehearse: the floating window's look and the robot voice", () => {
         voiceName: "en-us",
         voiceRate: 99,
         voicePitch: 0,
-        voiceCopies: 100,
+        voiceCopies: 5000,
         voiceSpeedUp: 9,
         voiceRobot: 2,
         voiceRobotHz: 0,
@@ -667,7 +672,30 @@ describe("rehearse: the floating window's look and the robot voice", () => {
         back.voiceRobotHz,
         back.voiceVolume,
       ],
-      [10, 0.1, 32, 4, 1, 1, 50],
+      [10, 0.1, 1000, 4, 1, 1, 50],
     );
+  });
+});
+
+describe("rehearse: layers of voices", () => {
+  it("copies, changes and deletes layers; copies add up", () => {
+    let s = { ...defaultSettings(), voiceCopies: 9, voiceName: "a" };
+    assert.equal(voiceCount(s), 9);
+    s = { ...s, ...copyVoiceLayer(s, 0) };
+    s = { ...s, ...setVoiceLayer(s, 1, { voiceCopies: 2, voicePanHz: 3 }) };
+    assert.equal(voiceLayersOf(s).length, 2);
+    assert.equal(voiceCount(s), 11);
+    s = { ...s, ...copyVoiceLayer(s, 0) };
+    assert.equal(voiceCount(s), 20);
+    s = { ...s, ...deleteVoiceLayer(s, 0) };
+    assert.equal(s.voiceCopies, 2);
+    assert.equal(s.voicePanHz, 3);
+    assert.equal(voiceLayersOf(s).length, 2);
+    const back = loadRehearse({
+      settings: { voiceLayers: [{ voiceCopies: 99999, voicePanHz: 500 }] },
+    });
+    assert.equal(back.settings.voiceLayers[0]!.voiceCopies, 1000);
+    assert.equal(back.settings.voiceLayers[0]!.voicePanHz, 100);
+    assert.equal(back.settings.voiceCopiesVolume, 1);
   });
 });

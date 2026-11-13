@@ -470,9 +470,18 @@ export function voicePlayer(): VoicePlayer {
         const t = ctx.currentTime;
         const out = ctx.createGain();
         out.gain.setValueAtTime(0, t);
-        out.gain.linearRampToValueAtTime(Math.max(0, shape.voiceVolume), t + FADE);
-        out.connect(ctx.destination);
+        out.gain.linearRampToValueAtTime(1, t + FADE);
         const nodes: AudioScheduledSourceNode[] = [];
+        // Turned round left to right and back, panHz times a second.
+        if (shape.voicePanHz > 0 && typeof ctx.createStereoPanner === "function") {
+          const pan = ctx.createStereoPanner();
+          const lfo = ctx.createOscillator();
+          lfo.frequency.value = shape.voicePanHz;
+          lfo.connect(pan.pan);
+          lfo.start(t);
+          nodes.push(lfo);
+          out.connect(pan).connect(ctx.destination);
+        } else out.connect(ctx.destination);
         let into: AudioNode = out;
         if (shape.voiceRobot > 0) {
           // Rung: its loudness times (1 - robot) + robot x a tone of robotHz.
@@ -493,7 +502,10 @@ export function voicePlayer(): VoicePlayer {
           src.buffer = one;
           src.loop = shape.voiceLoop;
           src.playbackRate.value = speed;
-          src.connect(into);
+          // The first is the main voice (its volume); the copies have theirs.
+          const g = ctx.createGain();
+          g.gain.value = Math.max(0, k === 0 ? shape.voiceVolume : shape.voiceCopiesVolume);
+          src.connect(g).connect(into);
           src.start(t + (k * shape.voiceSpreadMs) / 1000);
           nodes.push(src);
         });

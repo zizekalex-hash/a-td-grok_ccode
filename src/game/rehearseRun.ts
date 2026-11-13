@@ -44,6 +44,7 @@ import {
   loadRehearse,
   newRehearse,
   REHEARSE_KEY,
+  voiceLayersOf,
   voiceShapeOf,
   wavStyleOf,
   type LibText,
@@ -324,7 +325,8 @@ export function stopRehearseSound() {
 
 // ---- The robot voice ----
 
-let voice: VoicePlayer | null = null;
+/** A player for each layer of voices. */
+const voices: VoicePlayer[] = [];
 let voiceText = "";
 let voiceAsk = 0;
 let browserStop: (() => void) | null = null;
@@ -338,7 +340,7 @@ export async function playVoice(text: string | null): Promise<string> {
   const set = rehearseState().settings;
   const ask = ++voiceAsk;
   if (!text || !set.voice) {
-    voice?.stop();
+    for (const v of voices) v.stop();
     browserStop?.();
     browserStop = null;
     voiceText = "";
@@ -358,14 +360,26 @@ export async function playVoice(text: string | null): Promise<string> {
   voiceText = text;
   keep();
   try {
-    const url = await voiceFile(text, set);
+    // Each layer: its own voice said, played with its own shape; layers no longer there stop.
+    const layers = voiceLayersOf(set);
+    const urls = await Promise.all(
+      layers.map((l) =>
+        voiceFile(text, {
+          ...set,
+          voiceName: l.voiceName,
+          voiceRate: l.voiceRate,
+          voicePitch: l.voicePitch,
+        }),
+      ),
+    );
     if (ask !== voiceAsk) return "";
-    voice ??= voicePlayer();
-    const ok = await voice.play(url, voiceShapeOf(set));
-    return ok || ask !== voiceAsk ? "" : "The voice's sound could not be played.";
+    while (voices.length < layers.length) voices.push(voicePlayer());
+    for (let k = layers.length; k < voices.length; k++) voices[k]!.stop();
+    const oks = await Promise.all(layers.map((l, k) => voices[k]!.play(urls[k]!, voiceShapeOf(l))));
+    return oks.every(Boolean) || ask !== voiceAsk ? "" : "The voice's sound could not be played.";
   } catch (e) {
     if (ask === voiceAsk) {
-      voice?.stop();
+      for (const v of voices) v.stop();
       voiceText = "";
       keep();
     }

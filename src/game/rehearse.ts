@@ -114,6 +114,12 @@ export interface RehearseSettings {
   voiceRobot: number;
   voiceRobotHz: number;
   voiceVolume: number;
+  /** The copies' volume (the first, main voice, at voiceVolume; so it can stand out above them). */
+  voiceCopiesVolume: number;
+  /** Turned round from left to right and back this many times a second (0: still, in the middle). */
+  voicePanHz: number;
+  /** More voices at once, each a layer of its own (its voice and shape), after the first (the settings above). */
+  voiceLayers: VoiceLayer[];
 }
 
 /** Single phrases, or whole texts (the Read tab's) phrase after phrase. */
@@ -174,7 +180,10 @@ export const clampPhraseSize = (v: number) => clamp(Math.round(v), 4, 400);
 export const clampBubbleSp = (v: number) => clamp(Math.round(v), 6, 72);
 export const clampVoiceRate = (v: number) => clamp(Math.round(v * 100) / 100, 0.1, 10);
 export const clampVoicePitch = (v: number) => clamp(Math.round(v * 100) / 100, 0.1, 4);
-export const clampVoiceCopies = (v: number) => clamp(Math.round(v), 1, 32);
+export const clampVoiceCopies = (v: number) => clamp(Math.round(v), 1, 1000);
+export const clampPanHz = (v: number) => clamp(Math.round(v * 100) / 100, 0, 100);
+/** The most layers of voices. */
+export const MAX_VOICE_LAYERS = 16;
 export const clampVoiceMs = (v: number) => clamp(Math.round(v), 0, 60_000);
 export const clampVoiceSpeedUp = (v: number) => clamp(Math.round(v * 100) / 100, 0.25, 4);
 export const clampRobot = (v: number) => clamp(Math.round(v * 100) / 100, 0, 1);
@@ -217,6 +226,7 @@ export function defaultSettings(): RehearseSettings {
     voiceEngine: "",
     voiceName: "",
     ...VOICE_PRESETS[0]!.shape,
+    voiceLayers: [],
   };
 }
 
@@ -320,6 +330,10 @@ export function loadRehearse(data: unknown): RehearseState {
   u.voiceRobot = clampRobot(num(t.voiceRobot, u.voiceRobot));
   u.voiceRobotHz = clampRobotHz(num(t.voiceRobotHz, u.voiceRobotHz));
   u.voiceVolume = clampAmp(num(t.voiceVolume, u.voiceVolume));
+  u.voiceCopiesVolume = clampAmp(num(t.voiceCopiesVolume, u.voiceCopiesVolume));
+  u.voicePanHz = clampPanHz(num(t.voicePanHz, u.voicePanHz));
+  if (Array.isArray(t.voiceLayers))
+    u.voiceLayers = t.voiceLayers.slice(0, MAX_VOICE_LAYERS - 1).map(loadVoiceLayer);
   return s;
 }
 
@@ -1063,6 +1077,8 @@ export type VoiceShape = Pick<
   | "voiceRobot"
   | "voiceRobotHz"
   | "voiceVolume"
+  | "voiceCopiesVolume"
+  | "voicePanHz"
 >;
 
 export interface VoicePreset {
@@ -1085,6 +1101,8 @@ const voicePreset = (id: string, name: string, shape: Partial<VoiceShape>): Voic
     voiceRobot: 0,
     voiceRobotHz: 50,
     voiceVolume: 1,
+    voiceCopiesVolume: 1,
+    voicePanHz: 0,
     ...shape,
   },
 });
@@ -1126,4 +1144,65 @@ export function voiceSpeeds(s: Pick<VoiceShape, "voiceCopies" | "voiceSpeedUp">)
     { length: clampVoiceCopies(s.voiceCopies) },
     (_, k) => clampVoiceSpeedUp(s.voiceSpeedUp) ** k,
   );
+}
+
+/** A layer of voices: its own voice (in the same engine) and shape. */
+export type VoiceLayer = VoiceShape & { voiceName: string };
+
+/** A saved layer, each value checked. */
+export function loadVoiceLayer(raw: unknown): VoiceLayer {
+  const r = obj(raw);
+  const d = VOICE_PRESETS[0]!.shape;
+  const n = (k: keyof VoiceShape) => num(r[k], d[k] as number);
+  return {
+    voiceName: typeof r.voiceName === "string" ? r.voiceName.slice(0, 200) : "",
+    voiceRate: clampVoiceRate(n("voiceRate")),
+    voicePitch: clampVoicePitch(n("voicePitch")),
+    voiceCopies: clampVoiceCopies(n("voiceCopies")),
+    voiceSpreadMs: clampVoiceMs(n("voiceSpreadMs")),
+    voiceSpeedUp: clampVoiceSpeedUp(n("voiceSpeedUp")),
+    voiceLoop: typeof r.voiceLoop === "boolean" ? r.voiceLoop : d.voiceLoop,
+    voiceGapMs: clampVoiceMs(n("voiceGapMs")),
+    voiceRobot: clampRobot(n("voiceRobot")),
+    voiceRobotHz: clampRobotHz(n("voiceRobotHz")),
+    voiceVolume: clampAmp(n("voiceVolume")),
+    voiceCopiesVolume: clampAmp(n("voiceCopiesVolume")),
+    voicePanHz: clampPanHz(n("voicePanHz")),
+  };
+}
+
+/** Every layer of voices: the first (the settings themselves), then the others. */
+export function voiceLayersOf(s: RehearseSettings): VoiceLayer[] {
+  return [{ ...voiceShapeOf(s), voiceName: s.voiceName }, ...s.voiceLayers];
+}
+
+/** The settings with layer i changed (0: the first, kept in the settings themselves). */
+export function setVoiceLayer(
+  s: RehearseSettings,
+  i: number,
+  patch: Partial<VoiceLayer>,
+): Partial<RehearseSettings> {
+  if (i <= 0) return patch;
+  return { voiceLayers: s.voiceLayers.map((l, k) => (k === i - 1 ? { ...l, ...patch } : l)) };
+}
+
+/** A copy of layer i added at the end (as many layers at most as MAX_VOICE_LAYERS). */
+export function copyVoiceLayer(s: RehearseSettings, i: number): Partial<RehearseSettings> {
+  const all = voiceLayersOf(s);
+  const l = all[i];
+  if (!l || all.length >= MAX_VOICE_LAYERS) return {};
+  return { voiceLayers: [...s.voiceLayers, { ...l }] };
+}
+
+/** Layer i taken away (the first: the second takes its place); the last one left stays. */
+export function deleteVoiceLayer(s: RehearseSettings, i: number): Partial<RehearseSettings> {
+  const all = voiceLayersOf(s);
+  if (all.length <= 1) return {};
+  const rest = all.filter((_, k) => k !== i);
+  return { ...rest[0]!, voiceLayers: rest.slice(1) };
+}
+
+/** Voices in all: each layer's copies added up. */
+export function voiceCount(s: RehearseSettings): number {
+  return voiceLayersOf(s).reduce((n, l) => n + l.voiceCopies, 0);
 }
