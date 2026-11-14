@@ -699,6 +699,8 @@ export function RehearseTab() {
     set.paused,
     st.view,
     phraseText,
+    // Whole texts: where it is (the same words again further on, or round again, are said again).
+    textsView ? `${textKeyNow}#${prog.passes}#${at}` : "",
   ]);
   useEffect(() => {
     let live = true;
@@ -2821,6 +2823,8 @@ function VoicePanel({
   const off = layers.filter((l) => !l.voiceOn).length;
   // The layer with the main voice: the first heard (its first copy).
   const mainAt = layers.findIndex((l) => l.voiceOn);
+  // Whole texts: the main voice reads the text, a phrase at a time (rendered, or its layer reading it).
+  const reads = texts && (set.voiceRecord || !!layers[mainAt]?.voiceWhole);
   return (
     <>
       <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
@@ -2956,7 +2960,7 @@ function VoicePanel({
               set={(v) => setOpt({ voiceRecordSec: clampRecordSec(v) })}
             />
           )}
-          {texts && set.voiceRecord && (
+          {reads && (
             <>
               <Toggle
                 label={
@@ -2982,10 +2986,14 @@ function VoicePanel({
                       tap, ‹ ›, the floating window or the reader moves the main voice to that
                       phrase.
                     </p>
+                    <p>
+                      It reads like this pre-rendered, and live too when its layer (★) reads the
+                      whole text.
+                    </p>
                   </>
                 }
               />
-              <RenderLine auto={set.voiceAuto} />
+              {set.voiceRecord && <RenderLine auto={set.voiceAuto} />}
             </>
           )}
           <p className="text-[0.65rem] leading-snug text-muted">
@@ -2996,9 +3004,11 @@ function VoicePanel({
             {texts
               ? set.voiceRecord
                 ? " Rendered: the main voice reads phrase after phrase, every other voice the whole text by itself."
-                : whole
-                  ? ` Live: the layers that say the phrase (${layers.length - whole}); the ${whole} reading the whole text are heard rendered.`
-                  : ""
+                : layers[mainAt]?.voiceWhole
+                  ? ` Live: the main voice reads the text phrase after phrase${layers.length - whole ? `, with the ${layers.length - whole} layer${layers.length - whole === 1 ? "" : "s"} saying the phrase` : ""}; the other voices reading the whole text are heard when it is pre-rendered.`
+                  : whole
+                    ? ` Live: the layers that say the phrase (${layers.length - whole}); the ${whole} reading the whole text are heard when it is pre-rendered.`
+                    : ""
               : ""}{" "}
             Below: layer {at + 1}.
           </p>
@@ -3009,16 +3019,20 @@ function VoicePanel({
                 <>
                   <p>
                     Live (Pre-render off): a layer that says the phrase says the phrase you are at,
-                    its copies again and again. A layer that reads the whole text is not heard live
-                    (the whole text has to be made first).
+                    its copies again and again. A layer that reads the whole text: if it holds the
+                    main voice (★), its main voice reads the text live, a phrase at a time, moving
+                    on by itself (or waiting for your tap); its other copies, and the other layers
+                    reading the whole text, are heard once it is pre-rendered (the whole text has to
+                    be made first).
                   </p>
                   <p>
                     Rendered (Pre-render on) and in the .tts.wav: the main voice reads phrase after
                     phrase, and every other voice reads the whole text by itself, whichever this is.
                   </p>
                   <p>
-                    So: says the phrase = heard live and rendered; reads the whole text = heard only
-                    rendered (and in the .tts.wav).
+                    So: says the phrase = all its copies heard live, on the phrase you are at; reads
+                    the whole text = the main voice reading live (its layer only), everything else
+                    rendered.
                   </p>
                 </>
               }
@@ -3048,7 +3062,9 @@ function VoicePanel({
                 className="btn px-1 text-[0.65rem] tracking-normal normal-case"
                 onClick={() => setL({ voiceWhole: true })}
               >
-                Reads the whole text (rendered only)
+                {at === mainAt
+                  ? "Reads the whole text (the main voice live too)"
+                  : "Reads the whole text (rendered only)"}
               </button>
             </div>
           )}

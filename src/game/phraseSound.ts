@@ -417,25 +417,33 @@ export function fileLoop(): FileLoop {
  * loudness rung against a tone (the robot), at its volume. The same voice and
  * shape again: it goes on as it is.
  */
+/** How a voice plays. */
+export interface VoicePlay {
+  /** Above 0: its copies recorded once, that long, then that one sound looped (light for the phone). */
+  recordSec?: number;
+  /** Each saying with its time-reversed copy, half and half. */
+  reverse?: boolean;
+  /** But not the first copy (the main voice, heard as it is said). */
+  mainForward?: boolean;
+  /** Said once, not looped: called after it and its silence (not if stopped first). */
+  once?: () => void;
+  /** Tells apart two plays of the same sound (said once again at another place). */
+  tag?: string;
+}
+
 export interface VoicePlayer {
-  /**
-   * recordSec above 0: its copies recorded once, that long, then that one sound
-   * looped (light for the phone). reverse: each saying with its time-reversed
-   * copy, half and half; mainForward: but not the first copy (the main voice,
-   * heard as it is said).
-   */
-  play(
-    url: string,
-    shape: VoiceShape,
-    recordSec?: number,
-    reverse?: boolean,
-    mainForward?: boolean,
-  ): Promise<boolean>;
+  /** Plays it with its shape (the same playing already: it goes on as it is). */
+  play(url: string, shape: VoiceShape, o?: VoicePlay): Promise<boolean>;
   stop(): void;
 }
 
 export function voicePlayer(): VoicePlayer {
-  let now: { nodes: AudioScheduledSourceNode[]; out: GainNode; key: string } | null = null;
+  let now: {
+    nodes: AudioScheduledSourceNode[];
+    out: GainNode;
+    key: string;
+    me: object;
+  } | null = null;
   const made = new Map<string, AudioBuffer>();
   let asked = "";
 
@@ -453,8 +461,11 @@ export function voicePlayer(): VoicePlayer {
   };
 
   return {
-    async play(url, shape, recordSec = 0, reverse = false, mainForward = false) {
-      const key = JSON.stringify([url, shape, recordSec, reverse, mainForward]);
+    async play(url, shape, o = {}) {
+      const { recordSec = 0, reverse = false, mainForward = false, once, tag = "" } = o;
+      const key = JSON.stringify([url, shape, recordSec, reverse, mainForward, !!once, tag]);
+      // This play (its end told only if it is still the one playing).
+      const me = {};
       asked = key;
       if (now?.key === key) return true;
       const ctx = context();
@@ -472,7 +483,9 @@ export function voicePlayer(): VoicePlayer {
       if (asked !== key) return false;
       try {
         // The saying and the gap after it, one channel.
-        const gap = shape.voiceLoop ? Math.round((buf.sampleRate * shape.voiceGapMs) / 1000) : 0;
+        // Said once: its silence too, before it is over.
+        const gap =
+          shape.voiceLoop || once ? Math.round((buf.sampleRate * shape.voiceGapMs) / 1000) : 0;
         const one = ctx.createBuffer(1, buf.length + gap, buf.sampleRate);
         const mono = one.getChannelData(0);
         for (let c = 0; c < buf.numberOfChannels; c++) {
@@ -513,10 +526,25 @@ export function voicePlayer(): VoicePlayer {
           src.connect(fade);
           src.start(t);
           nodes = [src];
-        } else nodes = voiceGraph(ctx, fade, one, shape, t, first).nodes;
+        } else
+          nodes = voiceGraph(
+            ctx,
+            fade,
+            one,
+            shape,
+            t,
+            first,
+            once &&
+              (() => {
+                // Over by itself (not stopped, nor followed by another).
+                if (now?.me !== me) return;
+                now = null;
+                once();
+              }),
+          ).nodes;
         const out = fade;
         fadeOut(now);
-        now = { nodes, out, key };
+        now = { nodes, out, key, me };
         return true;
       } catch {
         return false;
@@ -539,6 +567,8 @@ function voiceGraph(
   t: number,
   /** The first copy's own sound (the main voice as it is said), if not `one`. */
   first?: AudioBuffer,
+  /** Played once (no copy loops): called when the first copy is over. */
+  ended?: () => void,
 ): { nodes: AudioScheduledSourceNode[]; out: GainNode } {
   const out = c.createGain();
   const nodes: AudioScheduledSourceNode[] = [];
@@ -570,7 +600,8 @@ function voiceGraph(
   voiceSpeeds(shape).forEach((speed, k) => {
     const src = c.createBufferSource();
     src.buffer = k === 0 && first ? first : one;
-    src.loop = shape.voiceLoop;
+    src.loop = shape.voiceLoop && !ended;
+    if (k === 0 && ended) src.onended = ended;
     src.playbackRate.value = speed;
     // The first is the main voice (its volume); the copies have theirs.
     const g = c.createGain();

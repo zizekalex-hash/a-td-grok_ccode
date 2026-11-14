@@ -113,6 +113,8 @@ export async function voiceFile(text: string, s: VoiceSay): Promise<string> {
 export function browserSay(
   text: string,
   s: VoiceSay & Pick<RehearseSettings, "voiceLoop" | "voiceGapMs" | "voiceVolume">,
+  /** Said once: called after it and its silence (not looping then). */
+  then?: () => void,
 ): () => void {
   const sp = speech();
   if (!sp) return () => {};
@@ -127,7 +129,9 @@ export function browserSay(
     const v = sp.getVoices().find((x) => x.name === s.voiceName);
     if (v) u.voice = v;
     u.onend = () => {
-      if (live && s.voiceLoop) timer = window.setTimeout(say, s.voiceGapMs);
+      if (!live) return;
+      if (then) timer = window.setTimeout(() => live && then(), s.voiceGapMs);
+      else if (s.voiceLoop) timer = window.setTimeout(say, s.voiceGapMs);
     };
     sp.speak(u);
   };
