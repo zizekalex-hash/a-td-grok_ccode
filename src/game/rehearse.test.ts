@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   addPhrases,
+  cleanPhrase,
   countRep,
   currentPhrase,
   defaultSettings,
@@ -101,6 +102,35 @@ describe("rehearse: phrases and their counts", () => {
     s = resetCounts(s);
     assert.equal(totalReps(s), 0);
     assert.equal(s.items.length, 2);
+  });
+
+  it("a phrase can be several sentences on several lines: kept as one, its lines kept", () => {
+    const made = addPhrases(
+      newRehearse(),
+      ["abc.\r\n  Abcd.  \n\n Abcd.\n", "abc. Abcd. Abcd.", "One  line   only "],
+      1,
+      ids,
+    );
+    assert.equal(made.added, 2, "the same words on one line are the same phrase");
+    assert.equal(made.state.items[0]!.text, "abc.\nAbcd.\nAbcd.");
+    assert.equal(made.state.items[1]!.text, "One line only");
+    assert.equal(cleanPhrase("  a \t b  "), "a b", "one line: as before");
+    assert.equal(cleanPhrase("\n\n"), "");
+    // Named as one line; its .txt holds its lines.
+    assert.equal(fileBase("abc.\nAbcd.\nAbcd."), "abc. Abcd. Abcd");
+    assert.deepEqual(phraseFileNames(["abc.\nAbcd.", "abc. Abcd."]), [
+      "abc. Abcd",
+      "abc. Abcd (2)",
+    ]);
+    // Saved and loaded: the same.
+    const back = loadRehearse(JSON.parse(JSON.stringify(made.state)));
+    assert.equal(back.items[0]!.text, "abc.\nAbcd.\nAbcd.");
+  });
+
+  it("every sound paused at once: off to start, kept", () => {
+    assert.equal(defaultSettings().paused, false);
+    assert.equal(loadRehearse({ settings: { paused: true } }).settings.paused, true);
+    assert.equal(loadRehearse({ settings: { paused: "yes" } }).settings.paused, false);
   });
 
   it("moves round the list, and removing the current phrase moves to the next", () => {

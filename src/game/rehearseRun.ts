@@ -472,6 +472,17 @@ export async function playVoice(text: string | null): Promise<string> {
   const ask = ++voiceAsk;
   const where = text && set.voice ? await voiceHere() : null;
   if (ask !== voiceAsk) return "";
+  // Every sound paused: no voice (a whole text's render goes on being made, to be ready on play).
+  if (set.paused) {
+    for (const v of voices) v.stop();
+    browserStop?.();
+    browserStop = null;
+    stopRenderPlay();
+    if (text && set.voice && where === "phone" && renderWanted(st)) renderCheck();
+    voiceText = "";
+    keep();
+    return "";
+  }
   // A whole text pre-rendered runs by itself (the phone app). Till its render is
   // ready, the live voice says the phrases as they are tapped to, as without it.
   if (text && set.voice && where === "phone" && renderWanted(st)) {
@@ -524,7 +535,8 @@ export async function playVoice(text: string | null): Promise<string> {
         voices[k]!.play(
           urls[k]!,
           voiceShapeOf(l),
-          set.voiceRecord ? set.voiceRecordSec : 0,
+          // Pre-record is single phrases' (on whole texts the switch pre-renders the text).
+          set.voiceRecord && st.view !== "texts" ? set.voiceRecordSec : 0,
           l.voiceReverse,
         ),
       ),
@@ -579,15 +591,15 @@ async function playClosed() {
   const ask = ++playing;
   const a = activeOf(s, rehearseLibrary());
   const set = s.settings;
-  // The robot voice follows the phrase too.
+  // The robot voice follows the phrase too (paused: it stops, there).
   void playVoice(set.voice && a.text ? a.text : null);
   // The reader has the phrase player meanwhile.
   if (reading) {
     /* its phrase plays */
-  } else if (set.nonstop && set.sound && a.text) playNonstop(a.text, set);
+  } else if (set.nonstop && set.sound && a.text && !set.paused) playNonstop(a.text, set);
   else playNonstop(null);
-  void closedTts(a, set.ttsLoop, set.ttsVolume);
-  if (!set.wavLoop || !a.name) {
+  void closedTts(a, set.ttsLoop && !set.paused, set.ttsVolume);
+  if (!set.wavLoop || !a.name || set.paused) {
     void playWav(null);
     return;
   }
@@ -775,7 +787,7 @@ async function playRendered() {
   if (!r || renderPlaying) return;
   const s = rehearseState();
   const t = currentText(s, rehearseLibrary());
-  if (!t || t.key !== r.textKey || !renderWanted(s)) return;
+  if (!t || t.key !== r.textKey || !renderWanted(s) || s.settings.paused) return;
   void onRenderTurn(heardTurn);
   const at = textAt(s, t.key, r.total);
   renderPlaying = true;

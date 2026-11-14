@@ -80,6 +80,8 @@ export interface RehearseSettings {
   locked: boolean;
   /** Keeps going away from the tab (other tabs, the game, other apps): its sound, and the floating window's taps counted at once. */
   background: boolean;
+  /** Every sound of Rehearse paused at once (each keeps its own on/off): play goes on as set. */
+  paused: boolean;
   /** The phrase's byte picture on a tap, and each layer's opacity. */
   picture: boolean;
   layers: Record<BytesMode, number>;
@@ -262,6 +264,7 @@ export function defaultSettings(): RehearseSettings {
     wavLevels: [1],
     locked: true,
     background: true,
+    paused: false,
     picture: true,
     layers: { rgb: 0.36, gray: 0.36, bits: 0.36 },
     pictureOpacity: 1,
@@ -321,7 +324,8 @@ export function loadRehearse(data: unknown): RehearseState {
   const seen = new Set<string>();
   for (const raw of Array.isArray(d.items) ? d.items : []) {
     const r = obj(raw);
-    const text = typeof r.text === "string" ? r.text.replace(/\s+/g, " ").trim() : "";
+    // Its lines kept (a phrase can be several).
+    const text = typeof r.text === "string" ? cleanPhrase(r.text) : "";
     const id = typeof r.id === "string" && r.id ? r.id.slice(0, 40) : "";
     if (!text || !id || seen.has(id)) continue;
     seen.add(id);
@@ -381,6 +385,7 @@ export function loadRehearse(data: unknown): RehearseState {
   }
   if (typeof t.locked === "boolean") u.locked = t.locked;
   if (typeof t.background === "boolean") u.background = t.background;
+  if (typeof t.paused === "boolean") u.paused = t.paused;
   if (typeof t.picture === "boolean") u.picture = t.picture;
   const layers = obj(t.layers);
   for (const m of BYTES_MODES) u.layers[m] = clampLayer(num(layers[m], u.layers[m]));
@@ -457,7 +462,7 @@ export function addPhrases(
   const keys = new Set(s.items.map((i) => phraseKey(i.text)));
   const added: RehearsePhrase[] = [];
   for (const raw of texts) {
-    const text = raw.replace(/\s+/g, " ").trim();
+    const text = cleanPhrase(raw);
     const key = phraseKey(text);
     if (!text || keys.has(key)) continue;
     keys.add(key);
@@ -467,6 +472,18 @@ export function addPhrases(
   const items = [...s.items, ...added];
   const current = currentPhrase(s) ? s.current : added[0]!.id;
   return { state: { ...s, items, current }, added: added.length };
+}
+
+/**
+ * A phrase as kept: each of its lines with single spaces, empty lines out, its
+ * line breaks kept (a phrase can be several sentences on several lines).
+ */
+export function cleanPhrase(raw: string): string {
+  return raw
+    .split(/\r\n?|\n|\u2028|\u2029/)
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** The phrases of a pasted or loaded text: its lines (or each sentence of them), list marks off. */
@@ -710,6 +727,8 @@ export const PHRASE_FOLDER = "input_perphrase";
 /** A phrase as a file name (no extension): characters files cannot have made "-", spaces single, at most 80 long. */
 export function fileBase(text: string): string {
   const clean = text
+    // A phrase of several lines: named as one line.
+    .replace(/\s*[\r\n]+\s*/g, " ")
     .replace(/[\p{Cc}]+/gu, "-")
     .replace(/[\\/:*?"<>|]+/g, "-")
     .replace(/\s+/g, " ")

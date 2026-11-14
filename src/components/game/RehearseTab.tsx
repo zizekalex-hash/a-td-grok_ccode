@@ -20,6 +20,8 @@ import {
   Pencil,
   PictureInPicture2,
   Minus,
+  Pause,
+  Play,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -127,6 +129,7 @@ import {
   soundOf,
   soundRate,
   phrasesOf,
+  cleanPhrase,
   rawSamples,
   removePhrase,
   resetCount,
@@ -325,8 +328,8 @@ function useEmitter(text: string, settings: RehearseSettings) {
     held.current = true;
     until.current = performance.now() + (settings.emit === "full" ? settings.signalMs : 0);
     if (settings.picture && canvas.current) canvas.current.style.visibility = "visible";
-    // With Nonstop the sound plays already: a tap shows the picture.
-    if (!settings.sound || settings.amp <= 0 || settings.nonstop) return;
+    // With Nonstop the sound plays already: a tap shows the picture. Paused: no sound at all.
+    if (!settings.sound || settings.amp <= 0 || settings.nonstop || settings.paused) return;
     const ctx = audioContext();
     if (!ctx) return;
     try {
@@ -464,7 +467,8 @@ export function RehearseTab() {
   const [tune, setTune] = useState(false);
   const [wavTune, setWavTune] = useState(false);
   const [draft, setDraft] = useState("");
-  const [bySentence, setBySentence] = useState(false);
+  // What is written (or imported) is added: a phrase a line, a phrase a sentence, or all of it one phrase.
+  const [addAs, setAddAs] = useState<"line" | "sentence" | "whole">("line");
   const [armed, setArmed] = useState("");
   const [note, setNote] = useState("");
   const file = useRef<HTMLInputElement>(null);
@@ -555,9 +559,9 @@ export function RehearseTab() {
 
   // Nonstop: the current phrase's sound all the time (on after the tab closes too, with Background on).
   const phraseText = activeText;
-  const { nonstop, sound, signalMs, amp, rawRate, mode, plays, topSpeed, encoding } = set;
+  const { nonstop, sound, signalMs, amp, rawRate, mode, plays, topSpeed, encoding, paused } = set;
   useEffect(() => {
-    if (nonstop && sound && phraseText) {
+    if (nonstop && sound && phraseText && !paused) {
       playNonstop(phraseText, {
         signalMs,
         amp,
@@ -570,7 +574,7 @@ export function RehearseTab() {
     } else {
       playNonstop(null);
     }
-  }, [nonstop, sound, phraseText, signalMs, amp, rawRate, mode, plays, topSpeed, encoding]);
+  }, [nonstop, sound, phraseText, signalMs, amp, rawRate, mode, plays, topSpeed, encoding, paused]);
   // The robot voice: the current phrase said, over and over (on after the tab closes too, with Background on).
   const [voiceNote, setVoiceNote] = useState("");
   const voiceKey = JSON.stringify([
@@ -585,6 +589,7 @@ export function RehearseTab() {
     set.voiceLead,
     set.voiceRecord,
     set.voiceRecordSec,
+    set.paused,
     st.view,
     phraseText,
   ]);
@@ -805,7 +810,6 @@ export function RehearseTab() {
       }
       const wavCount = (await lookForWavs())[dir] ?? 0;
       setTick((t) => t + 1);
-      const fold = (t: string) => t.replace(/\s+/g, " ").trim();
       if (textsView) {
         const files = (await listFolder(TEXT_FOLDER))
           .map((f) => f.name)
@@ -856,7 +860,8 @@ export function RehearseTab() {
         setRefreshNote(`Reading ${i + 1} of ${files.length}…`);
         let text: string;
         try {
-          text = fold(await readFolderText(`${PHRASE_FOLDER}/${f}`));
+          // A phrase's file: its lines kept (a phrase can be several).
+          text = cleanPhrase(await readFolderText(`${PHRASE_FOLDER}/${f}`));
         } catch {
           continue;
         }
@@ -969,7 +974,7 @@ export function RehearseTab() {
         else next.delete(key);
         return next;
       });
-      if (!url || !wavLoop) {
+      if (!url || !wavLoop || paused) {
         void playWav(null);
         setWavPlaying(false);
         return;
@@ -982,7 +987,7 @@ export function RehearseTab() {
     };
     // The gain alone changes without restarting it (below).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wavLoop, name, dir, picked, folder, tick]);
+  }, [wavLoop, name, dir, picked, folder, tick, paused]);
   useEffect(() => wavGain(wavVolume), [wavVolume]);
   // A new style: from the next loop (or the file again from its start, if that is far off).
   useEffect(() => setWavStyle(styleNow.current), [styleKey]);
@@ -997,7 +1002,7 @@ export function RehearseTab() {
   /** Counts the .tts.wav files made: one made again starts again, new. */
   const [ttsMadeTick, setTtsMadeTick] = useState(0);
   useEffect(() => {
-    if (!name || !ttsLoop || !ttsHere) {
+    if (!name || !ttsLoop || !ttsHere || paused) {
       void playTts(null);
       setTtsPlaying(false);
       return;
@@ -1011,7 +1016,7 @@ export function RehearseTab() {
     return () => {
       live = false;
     };
-  }, [ttsLoop, name, dir, ttsHere, picked, ttsMadeTick]);
+  }, [ttsLoop, name, dir, ttsHere, picked, ttsMadeTick, paused]);
   useEffect(() => ttsGain(ttsVolume), [ttsVolume]);
   // A .tts.wav just made (even while away from the tab): found, and looped.
   useEffect(() => {
@@ -1244,7 +1249,7 @@ export function RehearseTab() {
     );
   };
   const addDraft = () => {
-    const list = phrasesOf(draft, bySentence);
+    const list = addAs === "whole" ? [draft] : phrasesOf(draft, addAs === "sentence");
     if (!list.length) return;
     add(list, "what you wrote");
     setDraft("");
@@ -1252,7 +1257,10 @@ export function RehearseTab() {
   const importFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     const list: string[] = [];
-    for (const f of Array.from(files)) list.push(...phrasesOf(await f.text(), bySentence));
+    for (const f of Array.from(files)) {
+      const text = await f.text();
+      list.push(...(addAs === "whole" ? [text] : phrasesOf(text, addAs === "sentence")));
+    }
     add(list, files.length > 1 ? `${files.length} files` : (files[0]?.name ?? "the file"));
     if (file.current) file.current.value = "";
   };
@@ -1352,6 +1360,23 @@ export function RehearseTab() {
   return (
     <div>
       {emitter.picture}
+      <button
+        type="button"
+        className="btn mb-3 w-full tracking-normal normal-case"
+        data-on={set.paused}
+        aria-pressed={set.paused}
+        onClick={() => setOpt({ paused: !set.paused })}
+      >
+        {set.paused ? (
+          <>
+            <Play className="size-4" aria-hidden /> Play all sound (paused: nothing sounds)
+          </>
+        ) : (
+          <>
+            <Pause className="size-4" aria-hidden /> Pause all sound
+          </>
+        )}
+      </button>
       <p className="text-sm leading-relaxed text-muted">
         {textsView
           ? "A whole text, phrase after phrase: a tap does the phrase it is at and goes to the next. After the last, it counts a pass through the text and starts again."
@@ -1414,7 +1439,10 @@ export function RehearseTab() {
               ref={phraseBox}
               className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden"
             >
-              <span ref={phraseEl} className="block w-full leading-snug break-words text-fg">
+              <span
+                ref={phraseEl}
+                className="block w-full leading-snug break-words whitespace-pre-line text-fg"
+              >
                 {activeText}
               </span>
             </span>
@@ -2137,7 +2165,11 @@ export function RehearseTab() {
               rows={2}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="Write a phrase or a word (one a line for several)"
+              placeholder={
+                addAs === "whole"
+                  ? "Write a phrase: several sentences, on several lines, all one phrase"
+                  : "Write a phrase or a word (one a line for several)"
+              }
               aria-label="New phrase"
             />
             <div className="grid grid-cols-2 gap-2">
@@ -2164,11 +2196,37 @@ export function RehearseTab() {
             >
               Add the loaded text's phrases ({lines.length})
             </button>
-            <Toggle
-              label="Split lines into sentences"
-              on={bySentence}
-              flip={() => setBySentence((b) => !b)}
-            />
+            <div
+              className="grid grid-cols-3 gap-1"
+              role="radiogroup"
+              aria-label="What is written or imported is added as"
+            >
+              {(
+                [
+                  ["line", "A phrase a line"],
+                  ["sentence", "A phrase a sentence"],
+                  ["whole", "All of it one phrase (its lines kept)"],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="radio"
+                  aria-checked={addAs === k}
+                  data-on={addAs === k}
+                  className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+                  onClick={() => setAddAs(k)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {addAs === "whole" && (
+              <p className="text-[0.65rem] leading-snug text-muted">
+                “abc. Abcd. Abcd.”, on one line or three, is one phrase: said, sounded, shown and
+                counted as one. Each .txt imported is one phrase too.
+              </p>
+            )}
             {note && (
               <p className="text-xs text-gold" role="status">
                 {note}
