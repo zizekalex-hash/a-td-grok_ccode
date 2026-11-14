@@ -421,9 +421,16 @@ export interface VoicePlayer {
   /**
    * recordSec above 0: its copies recorded once, that long, then that one sound
    * looped (light for the phone). reverse: each saying with its time-reversed
-   * copy, half and half.
+   * copy, half and half; mainForward: but not the first copy (the main voice,
+   * heard as it is said).
    */
-  play(url: string, shape: VoiceShape, recordSec?: number, reverse?: boolean): Promise<boolean>;
+  play(
+    url: string,
+    shape: VoiceShape,
+    recordSec?: number,
+    reverse?: boolean,
+    mainForward?: boolean,
+  ): Promise<boolean>;
   stop(): void;
 }
 
@@ -446,8 +453,8 @@ export function voicePlayer(): VoicePlayer {
   };
 
   return {
-    async play(url, shape, recordSec = 0, reverse = false) {
-      const key = JSON.stringify([url, shape, recordSec, reverse]);
+    async play(url, shape, recordSec = 0, reverse = false, mainForward = false) {
+      const key = JSON.stringify([url, shape, recordSec, reverse, mainForward]);
       asked = key;
       if (now?.key === key) return true;
       const ctx = context();
@@ -472,6 +479,12 @@ export function voicePlayer(): VoicePlayer {
           const d = buf.getChannelData(c);
           for (let i = 0; i < d.length; i++) mono[i] = mono[i]! + d[i]! / buf.numberOfChannels;
         }
+        // The main voice (the first copy) as it is said: never reversed.
+        let first: AudioBuffer | undefined;
+        if (reverse && mainForward) {
+          first = ctx.createBuffer(1, one.length, one.sampleRate);
+          first.copyToChannel(mono, 0);
+        }
         if (reverse) {
           // The saying and its time-reversed copy, half and half (the gap after it stays).
           const len = buf.length;
@@ -491,7 +504,7 @@ export function voicePlayer(): VoicePlayer {
             Math.max(1, Math.round(one.sampleRate * recordSec)),
             one.sampleRate,
           );
-          voiceGraph(off, off.destination, one, shape, 0);
+          voiceGraph(off, off.destination, one, shape, 0, first);
           const rec = await off.startRendering();
           if (asked !== key) return false;
           const src = ctx.createBufferSource();
@@ -500,7 +513,7 @@ export function voicePlayer(): VoicePlayer {
           src.connect(fade);
           src.start(t);
           nodes = [src];
-        } else nodes = voiceGraph(ctx, fade, one, shape, t).nodes;
+        } else nodes = voiceGraph(ctx, fade, one, shape, t, first).nodes;
         const out = fade;
         fadeOut(now);
         now = { nodes, out, key };
@@ -524,6 +537,8 @@ function voiceGraph(
   one: AudioBuffer,
   shape: VoiceShape,
   t: number,
+  /** The first copy's own sound (the main voice as it is said), if not `one`. */
+  first?: AudioBuffer,
 ): { nodes: AudioScheduledSourceNode[]; out: GainNode } {
   const out = c.createGain();
   const nodes: AudioScheduledSourceNode[] = [];
@@ -554,7 +569,7 @@ function voiceGraph(
   }
   voiceSpeeds(shape).forEach((speed, k) => {
     const src = c.createBufferSource();
-    src.buffer = one;
+    src.buffer = k === 0 && first ? first : one;
     src.loop = shape.voiceLoop;
     src.playbackRate.value = speed;
     // The first is the main voice (its volume); the copies have theirs.

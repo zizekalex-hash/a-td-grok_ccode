@@ -32,6 +32,7 @@ import {
   folderLoopVolume,
   folderName,
   onRenderTurn,
+  renderBack,
   renderHas,
   renderPlay,
   renderStop,
@@ -66,6 +67,7 @@ import {
   loadRehearse,
   newRehearse,
   REHEARSE_KEY,
+  heardVoiceLayers,
   liveVoiceLayers,
   voiceShapeOf,
   wavStyleOf,
@@ -530,6 +532,10 @@ export async function playVoice(text: string | null): Promise<string> {
     if (ask !== voiceAsk) return "";
     while (voices.length < layers.length) voices.push(voicePlayer());
     for (let k = layers.length; k < voices.length; k++) voices[k]!.stop();
+    // The main voice (the first heard layer's first copy) is never reversed: when its layer
+    // says the phrase live, it is the first of these.
+    const heard = heardVoiceLayers(set);
+    const mainLive = !!heard[0] && (st.view !== "texts" || !heard[0].voiceWhole);
     const oks = await Promise.all(
       layers.map((l, k) =>
         voices[k]!.play(
@@ -538,6 +544,7 @@ export async function playVoice(text: string | null): Promise<string> {
           // Pre-record is single phrases' (on whole texts the switch pre-renders the text).
           set.voiceRecord && st.view !== "texts" ? set.voiceRecordSec : 0,
           l.voiceReverse,
+          k === 0 && mainLive,
         ),
       ),
     );
@@ -644,11 +651,10 @@ export function subscribeRender(fn: () => void): () => void {
 interface Rendered {
   key: string;
   textKey: string;
-  name: string;
-  /** When each phrase starts (s), its frames and rate, how many phrases. */
-  turns: number[];
-  frames: number;
-  rate: number;
+  /** The main voice's track: where each phrase starts in it (s). */
+  main: { name: string; rate: number; turns: number[] };
+  /** The other voices' track (none: the main voice alone). */
+  back: { name: string; rate: number } | null;
   total: number;
 }
 
@@ -658,9 +664,11 @@ let renderJob: { key: string; stop: boolean } | null = null;
 let renderFailed = "";
 let renderTimer = 0;
 let renderPlaying = false;
+/** How the main voice plays now: on by itself, or a phrase a tap. */
+let renderMode: "auto" | "tap" = "auto";
 /** The place moved by the voice itself (so its voice does not jump). */
 let following = false;
-const RENDERS_KEY = "azshara-renders-v2";
+const RENDERS_KEY = "azshara-renders-v3";
 
 /** The text being repped is rendered as it is set now (it runs by itself). */
 function renderReady(s: RehearseState): boolean {
@@ -670,7 +678,7 @@ function renderReady(s: RehearseState): boolean {
   return !!t && t.key === r.textKey && r.key === renderKeyOf(s.settings, t.lines);
 }
 
-/** Whether the text runs by itself once rendered: Texts, the voice on, Pre-render on. */
+/** Whether the text is rendered to run by itself: Texts, the voice on, Pre-render on. */
 export function renderWanted(s: RehearseState): boolean {
   return s.view === "texts" && s.settings.voice && s.settings.voiceRecord;
 }
@@ -686,7 +694,7 @@ function hash(text: string): string {
 
 /** What a render is made of: it is made again when any of it changes. */
 function renderKeyOf(set: RehearseSettings, lines: string[]): string {
-  return hash(JSON.stringify([lines, set.voiceEngine, voiceLayersOf(set), set.voiceLead]));
+  return hash(JSON.stringify([lines, set.voiceEngine, voiceLayersOf(set)]));
 }
 
 /** Renders made before (their turns), oldest first: as many as the phone keeps (this one and the one before). */
@@ -696,7 +704,11 @@ function keptRenders(): Rendered[] {
     return Array.isArray(raw)
       ? raw.filter(
           (r): r is Rendered =>
-            !!r && typeof r === "object" && typeof r.key === "string" && Array.isArray(r.turns),
+            !!r &&
+            typeof r === "object" &&
+            typeof r.key === "string" &&
+            !!r.main &&
+            Array.isArray(r.main.turns),
         )
       : [];
   } catch {
@@ -731,9 +743,13 @@ async function renderNow() {
   if (renderJob) renderJob.stop = true;
   stopRenderPlay();
   // Made before with these settings, and still in the cache: at once.
-  const name = `text-${key}.wav`;
   const kept = keptRenders().find((x) => x.key === key);
-  if (kept && kept.textKey === t.key && (await renderHas(name))) {
+  if (
+    kept &&
+    kept.textKey === t.key &&
+    (await renderHas(kept.main.name)) &&
+    (!kept.back || (await renderHas(kept.back.name)))
+  ) {
     rendered = kept;
     return playRendered();
   }
@@ -746,7 +762,7 @@ async function renderNow() {
     const r = await renderText(
       units,
       s.settings,
-      name,
+      { main: `text-${key}.main.wav`, back: `text-${key}.back.wav` },
       (note, part) => {
         if (renderJob === job) setRender({ note, part });
       },
@@ -757,10 +773,8 @@ async function renderNow() {
     rendered = {
       key,
       textKey: t.key,
-      name,
-      turns: r.turns,
-      frames: r.frames,
-      rate: r.rate,
+      main: { name: r.main.name, rate: r.main.rate, turns: r.main.turns },
+      back: r.back && { name: r.back.name, rate: r.back.rate },
       total: units.length,
     };
     keepRender(rendered);
@@ -779,27 +793,44 @@ async function renderNow() {
   }
 }
 
-const framesOf = (r: Rendered) => r.turns.map((x) => Math.round(x * r.rate));
+/** Where each phrase starts in the main voice's track (its frames). */
+const mainFrames = (r: Rendered) => r.main.turns.map((x) => Math.round(x * r.main.rate));
 
-/** The render playing, from the phrase the text is at. */
+/** The main voice from phrase `at`: on by itself, or (a phrase a tap) that phrase once. */
+function playMain(r: Rendered, at: number): Promise<boolean> {
+  const frames = mainFrames(r);
+  const from = frames[at] ?? 0;
+  return renderMode === "tap"
+    ? renderPlay(r.main.name, from, frames, { until: frames[at + 1] ?? 0 })
+    : renderPlay(r.main.name, from, frames);
+}
+
+/** The render playing: the other voices all the time, the main voice from the phrase the text is at. */
 async function playRendered() {
   const r = rendered;
-  if (!r || renderPlaying) return;
+  if (!r) return;
   const s = rehearseState();
   const t = currentText(s, rehearseLibrary());
   if (!t || t.key !== r.textKey || !renderWanted(s) || s.settings.paused) return;
+  const mode = s.settings.voiceAuto ? "auto" : "tap";
+  // Playing so already (a change of mode plays the main voice again, from where it is).
+  if (renderPlaying && renderMode === mode) return;
   void onRenderTurn(heardTurn);
   const at = textAt(s, t.key, r.total);
   renderPlaying = true;
+  renderMode = mode;
   // The render says it now: the live voice stops (and one on its way does not start).
   voiceAsk += 1;
   for (const v of voices) v.stop();
   browserStop?.();
   browserStop = null;
-  const ok = await renderPlay(r.name, Math.round((r.turns[at] ?? 0) * r.rate), framesOf(r));
+  // The others, round and round (the same playing already: it goes on, never jumping).
+  const okBack = !r.back || (await renderBack(r.back.name));
+  const ok = okBack && (await playMain(r, at));
   if (!ok) {
     renderPlaying = false;
     rendered = null;
+    void renderStop();
     setRender({ playing: false, note: "The render was gone: made again" });
     renderCheck();
     return;
@@ -807,10 +838,11 @@ async function playRendered() {
   setRender({ playing: true, note: "" });
 }
 
+/** The text moved elsewhere (a tap, ‹ ›, the window, the reader): the main voice goes there. */
 async function seekRendered(at: number) {
   const r = rendered;
   if (!r || !renderPlaying) return;
-  await renderPlay(r.name, Math.round((r.turns[at] ?? 0) * r.rate), framesOf(r));
+  await playMain(r, at);
 }
 
 function stopRenderPlay() {
@@ -833,7 +865,8 @@ function stopRender() {
 /** The render's main voice is on another phrase: the text goes there (the next one: a rep, as a tap). */
 function heardTurn(index: number) {
   const r = rendered;
-  if (!r || !renderPlaying) return;
+  // A phrase a tap: the main voice says it and waits (only a tap moves the text).
+  if (!r || !renderPlaying || renderMode !== "auto") return;
   const lib = rehearseLibrary();
   const s = rehearseState();
   const t = currentText(s, lib);

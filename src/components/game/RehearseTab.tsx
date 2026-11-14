@@ -28,6 +28,7 @@ import {
   Settings2,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import {
   flashToast,
@@ -379,18 +380,93 @@ function useEmitter(text: string, settings: RehearseSettings) {
 // ---- Small controls ----
 
 /** A number with − and +, and typed exactly. */
+/**
+ * A tiny ⓘ: its full description in a popup (a tap opens it; ✕, a tap outside
+ * or Escape closes it). Not a form button, so it opens while Rehearse is
+ * locked too.
+ */
+export function Info({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const close = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    close.current?.focus();
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [open]);
+  const show = (e: React.SyntheticEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpen(true);
+  };
+  return (
+    <>
+      <span
+        role="button"
+        tabIndex={0}
+        aria-label={`What this is: ${title}`}
+        className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full border border-cyan/60 font-serif text-[0.75rem] text-cyan italic select-none"
+        onClick={show}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") show(e);
+        }}
+      >
+        i
+      </span>
+      {open &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/75 p-4"
+            onClick={() => setOpen(false)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={title}
+              className="glass max-h-[80dvh] w-full max-w-md overflow-y-auto p-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <p className="pt-1 font-display text-[0.7rem] tracking-[0.12em] text-cyan uppercase">
+                  {title}
+                </p>
+                <button
+                  ref={close}
+                  type="button"
+                  className="btn stepper"
+                  onClick={() => setOpen(false)}
+                  aria-label="Close"
+                >
+                  <X className="size-4" aria-hidden />
+                </button>
+              </div>
+              <div className="space-y-2 text-sm leading-relaxed text-fg">{children}</div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
 export function Num({
   label,
   value,
   step: by,
   digits = 0,
   set,
+  info,
 }: {
   label: string;
   value: number;
   step: number;
   digits?: number;
   set: (v: number) => void;
+  /** Its full description, behind a tiny ⓘ. */
+  info?: React.ReactNode;
 }) {
   const [text, setText] = useState<string | null>(null);
   const commit = () => {
@@ -401,7 +477,10 @@ export function Num({
   };
   return (
     <div className="flex items-center justify-between gap-2 text-xs">
-      <span className="text-muted">{label}</span>
+      <span className="flex items-center gap-1.5 text-muted">
+        {label}
+        {info ? <Info title={label}>{info}</Info> : null}
+      </span>
       <span className="flex items-center gap-1">
         <button
           type="button"
@@ -435,8 +514,19 @@ export function Num({
   );
 }
 
-export function Toggle({ label, on, flip }: { label: string; on: boolean; flip: () => void }) {
-  return (
+export function Toggle({
+  label,
+  on,
+  flip,
+  info,
+}: {
+  label: string;
+  on: boolean;
+  flip: () => void;
+  /** Its full description, behind a tiny ⓘ beside it. */
+  info?: React.ReactNode;
+}) {
+  const button = (
     <button
       type="button"
       className="btn w-full justify-between px-2 tracking-normal normal-case"
@@ -449,6 +539,23 @@ export function Toggle({ label, on, flip }: { label: string; on: boolean; flip: 
         {on ? "On" : "Off"}
       </span>
     </button>
+  );
+  if (!info) return button;
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="min-w-0 flex-1">{button}</div>
+      <Info title={label}>{info}</Info>
+    </div>
+  );
+}
+
+/** A heading or a choice's question, with its ⓘ. */
+function Ask({ text, title, info }: { text: string; title?: string; info: React.ReactNode }) {
+  return (
+    <p className="flex items-center gap-1.5 text-xs text-muted">
+      {text}
+      <Info title={title ?? text}>{info}</Info>
+    </p>
   );
 }
 
@@ -586,7 +693,7 @@ export function RehearseTab() {
     set.voiceWhole,
     set.voiceOn,
     set.voiceReverse,
-    set.voiceLead,
+    set.voiceAuto,
     set.voiceRecord,
     set.voiceRecordSec,
     set.paused,
@@ -1462,7 +1569,7 @@ export function RehearseTab() {
                 ) : null}
               </span>
             )}
-            {textsView && set.voice && set.voiceRecord && <RenderBadge />}
+            {textsView && set.voice && set.voiceRecord && <RenderBadge auto={set.voiceAuto} />}
             {tapNote && (
               <span className="text-xs text-gold" role="status">
                 {tapNote}
@@ -2712,6 +2819,8 @@ function VoicePanel({
   const preset = voicePresetOf(L);
   const whole = layers.filter((l) => l.voiceWhole).length;
   const off = layers.filter((l) => !l.voiceOn).length;
+  // The layer with the main voice: the first heard (its first copy).
+  const mainAt = layers.findIndex((l) => l.voiceOn);
   return (
     <>
       <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
@@ -2721,6 +2830,23 @@ function VoicePanel({
         label="Robot voice: it says the phrase"
         on={set.voice}
         flip={() => setOpt({ voice: !set.voice })}
+        info={
+          <>
+            <p>
+              The phone's text-to-speech says the phrase (in a browser, the browser's own voice).
+              Each layer below is a voice of its own with its own copies.
+            </p>
+            <p>
+              On single phrases every layer says the phrase you are at, again and again. On whole
+              texts the main voice (★, the first heard layer's first copy) is the one to listen to;
+              the other voices are the background.
+            </p>
+            <p>
+              It follows the phrase wherever you move it, and plays on in the background with
+              Background on. Pause all sound (at the top) stops it with everything else.
+            </p>
+          </>
+        }
       />
       {set.voice && (
         <>
@@ -2739,7 +2865,8 @@ function VoicePanel({
                 className="btn px-2 text-[0.65rem] tracking-normal normal-case"
                 onClick={() => setLayer(k)}
               >
-                Layer {k + 1} ({l.voiceCopies}
+                Layer {k + 1}
+                {k === mainAt ? " ★" : ""} ({l.voiceCopies}
                 {texts && l.voiceWhole ? ", whole text" : ""}
                 {l.voiceReverse ? ", reversed" : ""}
                 {l.voiceOn ? "" : ", off"})
@@ -2767,15 +2894,59 @@ function VoicePanel({
             >
               Delete layer {at + 1}
             </button>
+            <Info title="Layers and the main voice">
+              <p>
+                A layer is one voice (the engine's voice, rate and pitch) said as many copies at
+                once, each starting a little after the one before and each faster than the last. Tap
+                a layer to set it below. Copy layer makes a new one from it, Delete layer takes it
+                away (up to 16 layers, all playing at once).
+              </p>
+              <p>
+                ★ marks the layer with the main voice: the first copy of the first layer that is
+                heard. It is the voice for listening to, so it is never reversed and, on whole
+                texts, it is the one that reads phrase after phrase. All the others are the
+                background.
+              </p>
+              <p>A layer that is off keeps all its settings and is simply not heard.</p>
+            </Info>
           </div>
           <Toggle
             label={
               texts
-                ? "Pre-render the whole text: then it runs by itself"
+                ? "Pre-render the whole text (light for the phone)"
                 : "Pre-record it, then loop that (light for the phone)"
             }
             on={set.voiceRecord}
             flip={() => setOpt({ voiceRecord: !set.voiceRecord })}
+            info={
+              texts ? (
+                <>
+                  <p>
+                    Makes the whole text into sound in the background, once (how far shows on the
+                    card and here), so the phone plays two streams instead of every copy live:
+                  </p>
+                  <p>
+                    · the main voice alone, phrase after phrase (each saying and its silence);
+                    <br />· every other voice, each copy reading the whole text by itself at its own
+                    speed, round and round. It plays all the time and never jumps, whatever the main
+                    voice does.
+                  </p>
+                  <p>
+                    Till it is ready the live voice goes on, phrase by phrase as you tap. It is made
+                    again when the text, a layer or a voice changes (the phone says each phrase only
+                    once and keeps it, so mostly it is only mixed again); the one before is kept
+                    too. A long text takes a while the first time. The Android app only.
+                  </p>
+                </>
+              ) : (
+                <p>
+                  Every copy of each layer (with its robot and turning) is recorded once, as long as
+                  Recorded length, then only that one sound plays, looped, however many copies there
+                  are: light for the phone. Anything that drifts slower than that length starts over
+                  at each loop.
+                </p>
+              )
+            }
           />
           {set.voiceRecord && !texts && (
             <Num
@@ -2785,49 +2956,74 @@ function VoicePanel({
               set={(v) => setOpt({ voiceRecordSec: clampRecordSec(v) })}
             />
           )}
-          {texts && set.voiceRecord && <RenderLine />}
-          {texts && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted">
-                A phrase's turn (pre-rendered, and in its .tts.wav) lasts till
-              </p>
-              <div
-                className="grid grid-cols-2 gap-1"
-                role="radiogroup"
-                aria-label="A phrase's turn lasts till"
-              >
-                {(
-                  [
-                    ["captain", "The main voice is through (layer 1's first)"],
-                    ["all", "Every copy of every layer is through"],
-                  ] as const
-                ).map(([k, label]) => (
-                  <button
-                    key={k}
-                    type="button"
-                    role="radio"
-                    aria-checked={set.voiceLead === k}
-                    data-on={set.voiceLead === k}
-                    className="btn px-1 text-[0.65rem] tracking-normal normal-case"
-                    onClick={() => setOpt({ voiceLead: k })}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {texts && set.voiceRecord && (
+            <>
+              <Toggle
+                label={
+                  set.voiceAuto
+                    ? "The main voice moves on by itself"
+                    : "The main voice moves on by itself (off: it waits for your tap)"
+                }
+                on={set.voiceAuto}
+                flip={() => setOpt({ voiceAuto: !set.voiceAuto })}
+                info={
+                  <>
+                    <p>
+                      On: when the main voice has said a phrase and its silence, the text goes on to
+                      the next phrase by itself (1/100, 2/100 …), counted as a rep, as a tap would.
+                      After the last, a pass, and round again.
+                    </p>
+                    <p>
+                      Off: the main voice says the phrase once, then waits. Your tap counts it, and
+                      the main voice says the next one.
+                    </p>
+                    <p>
+                      Either way every other voice keeps playing all the time, never waiting, and a
+                      tap, ‹ ›, the floating window or the reader moves the main voice to that
+                      phrase.
+                    </p>
+                  </>
+                }
+              />
+              <RenderLine auto={set.voiceAuto} />
+            </>
           )}
-          <p className="text-[0.65rem] text-muted">
+          <p className="text-[0.65rem] leading-snug text-muted">
             {layers.length} layer{layers.length === 1 ? "" : "s"}
             {off ? ` (${off} off: muted, kept)` : ""}, {voiceCount(set)} voice
-            {voiceCount(set) === 1 ? "" : "s"} heard in all, all at once
-            {texts && whole
+            {voiceCount(set) === 1 ? "" : "s"} heard
+            {mainAt >= 0 ? `; the main voice: layer ${mainAt + 1}'s first copy (★)` : ""}.
+            {texts
               ? set.voiceRecord
-                ? ` (${whole} reading the whole text: heard in the render, and in its .tts.wav)`
-                : ` (${whole} reading the whole text: in its .tts.wav, made below, not live${whole === layers.length ? "; none says the phrase live" : ""})`
-              : ""}
-            . Below: layer {at + 1}.
+                ? " Rendered: the main voice reads phrase after phrase, every other voice the whole text by itself."
+                : whole
+                  ? ` Live: the layers that say the phrase (${layers.length - whole}); the ${whole} reading the whole text are heard rendered.`
+                  : ""
+              : ""}{" "}
+            Below: layer {at + 1}.
           </p>
+          {texts && (
+            <Ask
+              text={`What layer ${at + 1} says`}
+              info={
+                <>
+                  <p>
+                    Live (Pre-render off): a layer that says the phrase says the phrase you are at,
+                    its copies again and again. A layer that reads the whole text is not heard live
+                    (the whole text has to be made first).
+                  </p>
+                  <p>
+                    Rendered (Pre-render on) and in the .tts.wav: the main voice reads phrase after
+                    phrase, and every other voice reads the whole text by itself, whichever this is.
+                  </p>
+                  <p>
+                    So: says the phrase = heard live and rendered; reads the whole text = heard only
+                    rendered (and in the .tts.wav).
+                  </p>
+                </>
+              }
+            />
+          )}
           {texts && (
             <div
               className="grid grid-cols-2 gap-1"
@@ -2842,7 +3038,7 @@ function VoicePanel({
                 className="btn px-1 text-[0.65rem] tracking-normal normal-case"
                 onClick={() => setL({ voiceWhole: false })}
               >
-                Says the phrase (live, each in turn)
+                Says the phrase (live too)
               </button>
               <button
                 type="button"
@@ -2852,7 +3048,7 @@ function VoicePanel({
                 className="btn px-1 text-[0.65rem] tracking-normal normal-case"
                 onClick={() => setL({ voiceWhole: true })}
               >
-                Reads the whole text (into its file)
+                Reads the whole text (rendered only)
               </button>
             </div>
           )}
@@ -2860,15 +3056,50 @@ function VoicePanel({
             label={`Layer ${at + 1} heard (off: muted, kept as it is)`}
             on={L.voiceOn}
             flip={() => setL({ voiceOn: !L.voiceOn })}
+            info={
+              <>
+                <p>
+                  Off mutes this layer without deleting it: its settings stay, it is just not heard,
+                  live, in a render or in a .tts.wav. Handy to hear the difference, or to keep one
+                  or two of many for a while.
+                </p>
+                <p>With the first layer off, the next one heard holds the main voice (★).</p>
+              </>
+            }
           />
           <Toggle
-            label="+ Its reversed copy, half and half"
+            label={
+              at === mainAt
+                ? "+ Its reversed copy, half and half (not the main voice)"
+                : "+ Its reversed copy, half and half"
+            }
             on={L.voiceReverse}
             flip={() => setL({ voiceReverse: !L.voiceReverse })}
+            info={
+              <>
+                <p>
+                  Each saying of this layer is mixed with itself played backwards, half and half
+                  (0.5 each, the same length), live and in the files.
+                </p>
+                <p>
+                  Never the main voice: in its layer (★) only the other copies are reversed, so the
+                  voice you listen to stays as it is said.
+                </p>
+              </>
+            }
           />
           {where === "phone" && (
             <label className="block text-xs">
-              <span className="text-muted">Voice engine</span>
+              <span className="flex items-center gap-1.5 text-muted">
+                Voice engine
+                <Info title="Voice engine">
+                  <p>
+                    The phone's text-to-speech engines (Android settings, Text-to-speech). For
+                    really robotic voices install eSpeak NG and choose it here.
+                  </p>
+                  <p>Every layer uses this engine; each layer can have its own voice of it.</p>
+                </Info>
+              </span>
               <select
                 className="mt-1 w-full rounded border border-cyan/40 bg-bg p-2 text-fg"
                 value={set.voiceEngine}
@@ -2885,7 +3116,15 @@ function VoicePanel({
             </label>
           )}
           <label className="block text-xs">
-            <span className="text-muted">Voice ({voices.length})</span>
+            <span className="flex items-center gap-1.5 text-muted">
+              Voice ({voices.length})
+              <Info title="Voice">
+                <p>
+                  This layer's voice among the engine's: its language and name. Online ones need the
+                  internet; one not installed is fetched by the engine first.
+                </p>
+              </Info>
+            </span>
             <select
               className="mt-1 w-full rounded border border-cyan/40 bg-bg p-2 text-fg"
               value={L.voiceName}
@@ -2902,6 +3141,17 @@ function VoicePanel({
               ))}
             </select>
           </label>
+          <Ask
+            text="Presets"
+            title="Presets"
+            info={
+              <p>
+                Set this layer's copies, speed-up, spread, silence and robot at once: Plain (one
+                voice), Robot, Deep robot, Choir ×4, Speed stack ×6, Chipmunk ×2, Fast ×3. Change
+                any number after.
+              </p>
+            }
+          />
           <div className="grid grid-cols-2 gap-1" role="radiogroup" aria-label="Voice presets">
             {VOICE_PRESETS.map((p) => (
               <button
@@ -2919,6 +3169,12 @@ function VoicePanel({
           </div>
           <Num
             label="Speaking rate (1 as it is)"
+            info={
+              <p>
+                How fast the phone says it (1 as it is, 2 twice as fast): the engine's own pace, its
+                pitch unchanged. The copies' speed-up comes on top of this.
+              </p>
+            }
             value={L.voiceRate}
             step={0.1}
             digits={2}
@@ -2926,6 +3182,7 @@ function VoicePanel({
           />
           <Num
             label="Pitch (1 as it is)"
+            info={<p>The engine's pitch (1 as it is, higher above 1), its pace unchanged.</p>}
             value={L.voicePitch}
             step={0.1}
             digits={2}
@@ -2933,40 +3190,84 @@ function VoicePanel({
           />
           <Num
             label="Copies at once"
+            info={
+              <p>
+                How many copies of this layer's voice play together (up to 1,000). In the layer with
+                the main voice (★) the first copy is the main voice. Each copy starts a little after
+                the one before and is faster than it (below).
+              </p>
+            }
             value={L.voiceCopies}
             step={1}
             set={(v) => setL({ voiceCopies: clampVoiceCopies(v) })}
           />
           <Num
             label="Each copy starts after (ms)"
+            info={
+              <p>
+                Each copy starts this long after the one before it (0: all at once). With the
+                speed-up they then drift further apart.
+              </p>
+            }
             value={L.voiceSpreadMs}
             step={10}
             set={(v) => setL({ voiceSpreadMs: clampVoiceMs(v) })}
           />
           <Num
             label="Each copy faster (×, pitch and pace)"
+            info={
+              <p>
+                Each copy plays this many times faster than the one before, pitch and pace together,
+                like a tape sped up: 1.37 makes copies at ×1, ×1.37, ×1.88, ×2.57 … The first copy
+                stays at ×1.
+              </p>
+            }
             value={L.voiceSpeedUp}
             step={0.05}
             digits={2}
             set={(v) => setL({ voiceSpeedUp: clampVoiceSpeedUp(v) })}
           />
           <Toggle
-            label={
-              texts && L.voiceWhole
-                ? "Fast copies start the text again till the slowest has read it once"
-                : "Over and over while on the phrase"
-            }
+            label="Over and over, each copy by itself"
             on={L.voiceLoop}
             flip={() => setL({ voiceLoop: !L.voiceLoop })}
+            info={
+              <>
+                <p>
+                  Live: each copy says the phrase you are at again and again, after its silence,
+                  each at its own speed, never waiting for another (off: once, each time the phrase
+                  changes).
+                </p>
+                <p>
+                  Rendered and in the .tts.wav (whole texts): each copy reads the whole text and, at
+                  its end, starts again from the top by itself (off: it reads it once, then is quiet
+                  till the whole sound starts over). The main voice reads phrase after phrase either
+                  way.
+                </p>
+              </>
+            }
           />
           <Num
             label="Silence between (ms)"
+            info={
+              <p>
+                The silence after each saying, before the next. Live, between repeats; on whole
+                texts, after each phrase, so in the main voice's layer it is also the main voice's
+                pause between phrases.
+              </p>
+            }
             value={L.voiceGapMs}
             step={50}
             set={(v) => setL({ voiceGapMs: clampVoiceMs(v) })}
           />
           <Num
             label="Robot (0 none, 1 all)"
+            info={
+              <p>
+                Its loudness rung against a tone (0 none, 1 all; 0.5 half as it is, half rung):
+                metallic, like a ring modulator.
+              </p>
+            }
             value={L.voiceRobot}
             step={0.05}
             digits={2}
@@ -2974,12 +3275,19 @@ function VoicePanel({
           />
           <Num
             label="Robot tone (Hz)"
+            info={<p>The tone the voice is rung against: low (30–60 Hz) a buzz, high a bell.</p>}
             value={L.voiceRobotHz}
             step={5}
             set={(v) => setL({ voiceRobotHz: clampRobotHz(v) })}
           />
           <Num
             label="Main voice volume (the first; 1 as it is)"
+            info={
+              <p>
+                The first copy's volume (1 as it is; above 1 louder, and live it can clip). In the
+                layer with the main voice (★) this is the main voice.
+              </p>
+            }
             value={L.voiceVolume}
             step={0.1}
             digits={2}
@@ -2987,6 +3295,12 @@ function VoicePanel({
           />
           <Num
             label="Copies volume (the others; under the main to hear it)"
+            info={
+              <p>
+                The other copies' volume, so the main voice stands out above them (0.3 to 0.6 makes
+                a background).
+              </p>
+            }
             value={L.voiceCopiesVolume}
             step={0.05}
             digits={2}
@@ -2994,6 +3308,13 @@ function VoicePanel({
           />
           <Num
             label="Turning left-right, live (times a second; 0 still)"
+            info={
+              <p>
+                Live only: the layer turns from ear to ear and back this many times a second (0
+                stays in the middle). The .tts.wav and a render are one channel; turning is at the
+                final export, if asked.
+              </p>
+            }
             value={L.voicePanHz}
             step={0.5}
             digits={2}
@@ -3035,8 +3356,6 @@ export function TtsMake({
 }) {
   const status = useSyncExternalStore(subscribeTts, ttsStatus, ttsStatus);
   const file = job ? (job.path.split("/").pop() ?? job.path) : "";
-  const layers = voiceLayersOf(set);
-  const whole = layers.filter((l) => l.voiceWhole).length;
   return (
     <>
       <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
@@ -3110,8 +3429,8 @@ export function TtsMake({
       )}
       <p className="text-[0.65rem] leading-snug text-muted">
         {job?.kind === "text"
-          ? `The whole text through: the layers that say the phrase take each phrase in turn (the next once every copy has said it, and its silence), ${whole ? `and the ${whole} reading the whole text go through it at their own speeds, drifting apart` : "and a layer set to read the whole text goes through it at its own speed"}; then it is saved as ${TEXT_FOLDER}/<text>.tts.wav and loops. `
-          : `This phrase with every layer, once round (till the slowest copy has said it, and its silence); the faster copies say it again till then. Saved as ${PHRASE_FOLDER}/<phrase>.tts.wav, then it loops. `}
+          ? `The whole text through: the main voice (★) reads it phrase after phrase, each saying and its silence; every other voice reads the whole text by itself, at its own speed, round and round, never waiting for another (as long as the main voice's read, or the slowest copy's if longer). The main voice is never reversed. Saved as ${TEXT_FOLDER}/<text>.tts.wav, then it loops. `
+          : `This phrase with every layer, once round (till the slowest copy has said it, and its silence); the faster copies say it again till then; the main voice is never reversed. Saved as ${PHRASE_FOLDER}/<phrase>.tts.wav, then it loops. `}
         Float32: values above 1 are kept (volumes above 1 make them). One channel all the way (a
         layer's turning is live only), so it is made, saved and looped lighter; the final export
         then makes the two-channel file from it, at the very end: the same both sides, or bridged
@@ -3172,6 +3491,25 @@ export function StereoChoices({
   );
   return (
     <>
+      {!bridging && (
+        <Ask
+          text="Its two channels"
+          info={
+            <>
+              <p>
+                The final export makes the finished one-channel .tts.wav into a two-channel file,
+                nothing mixed again.
+              </p>
+              <p>The same both sides: the one channel on the left and on the right, as it is.</p>
+              <p>
+                Bridged: the right side is the left's opposite (every sample times −1), as a bridged
+                amplifier is driven. On headphones it sounds wide, inside the head; mixed back to
+                one channel the two sides cancel out.
+              </p>
+            </>
+          }
+        />
+      )}
       {!bridging &&
         radio(
           "Its two channels",
@@ -3186,6 +3524,26 @@ export function StereoChoices({
         label="Turned, at the end"
         on={set.ttsTurn}
         flip={() => setOpt({ ttsTurn: !set.ttsTurn })}
+        info={
+          <>
+            <p>
+              The two-channel file turned as it is made, one of three ways (the engines' own sums):
+            </p>
+            <p>
+              Bridge rotation (the expand engine's): the right side is the left turned by an angle
+              at every pitch (a Hilbert filter, exact above about 20 Hz), the angle going round 360°
+              so many times a second from the starting angle. 180° is the plain bridge (the right
+              the left's opposite), 0° the same both sides.
+            </p>
+            <p>
+              Left-right: equal power, from ear to ear and back (in the middle 0.707 each side).
+            </p>
+            <p>
+              8D (legion9's): each side's loudness rises and falls by its own curve, the left by the
+              cosine, the right by the sine, so it seems to go round the head.
+            </p>
+          </>
+        }
       />
       {set.ttsTurn && (
         <>
@@ -3231,6 +3589,12 @@ export function StereoChoices({
             <>
               <Num
                 label="Turns a second · BRIDGE_ROTATION_HZ"
+                info={
+                  <p>
+                    How many times a second the right side's angle goes round 360° (36.9 to start).
+                    Below 0 it turns the other way; 0 holds it at the starting angle.
+                  </p>
+                }
                 value={set.bridgeHz}
                 step={0.1}
                 digits={2}
@@ -3238,6 +3602,12 @@ export function StereoChoices({
               />
               <Num
                 label="Starting angle (°; 180 bridged, 0 the same) · BRIDGE_START_DEG"
+                info={
+                  <p>
+                    Where the right side's angle starts: 180° the plain bridge (the left's
+                    opposite), 90° a quarter turn, 0° the same as the left.
+                  </p>
+                }
                 value={set.bridgeStartDeg}
                 step={15}
                 digits={0}
@@ -3247,6 +3617,13 @@ export function StereoChoices({
                 label="Dual: + a held duplicate · BRIDGE_DUAL_MIX"
                 on={set.bridgeDual}
                 flip={() => setOpt({ bridgeDual: !set.bridgeDual })}
+                info={
+                  <p>
+                    The turning right side mixed with a held one that does not turn (the plain
+                    bridge), each by its weight, their sum times the amount below: the turning moves
+                    around a steady bridged image.
+                  </p>
+                }
               />
               {set.bridgeDual && (
                 <>
@@ -3291,7 +3668,7 @@ export function StereoChoices({
 }
 
 /** A whole text pre-rendered: how far it is, or that it runs by itself (the phone app). */
-function RenderLine() {
+function RenderLine({ auto }: { auto: boolean }) {
   const r = useSyncExternalStore(subscribeRender, renderStatus, renderStatus);
   return (
     <div className="space-y-1" role="status">
@@ -3304,23 +3681,27 @@ function RenderLine() {
         {r.busy
           ? `Rendering the whole text, ${Math.floor(r.part * 100)}%: ${r.note} Till it is ready, taps move the phrases.`
           : r.playing
-            ? "Rendered: it runs by itself. The main voice (layer 1's first) moves the phrases, each a rep; a tap, ‹ ›, the window or the reader jumps it there."
+            ? auto
+              ? "Rendered: the main voice reads phrase after phrase by itself, each a rep; every other voice reads the whole text by itself, all the time. A tap, ‹ ›, the window or the reader moves the main voice there."
+              : "Rendered: the main voice says the phrase, then waits for your tap; every other voice reads the whole text by itself, all the time."
             : r.note ||
-              "Rendered in the background with the robot voice on (the Android app), then it runs by itself; till then, taps."}
+              "Made in the background with the robot voice on (the Android app); till it is ready, the live voice goes on, phrase by phrase as you tap."}
       </p>
     </div>
   );
 }
 
 /** On the card: the whole text being rendered (how far), or running by itself. */
-function RenderBadge() {
+function RenderBadge({ auto }: { auto: boolean }) {
   const r = useSyncExternalStore(subscribeRender, renderStatus, renderStatus);
   if (!r.busy && !r.playing) return null;
   return (
     <span className="text-[0.65rem] text-gold" role="status">
       {r.busy
         ? `Rendering the whole text: ${Math.floor(r.part * 100)}% (taps move it till then)`
-        : "▶ Runs by itself: the main voice moves the phrases"}
+        : auto
+          ? "▶ Runs by itself: the main voice moves the phrases"
+          : "▶ The main voice says each phrase, then waits for your tap"}
     </span>
   );
 }

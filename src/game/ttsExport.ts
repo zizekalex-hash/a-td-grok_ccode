@@ -31,6 +31,7 @@ import {
   reverseMix,
   type TtsLayer,
   type TtsMixer,
+  type TtsPlan,
   type TtsSource,
 } from "@/game/ttsRender";
 import {
@@ -57,8 +58,6 @@ export interface TtsJob {
   path: string;
   /** Its sample rate (Hz). */
   rate: number;
-  /** A render: past this size at its rate, made at half the rate (not below 24 kHz). */
-  fitBytes?: number;
 }
 
 export interface TtsMade {
@@ -164,6 +163,113 @@ export function sizeOf(bytes: number): string {
 
 const pause = () => new Promise<void>((r) => setTimeout(r, 0));
 
+/** A plan being mixed: the mixer, and its next piece made (the sources it starts read first). */
+export interface TtsMixing {
+  mix: TtsMixer;
+  pull(len: number): Promise<Float32Array>;
+}
+
+/** Every heard layer's sayings, said: their lengths, and mixers of plans made of them. */
+interface Voices {
+  layers: TtsLayer[];
+  lens: number[][];
+  mixer(plan: TtsPlan, rate: number): TtsMixing;
+}
+
+/**
+ * Each phrase said once for each way of saying it (voice, rate, pitch: layers
+ * alike share theirs), its length kept and its sound read again as a mix comes
+ * to it (the ones read last are kept), so a long text never sits in memory at
+ * once. A saying gone from the phone's cache meanwhile is said again. Each
+ * layer's reversed copies (its sayings with their time-reversed selves, half
+ * and half) are made as they are played; the main voice is never reversed.
+ */
+async function sayAll(
+  job: TtsJob,
+  set: RehearseSettings,
+  deps: TtsDeps,
+  step: (note: string, part: number) => void,
+  stopped: () => boolean,
+): Promise<Voices> {
+  // The layers heard (muted ones left out); the first holds the main voice.
+  const all = heardVoiceLayers(set);
+  if (!all.length) throw new Error("Every voice layer is off: turn one on");
+  const n = job.phrases.length;
+  const layers: TtsLayer[] = all.map((l) => ({ shape: voiceShapeOf(l) }));
+  const sayKey = (l: (typeof all)[number]) =>
+    JSON.stringify([l.voiceName, l.voiceRate, l.voicePitch]);
+  const keys = [...new Set(all.map(sayKey))];
+  const voiceOf = all.map((l) => keys.indexOf(sayKey(l)));
+  const says = keys.map((_, v) => {
+    const l = all[voiceOf.indexOf(v)]!;
+    return {
+      voiceEngine: set.voiceEngine,
+      voiceName: l.voiceName,
+      voiceRate: l.voiceRate,
+      voicePitch: l.voicePitch,
+    };
+  });
+  const urls: string[][] = keys.map(() => []);
+  const lensOf: number[][] = keys.map(() => []);
+  let said = 0;
+  for (let v = 0; v < keys.length; v++) {
+    for (let i = 0; i < n; i++) {
+      if (stopped()) throw new Error(TTS_STOPPED);
+      step(
+        `Saying phrase ${(i + 1).toLocaleString()} of ${n.toLocaleString()}${keys.length > 1 ? ` (voice ${v + 1} of ${keys.length})` : ""}…`,
+        said / (n * keys.length),
+      );
+      const url = await deps.say(job.phrases[i]!, says[v]!);
+      const src = await load(url);
+      urls[v]![i] = url;
+      lensOf[v]![i] = src.length / src.rate;
+      said += 1;
+    }
+  }
+  const sourceOf = async (v: number, i: number, reversed: boolean): Promise<TtsSource> => {
+    let src: TtsSource;
+    try {
+      src = await load(urls[v]![i]!);
+    } catch {
+      urls[v]![i] = await deps.say(job.phrases[i]!, says[v]!);
+      src = await load(urls[v]![i]!);
+    }
+    return reversed ? reverseMix(src) : src;
+  };
+  // Reversed: as its layer is set, but never the main voice.
+  const reversed = (li: number, main: boolean) => !main && all[li]!.voiceReverse;
+  return {
+    layers,
+    lens: all.map((_, li) => lensOf[voiceOf[li]!]!),
+    mixer(plan, rate) {
+      const ready = new Map<number, TtsSource>();
+      const keyOf = (li: number, p: number, main: boolean) =>
+        (voiceOf[li]! * n + p) * 2 + (reversed(li, main) ? 1 : 0);
+      const mix = ttsMixer(
+        plan,
+        layers,
+        (li, p, main) => ready.get(keyOf(li, p, main)) ?? null,
+        rate,
+      );
+      return {
+        mix,
+        async pull(len) {
+          ready.clear();
+          for (const p of mix.ahead(len)) {
+            const main = !!p.main;
+            const k = keyOf(p.layer, p.phrase, main);
+            if (!ready.has(k))
+              ready.set(k, await sourceOf(voiceOf[p.layer]!, p.phrase, reversed(p.layer, main)));
+          }
+          const out = mix.next(len);
+          ready.clear();
+          return out;
+        },
+      };
+    },
+  };
+}
+
 /**
  * Makes the job's .tts.wav from Rehearse's voice settings (every layer). step:
  * what it is doing and how far (0..1). stopped: asked to stop (it throws
@@ -198,89 +304,26 @@ export async function makeTts(
         stopped,
       )
     : null;
-  let mix: TtsMixer | null = null;
-  let make: (() => TtsMixer) | null = null;
-  // The next piece of a mix: the sources of the sayings it starts read first.
-  let pull: (m: TtsMixer, len: number) => Promise<Float32Array> = async (m, len) => m.next(len);
+  let mixer: TtsMixing | null = null;
+  let remix: (() => TtsMixing) | null = null;
   let sayings = 0;
   let skipped = 0;
   let turns: number[] = [0];
-  let rate = job.rate;
+  const rate = job.rate;
   if (withVoice) {
-    // The layers heard (muted ones left out); the first leads.
-    const all = heardVoiceLayers(set);
-    if (!all.length) throw new Error("Every voice layer is off: turn one on");
-    const layers: TtsLayer[] = all.map((l) => ({ shape: voiceShapeOf(l), whole: l.voiceWhole }));
-    // Each way of saying it (voice, rate, pitch, reversed or not) once: layers alike share their sayings.
-    const sayKey = (l: (typeof all)[number]) =>
-      JSON.stringify([l.voiceName, l.voiceRate, l.voicePitch, l.voiceReverse]);
-    const keys = [...new Set(all.map(sayKey))];
-    const voiceOf = all.map((l) => keys.indexOf(sayKey(l)));
-    const firstOf = keys.map((_, v) => all[voiceOf.indexOf(v)]!);
-    const says = firstOf.map((l) => ({
-      voiceEngine: set.voiceEngine,
-      voiceName: l.voiceName,
-      voiceRate: l.voiceRate,
-      voicePitch: l.voicePitch,
-    }));
-    // Each saying's address and length (s). Its sound is read again when the mix comes to it
-    // (the ones read last are kept): a long text never sits in memory all at once.
-    const urls: string[][] = keys.map(() => []);
-    const lensOf: number[][] = keys.map(() => []);
-    let said = 0;
-    for (let v = 0; v < keys.length; v++) {
-      for (let i = 0; i < n; i++) {
-        if (stopped()) throw new Error(TTS_STOPPED);
-        step(
-          `Saying phrase ${(i + 1).toLocaleString()} of ${n.toLocaleString()}${keys.length > 1 ? ` (voice ${v + 1} of ${keys.length})` : ""}…`,
-          P.say(said / (n * keys.length)),
-        );
-        const url = await deps.say(job.phrases[i]!, says[v]!);
-        const src = await load(url);
-        urls[v]![i] = url;
-        lensOf[v]![i] = src.length / src.rate;
-        said += 1;
-      }
-    }
-    const lens = all.map((_, li) => lensOf[voiceOf[li]!]!);
-    const plan = ttsPlan(layers, lens, job.kind === "text", set.voiceLead);
+    const vs = await sayAll(job, set, deps, (note, part) => step(note, P.say(part)), stopped);
+    const plan = ttsPlan(vs.layers, vs.lens, job.kind === "text");
     turns = plan.turns;
     if (!plan.plays.length || plan.total <= 0)
       throw new Error("Nothing to make: every copy is silent, or left out");
     sayings = plan.plays.length;
     skipped = plan.skipped;
-    // A render too long for its rate: at half (not below 24 kHz), so it stays a size the phone keeps.
-    if (job.fitBytes && !L)
-      while (rate / 2 >= 24_000 && floatWavBytes(Math.ceil(plan.total * rate), 1) > job.fitBytes)
-        rate /= 2;
-    // A saying's sound (reversed: with its time-reversed copy, half and half). Gone from the
-    // phone's cache meanwhile (a very long text): said again.
-    const sourceOf = async (v: number, i: number): Promise<TtsSource> => {
-      let src: TtsSource;
-      try {
-        src = await load(urls[v]![i]!);
-      } catch {
-        urls[v]![i] = await deps.say(job.phrases[i]!, says[v]!);
-        src = await load(urls[v]![i]!);
-      }
-      return firstOf[v]!.voiceReverse ? reverseMix(src) : src;
-    };
-    const ready = new Map<number, TtsSource>();
-    const keyOf = (li: number, p: number) => voiceOf[li]! * n + p;
-    make = () => ttsMixer(plan, layers, (li, p) => ready.get(keyOf(li, p)) ?? null, rate);
-    pull = async (m, len) => {
-      ready.clear();
-      for (const p of m.ahead(len)) {
-        const k = keyOf(p.layer, p.phrase);
-        if (!ready.has(k)) ready.set(k, await sourceOf(voiceOf[p.layer]!, p.phrase));
-      }
-      const out = m.next(len);
-      ready.clear();
-      return out;
-    };
-    mix = make();
+    remix = () => vs.mixer(plan, rate);
+    mixer = remix();
   }
-  const frames = mix ? mix.frames : Math.max(1, Math.round(ln(L!, "MATRIX_ONLY_SEC") * rate));
+  const frames = mixer
+    ? mixer.mix.frames
+    : Math.max(1, Math.round(ln(L!, "MATRIX_ONLY_SEC") * rate));
   const seconds = frames / rate;
   // One channel all the way: two only at the very end (the final export, from this file).
   const bytes = floatWavBytes(frames, 1);
@@ -292,15 +335,15 @@ export async function makeTts(
   // With the matrix: the voice's peak found first, so it sits at its own level on top.
   const dual = L ? dualCfg(L) : null;
   let scale = 1;
-  if (L && make) {
-    const m1 = make();
+  if (L && remix) {
+    const m1 = remix();
     let peak = 0;
-    while (m1.at() < m1.frames) {
+    while (m1.mix.at() < m1.mix.frames) {
       if (stopped()) throw new Error(TTS_STOPPED);
-      peak = Math.max(peak, peakOf(voiceStep(await pull(m1, piece), dual)));
+      peak = Math.max(peak, peakOf(voiceStep(await m1.pull(piece), dual)));
       step(
-        `The voice's level: ${Math.floor((m1.at() / m1.frames) * 100)}%…`,
-        P.level(m1.at() / m1.frames),
+        `The voice's level: ${Math.floor((m1.mix.at() / m1.mix.frames) * 100)}%…`,
+        P.level(m1.mix.at() / m1.mix.frames),
       );
       await pause();
     }
@@ -317,7 +360,7 @@ export async function makeTts(
     while (at < frames) {
       if (stopped()) throw new Error(TTS_STOPPED);
       const len = Math.min(piece, frames - at);
-      const v = mix ? await pull(mix, len) : null;
+      const v = mixer ? await mixer.pull(len) : null;
       if (v && L) {
         voiceStep(v, dual);
         for (let i = 0; i < v.length; i++) v[i] = guard(v[i]! * scale);
@@ -536,32 +579,118 @@ export async function startStereo(ttsPath: string, set: RehearseSettings): Promi
 
 // ---- A whole text rendered for the app itself: then it runs by itself ----
 
-/** Renders at this rate: what the phone plays (the export has its own). */
+/** The other voices' track: at this rate (what the phone plays; the export has its own). */
 export const RENDER_RATE = 48_000;
-/** Past this, a render is made at 24 kHz (a text of over 3 hours said: half the size). */
+/** The main voice's track: one voice as it is said needs no more. */
+export const RENDER_MAIN_RATE = 24_000;
+/** Past this, a track is made at 24 kHz (a text of over 3 hours said: half the size). */
 export const RENDER_FIT_BYTES = 2 * 1024 ** 3;
 
+/** A track rendered into the app's cache. */
+export interface RenderTrack {
+  name: string;
+  frames: number;
+  rate: number;
+}
+
+export interface RenderMade {
+  /** The main voice alone, phrase after phrase; turns: where each phrase starts (s). */
+  main: RenderTrack & { turns: number[] };
+  /** Every other voice, each reading the whole text by itself (none: only the main voice). */
+  back: RenderTrack | null;
+}
+
+/** A plan mixed into a file, a piece at a time (each sample guarded): its frames. */
+async function writeMix(
+  w: FolderWriter,
+  m: TtsMixing,
+  rate: number,
+  step: (note: string, part: number) => void,
+  stopped: () => boolean,
+): Promise<number> {
+  const frames = m.mix.frames;
+  const bytes = floatWavBytes(frames, 1);
+  if (bytes > MAX_WAV_BYTES)
+    throw new Error(
+      `It would be ${sizeOf(bytes)} (${clockOf(frames / rate)}): over a .wav's 4 GB. Fewer or slower copies.`,
+    );
+  const piece = Math.max(1, Math.floor(PIECE_BYTES / 4));
+  try {
+    await w.write(floatWavHeader(frames, 1, rate));
+    let at = 0;
+    while (at < frames) {
+      if (stopped()) throw new Error(TTS_STOPPED);
+      const len = Math.min(piece, frames - at);
+      const v = guardAll(await m.pull(len));
+      await w.write(new Uint8Array(v.buffer, v.byteOffset, v.byteLength));
+      at += len;
+      step(`${Math.floor((at / frames) * 100)}% of ${clockOf(frames / rate)}…`, at / frames);
+      await pause();
+    }
+    await w.save("", 1, 0);
+  } catch (e) {
+    await w.drop();
+    throw e;
+  }
+  return frames;
+}
+
 /**
- * The whole text's voice made into the app's cache (not the folder), as the
- * export makes it (each phrase said once per voice, every layer heard, its
- * turns led as set): its frames and where each phrase starts. The phone app.
+ * The whole text's voice made into the app's cache (not the folder), two
+ * tracks: the main voice alone, phrase after phrase (where each phrase starts:
+ * it moves the text on, or says one and waits), and every other voice, each
+ * copy reading the whole text by itself, round and round (it plays all the
+ * time). Each phrase said once per voice. The phone app.
  */
 export async function renderText(
   phrases: string[],
   set: RehearseSettings,
-  name: string,
+  names: { main: string; back: string },
   step: (note: string, part: number) => void,
   stopped: () => boolean,
-): Promise<{ name: string; turns: number[]; frames: number; rate: number }> {
-  const w = await renderWriter(name);
-  if (!w) throw new Error("Rendering a whole text is in the Android app");
-  const made = await makeTts(
-    { kind: "text", phrases, path: name, rate: RENDER_RATE, fitBytes: RENDER_FIT_BYTES },
+): Promise<RenderMade> {
+  const wMain = await renderWriter(names.main);
+  if (!wMain) throw new Error("Rendering a whole text is in the Android app");
+  const job: TtsJob = { kind: "text", phrases, path: names.main, rate: RENDER_MAIN_RATE };
+  const vs = await sayAll(
+    job,
     set,
-    step,
+    { say: voiceFile, writer: async () => wMain },
+    (note, part) => step(note, part * 0.4),
     stopped,
-    { say: voiceFile, writer: async () => w },
-    null,
   );
-  return { name, turns: made.turns, frames: made.frames, rate: made.rate };
+  const mainPlan = ttsPlan(vs.layers, vs.lens, true, "main");
+  const backPlan = ttsPlan(vs.layers, vs.lens, true, "others");
+  if (mainPlan.total <= 0) throw new Error("Nothing to say");
+  const mainFrames = await writeMix(
+    wMain,
+    vs.mixer(mainPlan, RENDER_MAIN_RATE),
+    RENDER_MAIN_RATE,
+    (note, part) =>
+      step(`The main voice: ${note}`, 0.4 + part * (backPlan.plays.length ? 0.1 : 0.55)),
+    stopped,
+  );
+  let back: RenderTrack | null = null;
+  if (backPlan.plays.length) {
+    let rate = RENDER_RATE;
+    while (
+      rate / 2 >= 24_000 &&
+      floatWavBytes(Math.ceil(backPlan.total * rate), 1) > RENDER_FIT_BYTES
+    )
+      rate /= 2;
+    const wBack = await renderWriter(names.back);
+    if (!wBack) throw new Error("Rendering a whole text is in the Android app");
+    const frames = await writeMix(
+      wBack,
+      vs.mixer(backPlan, rate),
+      rate,
+      (note, part) => step(`The other voices: ${note}`, 0.5 + part * 0.45),
+      stopped,
+    );
+    back = { name: names.back, frames, rate };
+  }
+  return {
+    main: { name: names.main, frames: mainFrames, rate: RENDER_MAIN_RATE, turns: mainPlan.turns },
+    back,
+  };
 }

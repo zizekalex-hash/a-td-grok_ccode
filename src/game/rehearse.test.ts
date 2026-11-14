@@ -832,9 +832,9 @@ describe("rehearse: layers on or off, reversed, and who leads", () => {
     assert.equal(back.voiceLayers[0]!.voiceOn, false);
     assert.equal(back.voiceLayers[0]!.voiceCopies, 4);
   });
-  it("reversed and the turn's lead: kept, checked, on by default as before", () => {
+  it("reversed, and the main voice moving on by itself: kept, checked", () => {
     const d = defaultSettings();
-    assert.deepEqual([d.voiceOn, d.voiceReverse, d.voiceLead], [true, false, "captain"]);
+    assert.deepEqual([d.voiceOn, d.voiceReverse, d.voiceAuto], [true, false, true]);
     let s = { ...d, ...copyVoiceLayer(d, 0) };
     s = { ...s, ...setVoiceLayer(s, 1, { voiceReverse: true }) };
     assert.deepEqual(
@@ -842,20 +842,22 @@ describe("rehearse: layers on or off, reversed, and who leads", () => {
       [false, true],
     );
     const ok = loadRehearse(
-      JSON.parse(JSON.stringify({ settings: { ...s, voiceLead: "all", voiceReverse: true } })),
+      JSON.parse(JSON.stringify({ settings: { ...s, voiceAuto: false, voiceReverse: true } })),
     ).settings;
-    assert.equal(ok.voiceLead, "all");
+    assert.equal(ok.voiceAuto, false);
     assert.equal(ok.voiceReverse, true);
     assert.equal(ok.voiceLayers[0]!.voiceReverse, true);
     const bad = loadRehearse({
       settings: {
-        voiceLead: "loudest",
+        voiceLead: "all",
+        voiceAuto: "yes",
         voiceOn: "no",
         voiceReverse: 1,
         voiceLayers: [{ voiceOn: 0, voiceReverse: "yes" }],
       },
     }).settings;
-    assert.deepEqual([bad.voiceLead, bad.voiceOn, bad.voiceReverse], ["captain", true, false]);
+    assert.deepEqual([bad.voiceAuto, bad.voiceOn, bad.voiceReverse], [true, true, false]);
+    assert.equal("voiceLead" in bad, false, "the old turn's lead is gone");
     // Saved before there were switches: on, not reversed.
     assert.deepEqual(
       [bad.voiceLayers[0]!.voiceOn, bad.voiceLayers[0]!.voiceReverse],

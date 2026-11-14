@@ -132,11 +132,12 @@ export interface RehearseSettings {
   /** The first layer's every saying duplicated, the copy time-reversed, the two mixed half and half. */
   voiceReverse: boolean;
   /**
-   * A phrase's turn (a whole text made into sound, and run by itself): till the
-   * main voice (the first layer's first copy) has said it ("captain"), or till
-   * every copy of every layer has ("all").
+   * A whole text pre-rendered: the main voice (the first heard layer's first
+   * copy) moves on to the next phrase by itself once it has said one and its
+   * silence (a rep, as a tap); off, it says the phrase once and waits for the
+   * tap. Every other voice plays on all the time either way.
    */
-  voiceLead: VoiceLead;
+  voiceAuto: boolean;
   /** The voice made into a .wav (a .tts.wav): its sample rate (Hz). */
   ttsRate: TtsRate;
   /** The phrase's (or text's) .tts.wav looped as it is, at this volume. */
@@ -285,7 +286,7 @@ export function defaultSettings(): RehearseSettings {
     voiceWhole: false,
     voiceOn: true,
     voiceReverse: false,
-    voiceLead: "captain",
+    voiceAuto: true,
     ttsRate: 48_000,
     ttsLoop: true,
     ttsVolume: 1,
@@ -419,7 +420,7 @@ export function loadRehearse(data: unknown): RehearseState {
   if (typeof t.voiceWhole === "boolean") u.voiceWhole = t.voiceWhole;
   if (typeof t.voiceOn === "boolean") u.voiceOn = t.voiceOn;
   if (typeof t.voiceReverse === "boolean") u.voiceReverse = t.voiceReverse;
-  if (t.voiceLead === "captain" || t.voiceLead === "all") u.voiceLead = t.voiceLead;
+  if (typeof t.voiceAuto === "boolean") u.voiceAuto = t.voiceAuto;
   if (TTS_RATES.includes(t.ttsRate as TtsRate)) u.ttsRate = t.ttsRate as TtsRate;
   if (typeof t.ttsLoop === "boolean") u.ttsLoop = t.ttsLoop;
   u.ttsVolume = clampAmp(num(t.ttsVolume, u.ttsVolume));
@@ -1293,8 +1294,6 @@ export type VoiceLayer = VoiceShape & {
   /** Each saying + its time-reversed copy, half and half. */
   voiceReverse: boolean;
 };
-
-export type VoiceLead = "captain" | "all";
 
 /** A saved layer, each value checked. */
 export function loadVoiceLayer(raw: unknown): VoiceLayer {

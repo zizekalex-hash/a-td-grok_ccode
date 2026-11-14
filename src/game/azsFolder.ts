@@ -22,7 +22,15 @@ interface AzsFolderApi {
   }): Promise<{ file: string; size: number }>;
   cacheDrop(o: { name: string; dir?: "render" }): Promise<void>;
   renderHas(o: { name: string }): Promise<{ has: boolean }>;
-  renderPlay(o: { name: string; volume: number; from: number; turns: number[] }): Promise<void>;
+  renderPlay(o: {
+    name: string;
+    volume: number;
+    from: number;
+    turns: number[];
+    until?: number;
+    once?: boolean;
+  }): Promise<void>;
+  renderBack(o: { name: string; volume: number }): Promise<void>;
   renderStop(): Promise<void>;
   saveCached(o: {
     name: string;
@@ -266,12 +274,39 @@ export async function renderHas(name: string): Promise<boolean> {
   }
 }
 
-/** Plays a render from frame `from` (turns: each phrase's first frame); a new call jumps. */
-export async function renderPlay(name: string, from: number, turns: number[]): Promise<boolean> {
+/**
+ * Plays a render's main voice from frame `from` (turns: each phrase's first
+ * frame), round and round; a new call jumps. once: from `from` to `until` one
+ * time (a phrase said), then quiet.
+ */
+export async function renderPlay(
+  name: string,
+  from: number,
+  turns: number[],
+  once?: { until: number },
+): Promise<boolean> {
   const p = await folderPlugin();
   if (!p) return false;
   try {
-    await p.api.renderPlay({ name, volume: 1, from, turns });
+    await p.api.renderPlay({
+      name,
+      volume: 1,
+      from,
+      turns,
+      ...(once ? { until: once.until, once: true } : {}),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A render's other voices, round and round all the time (null: they stop). */
+export async function renderBack(name: string | null): Promise<boolean> {
+  const p = await folderPlugin();
+  if (!p) return false;
+  try {
+    await p.api.renderBack({ name: name ?? "", volume: 1 });
     return true;
   } catch {
     return false;

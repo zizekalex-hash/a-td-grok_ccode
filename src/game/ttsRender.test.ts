@@ -22,7 +22,7 @@ const shape = (s: Partial<VoiceShape>): VoiceShape => ({
   voiceGapMs: 0,
   ...s,
 });
-const layer = (s: Partial<VoiceShape>, whole = false): TtsLayer => ({ shape: shape(s), whole });
+const layer = (s: Partial<VoiceShape>): TtsLayer => ({ shape: shape(s) });
 const near = (a: number, b: number, d = 1e-6) =>
   assert.ok(Math.abs(a - b) <= d, `${a} is not near ${b}`);
 const starts = (p: TtsPlan) => p.plays.map((x) => +x.t0.toFixed(4));
@@ -67,8 +67,8 @@ describe("tts plan: one phrase", () => {
     // 1, 4, 16, 64, 256 kept; 1024 left out.
     assert.equal(p.skipped, 1);
   });
-  it("on one phrase, a whole-text layer says the phrase too", () => {
-    const p = ttsPlan([layer({}), layer({ voiceCopies: 2 }, true)], [[1], [2]], false);
+  it("several layers: every one says it, till the slowest is through", () => {
+    const p = ttsPlan([layer({}), layer({ voiceCopies: 2 })], [[1], [2]], false);
     near(p.total, 2);
     // The first loops in the 2 s turn (twice); the other two copies say it once.
     assert.equal(p.plays.length, 2 + 2);
@@ -76,7 +76,7 @@ describe("tts plan: one phrase", () => {
 });
 
 describe("tts plan: a whole text", () => {
-  it("the phrases in turn: each turn till every layer has said it", () => {
+  it("the main voice reads phrase after phrase; every other voice reads it all by itself", () => {
     const p = ttsPlan(
       [layer({ voiceGapMs: 500 }), layer({ voiceGapMs: 0, voiceLoop: false })],
       [
@@ -85,84 +85,72 @@ describe("tts plan: a whole text", () => {
       ],
       true,
     );
-    // Turns: max(1.5, 3) = 3, then max(2.5, 0.5) = 2.5.
-    near(p.total, 5.5);
-    const second = p.plays.filter((x) => x.phrase === 1);
-    assert.ok(second.every((x) => x.t0 >= 3 - 1e-9));
-    assert.ok(p.plays.filter((x) => x.phrase === 0).every((x) => near(x.tEnd, 3) === undefined));
-    // The first layer loops in its 3 s turn: 0 and 1.5.
+    // The main voice: 1 + 0.5, then 2 + 0.5. The other layer reads the text through (3 + 0.5), once.
+    assert.deepEqual(p.turns, [0, 1.5]);
+    near(p.total, 4);
+    const main = p.plays.filter((x) => x.main);
     assert.deepEqual(
-      p.plays.filter((x) => x.layer === 0 && x.phrase === 0).map((x) => x.t0),
-      [0, 1.5],
+      main.map((x) => [x.layer, x.phrase, x.t0]),
+      [
+        [0, 0, 0],
+        [0, 1, 1.5],
+      ],
+    );
+    assert.deepEqual(
+      p.plays.filter((x) => !x.main).map((x) => [x.layer, x.phrase, x.t0]),
+      [
+        [1, 0, 0],
+        [1, 1, 3],
+      ],
     );
   });
-  it("a layer saying the whole text: each copy reads it through at its speed", () => {
-    const p = ttsPlan(
-      [layer({ voiceCopies: 2, voiceSpeedUp: 2, voiceGapMs: 500 }, true)],
-      [[1, 2]],
-      true,
-    );
-    // The text: 1.5 + 2.5 = 4 s; the fast copy reads it twice in that time.
+  it("its copies never wait: each reads the whole text at its speed, round and round", () => {
+    const one = [layer({ voiceCopies: 2, voiceSpeedUp: 2, voiceGapMs: 500 })];
+    const p = ttsPlan(one, [[1, 2]], true);
+    // The main voice reads it in 4 s; the ×2 copy reads it in 2 s, so twice meanwhile.
     near(p.total, 4);
     assert.deepEqual(starts(p), [0, 0, 0.75, 1.5, 2, 2.75]);
+    assert.deepEqual(
+      p.plays.filter((x) => !x.main).map((x) => x.speed),
+      [2, 2, 2, 2],
+    );
     const once = ttsPlan(
-      [layer({ voiceCopies: 2, voiceSpeedUp: 2, voiceGapMs: 500, voiceLoop: false }, true)],
+      [layer({ voiceCopies: 2, voiceSpeedUp: 2, voiceGapMs: 500, voiceLoop: false })],
       [[1, 2]],
       true,
     );
     assert.deepEqual(starts(once), [0, 0, 0.75, 1.5]);
   });
-  it("both kinds at once: as long as the longer", () => {
-    const p = ttsPlan(
-      [layer({}), layer({ voiceSpeedUp: 1, voiceRate: 1 }, true)],
-      [
-        [1, 1],
-        [3, 3],
-      ],
-      true,
-    );
-    near(p.total, 6);
-    const turns = p.plays.filter((x) => x.layer === 0);
+  it("a render's two tracks: the main voice alone, and all the others", () => {
+    const one = [layer({ voiceCopies: 2, voiceSpeedUp: 2, voiceGapMs: 500 })];
+    const main = ttsPlan(one, [[1, 2]], true, "main");
+    near(main.total, 4);
+    assert.deepEqual(main.turns, [0, 1.5]);
+    assert.ok(main.plays.every((x) => x.main));
+    assert.equal(main.plays.length, 2);
+    const others = ttsPlan(one, [[1, 2]], true, "others");
+    // As long as the slowest other copy's one read (2 s at ×2): it loops by itself.
+    near(others.total, 2);
+    assert.ok(others.plays.every((x) => !x.main));
+    assert.deepEqual(starts(others), [0, 0.75]);
+  });
+  it("a slower copy sets the length; the main voice alone has no others", () => {
+    const slow = ttsPlan([layer({ voiceCopies: 2, voiceSpeedUp: 0.5 })], [[1, 1]], true);
+    // The ×0.5 copy reads the 2 s text in 4 s.
+    near(slow.total, 4);
+    assert.deepEqual(slow.turns, [0, 1]);
+    const alone = ttsPlan([layer({})], [[2, 2, 2]], true);
+    near(alone.total, 6);
+    assert.deepEqual(starts(alone), [0, 2, 4]);
+    assert.equal(ttsPlan([layer({})], [[2, 2, 2]], true, "others").plays.length, 0);
+  });
+  it("one phrase: one turn, at 0; its main voice marked", () => {
+    const p = ttsPlan([layer({ voiceCopies: 3 }), layer({ voiceCopies: 2 })], [[2], [2]], false);
+    assert.deepEqual(p.turns, [0]);
     assert.deepEqual(
-      turns.map((x) => x.t0),
-      [0, 1],
+      p.plays.filter((x) => x.main).map((x) => [x.layer, x.t0]),
+      [[0, 0]],
     );
-  });
-  it("only whole-text layers: no turns", () => {
-    const p = ttsPlan([layer({}, true)], [[2, 2, 2]], true);
-    near(p.total, 6);
-    assert.deepEqual(starts(p), [0, 2, 4]);
-  });
-});
-
-describe("tts plan: who leads a phrase's turn", () => {
-  const two = [
-    layer({ voiceGapMs: 500 }),
-    layer({ voiceGapMs: 0, voiceLoop: false, voiceCopies: 2, voiceSpeedUp: 0.5 }),
-  ];
-  const lens = [
-    [1, 2],
-    [1, 1],
-  ];
-  it("every copy (all): the turn waits for the slowest", () => {
-    const p = ttsPlan(two, lens, true, "all");
-    // Phrase 1: max(1.5, 1 / 0.5 = 2) = 2; phrase 2: max(2.5, 2) = 2.5.
-    near(p.total, 4.5);
-    assert.deepEqual(p.turns, [0, 2]);
-  });
-  it("the main voice (captain): the first layer's first copy, its saying and gap", () => {
-    const p = ttsPlan(two, lens, true, "captain");
-    near(p.total, 1.5 + 2.5);
-    assert.deepEqual(p.turns, [0, 1.5]);
-    // The slower copy is cut where the main voice's turn ends.
-    assert.ok(p.plays.filter((x) => x.phrase === 0).every((x) => near(x.tEnd, 1.5) === undefined));
-  });
-  it("only layers reading the whole text: the turns where the first one reads each phrase", () => {
-    const p = ttsPlan([layer({ voiceGapMs: 250 }, true)], [[1, 2, 3]], true, "captain");
-    assert.deepEqual(p.turns, [0, 1.25, 3.5]);
-  });
-  it("one phrase: one turn, at 0", () => {
-    assert.deepEqual(ttsPlan([layer({})], [[2]], false, "captain").turns, [0]);
   });
 });
 
@@ -239,10 +227,10 @@ describe("tts mixer", () => {
     const ramp = new Float32Array(900).map((_, i) => Math.cos(i / 11));
     const layers = [
       layer({ voiceCopies: 3, voiceSpreadMs: 17, voiceSpeedUp: 1.5, voiceGapMs: 40 }),
-      layer({ voiceCopies: 2, voiceSpeedUp: 2 }, true),
+      layer({ voiceCopies: 2, voiceSpeedUp: 2 }),
     ];
     const lens = [Array(12).fill(0.09), Array(12).fill(0.09)];
-    const plan = ttsPlan(layers, lens, true, "captain");
+    const plan = ttsPlan(layers, lens, true);
     const all = ttsMixer(plan, layers, () => ttsSource(ramp, 10000), 8000).next(1e9);
     // Each piece: only the sources ahead() named are there; the same sound as at once.
     const m = ttsMixer(plan, layers, (l, p) => ready.get(`${l}:${p}`) ?? null, 8000);

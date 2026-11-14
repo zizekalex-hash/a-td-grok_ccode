@@ -15,8 +15,6 @@ export type { StereoKind };
 /** A layer as it is made into the file. */
 export interface TtsLayer {
   shape: VoiceShape;
-  /** It reads the whole text through (its copies drift apart over it), not each phrase in turn. */
-  whole: boolean;
 }
 
 /** One saying of one phrase: a copy of a layer, from t0 (s) at its speed, cut off at tEnd. */
@@ -27,6 +25,8 @@ export interface TtsPlay {
   speed: number;
   gain: number;
   tEnd: number;
+  /** The main voice (the first layer's first copy): never reversed. */
+  main?: boolean;
 }
 
 export interface TtsPlan {
@@ -82,19 +82,32 @@ function roundOf(copies: Copy[], span: number): number {
 const EPS = 1e-9;
 
 /**
+ * Which sayings a plan holds: all of them (the .tts.wav), the main voice alone
+ * (a render's main track), or every other voice (a render's backing track).
+ */
+export type TtsPart = "all" | "main" | "others";
+
+/**
  * The sayings, in time. lens[layer][phrase]: each phrase's said length (s), as
- * that layer's voice says it. text false: one phrase, every layer says it.
- * text true: the layers that say the phrase take the phrases in turn (a
- * phrase's turn lasts till every one of them has said it, all its copies, and
- * its gap), and those that say the whole text read it through, each copy at its
- * speed. A layer that loops says it again till the turn (or its slowest copy's
- * read) is over; one that does not, once. Every saying has its gap after it.
+ * that layer's voice says it; layers: the ones heard, the first holding the
+ * main voice (its first copy).
+ *
+ * text false: one phrase, every layer says it, once round: till the slowest
+ * copy has said it (and its silence), the faster ones saying it again till
+ * then if they loop.
+ *
+ * text true: the main voice reads the text phrase after phrase, each saying
+ * and its silence (its turns: where each phrase starts); every other copy, of
+ * every layer, reads the whole text by itself at its own speed, from its own
+ * start, round and round if its layer loops (else once), never waiting for
+ * another. It is as long as the longer of the main voice's read and the
+ * slowest other copy's one read.
  */
 export function ttsPlan(
   layers: TtsLayer[],
   lens: number[][],
   text: boolean,
-  lead: "captain" | "all" = "all",
+  part: TtsPart = "all",
 ): TtsPlan {
   const n = lens[0]?.length ?? 0;
   const plays: TtsPlay[] = [];
@@ -102,7 +115,7 @@ export function ttsPlan(
   const each = layers.map((l, li) => {
     const c = copiesOf(l.shape);
     skipped += c.skipped;
-    return { li, shape: l.shape, whole: text && l.whole, copies: c.copies };
+    return { li, shape: l.shape, copies: c.copies };
   });
   const push = (p: TtsPlay) => {
     if (p.gain <= 0) return;
@@ -114,71 +127,87 @@ export function ttsPlan(
   };
   const gapOf = (s: VoiceShape) => s.voiceGapMs / 1000;
   const lenOf = (li: number, i: number) => Math.max(0, lens[li]?.[i] ?? 0);
+  // The main voice: the first layer's first copy (at its start, as it is said).
+  const main = each[0];
+  const isMain = (l: (typeof each)[number], k: number) => l === main && k === 0;
 
-  // The phrases in turn. A turn lasts till every one of them has said it, or (lead "captain")
-  // till the main voice has: the first layer's first copy, its saying and its gap.
-  const turns = each.filter((l) => !l.whole);
-  const captain = each[0];
-  const starts: number[] = [];
-  let t = 0;
-  for (let i = 0; i < n; i++) {
-    starts.push(t);
-    let slot = 0;
-    if (lead === "captain" && captain) slot = lenOf(captain.li, i) + gapOf(captain.shape);
-    else
-      for (const l of turns)
-        slot = Math.max(slot, roundOf(l.copies, lenOf(l.li, i) + gapOf(l.shape)));
-    const end = t + slot;
-    for (const l of turns) {
-      const span = lenOf(l.li, i) + gapOf(l.shape);
-      for (const c of l.copies) {
+  if (!text) {
+    // One phrase: every copy says it, till the slowest is through (and its silence).
+    let total = 0;
+    for (const l of each)
+      total = Math.max(total, roundOf(l.copies, lenOf(l.li, 0) + gapOf(l.shape)));
+    for (const l of each) {
+      const span = lenOf(l.li, 0) + gapOf(l.shape);
+      l.copies.forEach((c, k) => {
         const period = span / c.speed;
         for (let m = 0; ; m++) {
-          const t0 = t + c.at + m * period;
-          if (t0 >= end - EPS) break;
-          push({ layer: l.li, phrase: i, t0, speed: c.speed, gain: c.gain, tEnd: end });
+          const t0 = c.at + m * period;
+          if (t0 >= total - EPS) break;
+          push({
+            layer: l.li,
+            phrase: 0,
+            t0,
+            speed: c.speed,
+            gain: c.gain,
+            tEnd: total,
+            main: isMain(l, k),
+          });
           if (!l.shape.voiceLoop || period <= EPS) break;
         }
-      }
+      });
     }
-    t = end;
+    plays.sort((a, b) => a.t0 - b.t0);
+    return { plays, total, skipped, turns: n ? [0] : [] };
   }
-  let total = t;
 
-  // The whole text read through by each copy (from the top again, if it loops), till the slowest is through.
-  for (const l of each.filter((x) => x.whole)) {
-    const spans = Array.from({ length: n }, (_, i) => lenOf(l.li, i) + gapOf(l.shape));
+  // The main voice's read: phrase after phrase, each saying and its silence.
+  const turns: number[] = [];
+  let t = 0;
+  for (let i = 0; i < n; i++) {
+    turns.push(t);
+    if (main) t += lenOf(main.li, i) + gapOf(main.shape);
+  }
+  const mainEnd = t;
+  // Every other copy's one read through the whole text: where each phrase starts in it.
+  const reads = each.flatMap((l) => {
     const starts: number[] = [];
-    let L = 0;
-    for (const s of spans) {
-      starts.push(L);
-      L += s;
+    let len = 0;
+    for (let i = 0; i < n; i++) {
+      starts.push(len);
+      len += lenOf(l.li, i) + gapOf(l.shape);
     }
-    const R = roundOf(l.copies, L);
-    for (const c of l.copies) {
+    return l.copies.filter((_, k) => !isMain(l, k)).map((c) => ({ l, c, starts, len }));
+  });
+  const othersEnd = reads.reduce((m, r) => Math.max(m, r.c.at + r.len / r.c.speed), 0);
+  const end =
+    part === "main" ? mainEnd : part === "others" ? othersEnd : Math.max(mainEnd, othersEnd);
+  const mainCopy = main?.copies[0];
+  if (part !== "others" && main && mainCopy)
+    for (let i = 0; i < n; i++)
+      push({
+        layer: main.li,
+        phrase: i,
+        t0: turns[i]!,
+        speed: mainCopy.speed,
+        gain: mainCopy.gain,
+        tEnd: end,
+        main: true,
+      });
+  if (part !== "main")
+    for (const r of reads) {
       for (let m = 0; ; m++) {
-        const base = c.at + (m * L) / c.speed;
-        if (base >= R - EPS) break;
+        const base = r.c.at + (m * r.len) / r.c.speed;
+        if (base >= end - EPS) break;
         for (let i = 0; i < n; i++) {
-          const t0 = base + starts[i]! / c.speed;
-          if (t0 >= R - EPS) break;
-          push({ layer: l.li, phrase: i, t0, speed: c.speed, gain: c.gain, tEnd: R });
+          const t0 = base + r.starts[i]! / r.c.speed;
+          if (t0 >= end - EPS) break;
+          push({ layer: r.l.li, phrase: i, t0, speed: r.c.speed, gain: r.c.gain, tEnd: end });
         }
-        if (!l.shape.voiceLoop || L <= EPS) break;
+        if (!r.l.shape.voiceLoop || r.len <= EPS) break;
       }
     }
-    total = Math.max(total, R);
-  }
   plays.sort((a, b) => a.t0 - b.t0);
-  // No layer takes the phrases in turn: where the first layer's first copy reads each one.
-  if (!turns.length && captain) {
-    let at = 0;
-    for (let i = 0; i < n; i++) {
-      starts[i] = at;
-      at += lenOf(captain.li, i) + gapOf(captain.shape);
-    }
-  }
-  return { plays, total, skipped, turns: starts };
+  return { plays, total: end, skipped, turns };
 }
 
 /** A phrase as said: its samples (one channel) at its rate. */
@@ -250,7 +279,7 @@ interface Live {
 export function ttsMixer(
   plan: TtsPlan,
   layers: TtsLayer[],
-  source: (layer: number, phrase: number) => TtsSource | null,
+  source: (layer: number, phrase: number, main: boolean) => TtsSource | null,
   rate: number,
 ): TtsMixer {
   const frames = Math.max(0, Math.ceil(plan.total * rate - 1e-6));
@@ -282,7 +311,7 @@ export function ttsMixer(
         const js = Math.max(0, frameAt(p.t0));
         if (js >= b) break;
         next += 1;
-        const src = source(p.layer, p.phrase);
+        const src = source(p.layer, p.phrase, !!p.main);
         if (!src || !src.length || src.rate <= 0) continue;
         const k = p.speed * src.rate;
         const je = Math.min(frames, frameAt(Math.min(p.tEnd, p.t0 + src.length / k)));
