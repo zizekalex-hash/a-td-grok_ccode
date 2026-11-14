@@ -6,6 +6,7 @@ import {
   floatWavBytes,
   floatWavHeader,
   MAX_WAV_BYTES,
+  reverseMix,
   stereoFrom,
   ttsMixer,
   ttsPlan,
@@ -134,6 +135,45 @@ describe("tts plan: a whole text", () => {
   });
 });
 
+describe("tts plan: who leads a phrase's turn", () => {
+  const two = [
+    layer({ voiceGapMs: 500 }),
+    layer({ voiceGapMs: 0, voiceLoop: false, voiceCopies: 2, voiceSpeedUp: 0.5 }),
+  ];
+  const lens = [
+    [1, 2],
+    [1, 1],
+  ];
+  it("every copy (all): the turn waits for the slowest", () => {
+    const p = ttsPlan(two, lens, true, "all");
+    // Phrase 1: max(1.5, 1 / 0.5 = 2) = 2; phrase 2: max(2.5, 2) = 2.5.
+    near(p.total, 4.5);
+    assert.deepEqual(p.turns, [0, 2]);
+  });
+  it("the main voice (captain): the first layer's first copy, its saying and gap", () => {
+    const p = ttsPlan(two, lens, true, "captain");
+    near(p.total, 1.5 + 2.5);
+    assert.deepEqual(p.turns, [0, 1.5]);
+    // The slower copy is cut where the main voice's turn ends.
+    assert.ok(p.plays.filter((x) => x.phrase === 0).every((x) => near(x.tEnd, 1.5) === undefined));
+  });
+  it("only layers reading the whole text: the turns where the first one reads each phrase", () => {
+    const p = ttsPlan([layer({ voiceGapMs: 250 }, true)], [[1, 2, 3]], true, "captain");
+    assert.deepEqual(p.turns, [0, 1.25, 3.5]);
+  });
+  it("one phrase: one turn, at 0", () => {
+    assert.deepEqual(ttsPlan([layer({})], [[2]], false, "captain").turns, [0]);
+  });
+});
+
+describe("reversed, half and half", () => {
+  it("each sample with its mirror", () => {
+    const r = reverseMix(ttsSource(new Float32Array([1, 2, 3, 6]), 1000));
+    assert.equal(r.length, 4);
+    assert.deepEqual(Array.from(r.data.subarray(1, 5)), [3.5, 2.5, 2.5, 3.5]);
+  });
+});
+
 describe("tts mixer", () => {
   const flat = (v: number, n: number) => new Float32Array(n).fill(v);
   it("plays a saying at its gain, values above 1 kept", () => {
@@ -177,6 +217,7 @@ describe("tts mixer", () => {
       plays: [{ layer: 0, phrase: 0, t0: 0, speed: 2, gain: 1, tEnd: 1 }],
       total: 1,
       skipped: 0,
+      turns: [0],
     };
     const out = ttsMixer(plan, layers, () => src, 1000).next(1000);
     near(out[100]!, 0.2, 1e-6);
@@ -193,6 +234,34 @@ describe("tts mixer", () => {
     const out = mix.next(1000);
     assert.equal(out.length, mix.frames);
     near(out[20]!, 0.25);
+  });
+  it("ahead: the sayings each piece starts, asked for just then (a long text never all read at once)", () => {
+    const ramp = new Float32Array(900).map((_, i) => Math.cos(i / 11));
+    const layers = [
+      layer({ voiceCopies: 3, voiceSpreadMs: 17, voiceSpeedUp: 1.5, voiceGapMs: 40 }),
+      layer({ voiceCopies: 2, voiceSpeedUp: 2 }, true),
+    ];
+    const lens = [Array(12).fill(0.09), Array(12).fill(0.09)];
+    const plan = ttsPlan(layers, lens, true, "captain");
+    const all = ttsMixer(plan, layers, () => ttsSource(ramp, 10000), 8000).next(1e9);
+    // Each piece: only the sources ahead() named are there; the same sound as at once.
+    const m = ttsMixer(plan, layers, (l, p) => ready.get(`${l}:${p}`) ?? null, 8000);
+    const ready = new Map<string, ReturnType<typeof ttsSource>>();
+    const got: number[] = [];
+    let asked = 0;
+    for (;;) {
+      ready.clear();
+      for (const p of m.ahead(613)) {
+        ready.set(`${p.layer}:${p.phrase}`, ttsSource(ramp, 10000));
+        asked += 1;
+      }
+      const piece = m.next(613);
+      if (!piece.length) break;
+      got.push(...piece);
+    }
+    assert.equal(asked, plan.plays.length);
+    assert.equal(got.length, all.length);
+    for (let i = 0; i < all.length; i += 29) near(got[i]!, all[i]!, 1e-6);
   });
   it("the robot: its loudness rung against the tone", () => {
     const src = ttsSource(flat(1, 1000), 1000);

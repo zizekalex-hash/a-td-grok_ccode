@@ -36,6 +36,8 @@ export interface TtsPlan {
   total: number;
   /** Copies left out: faster than MAX_TTS_SPEED (or slower than its 1 / it). */
   skipped: number;
+  /** When each phrase's turn starts (s): where the text is, at each moment. */
+  turns: number[];
 }
 
 /**
@@ -88,7 +90,12 @@ const EPS = 1e-9;
  * speed. A layer that loops says it again till the turn (or its slowest copy's
  * read) is over; one that does not, once. Every saying has its gap after it.
  */
-export function ttsPlan(layers: TtsLayer[], lens: number[][], text: boolean): TtsPlan {
+export function ttsPlan(
+  layers: TtsLayer[],
+  lens: number[][],
+  text: boolean,
+  lead: "captain" | "all" = "all",
+): TtsPlan {
   const n = lens[0]?.length ?? 0;
   const plays: TtsPlay[] = [];
   let skipped = 0;
@@ -108,13 +115,19 @@ export function ttsPlan(layers: TtsLayer[], lens: number[][], text: boolean): Tt
   const gapOf = (s: VoiceShape) => s.voiceGapMs / 1000;
   const lenOf = (li: number, i: number) => Math.max(0, lens[li]?.[i] ?? 0);
 
-  // The phrases in turn.
+  // The phrases in turn. A turn lasts till every one of them has said it, or (lead "captain")
+  // till the main voice has: the first layer's first copy, its saying and its gap.
   const turns = each.filter((l) => !l.whole);
+  const captain = each[0];
+  const starts: number[] = [];
   let t = 0;
   for (let i = 0; i < n; i++) {
+    starts.push(t);
     let slot = 0;
-    for (const l of turns)
-      slot = Math.max(slot, roundOf(l.copies, lenOf(l.li, i) + gapOf(l.shape)));
+    if (lead === "captain" && captain) slot = lenOf(captain.li, i) + gapOf(captain.shape);
+    else
+      for (const l of turns)
+        slot = Math.max(slot, roundOf(l.copies, lenOf(l.li, i) + gapOf(l.shape)));
     const end = t + slot;
     for (const l of turns) {
       const span = lenOf(l.li, i) + gapOf(l.shape);
@@ -157,7 +170,15 @@ export function ttsPlan(layers: TtsLayer[], lens: number[][], text: boolean): Tt
     total = Math.max(total, R);
   }
   plays.sort((a, b) => a.t0 - b.t0);
-  return { plays, total, skipped };
+  // No layer takes the phrases in turn: where the first layer's first copy reads each one.
+  if (!turns.length && captain) {
+    let at = 0;
+    for (let i = 0; i < n; i++) {
+      starts[i] = at;
+      at += lenOf(captain.li, i) + gapOf(captain.shape);
+    }
+  }
+  return { plays, total, skipped, turns: starts };
 }
 
 /** A phrase as said: its samples (one channel) at its rate. */
@@ -167,6 +188,14 @@ export interface TtsSource {
   /** How many samples (without that room). */
   length: number;
   rate: number;
+}
+
+/** A saying and its time-reversed copy, half and half (the same length). */
+export function reverseMix(src: TtsSource): TtsSource {
+  const n = src.length;
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = 0.5 * src.data[i + 1]! + 0.5 * src.data[n - i]!;
+  return ttsSource(out, src.rate);
 }
 
 export function ttsSource(samples: Float32Array, rate: number): TtsSource {
@@ -182,6 +211,8 @@ export interface TtsMixer {
   at(): number;
   /** The next frames (at most max). Empty when done. */
   next(max: number): Float32Array;
+  /** The sayings that next(max) starts, in order (their sources are asked for then). */
+  ahead(max: number): TtsPlay[];
 }
 
 /** A sine of hz at rate, from frame `from`: its value now (s), turned on a step at a time. */
@@ -230,6 +261,16 @@ export function ttsMixer(
   return {
     frames,
     at: () => at,
+    ahead(max) {
+      const b = Math.min(frames, at + Math.max(1, Math.floor(max)));
+      const out: TtsPlay[] = [];
+      for (let q = next; q < plan.plays.length; q++) {
+        const p = plan.plays[q]!;
+        if (Math.max(0, frameAt(p.t0)) >= b) break;
+        out.push(p);
+      }
+      return out;
+    },
     next(max) {
       const a = at;
       const b = Math.min(frames, a + Math.max(1, Math.floor(max)));

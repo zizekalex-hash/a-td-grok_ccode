@@ -418,8 +418,12 @@ export function fileLoop(): FileLoop {
  * shape again: it goes on as it is.
  */
 export interface VoicePlayer {
-  /** recordSec above 0: its copies recorded once, that long, then that one sound looped (light for the phone). */
-  play(url: string, shape: VoiceShape, recordSec?: number): Promise<boolean>;
+  /**
+   * recordSec above 0: its copies recorded once, that long, then that one sound
+   * looped (light for the phone). reverse: each saying with its time-reversed
+   * copy, half and half.
+   */
+  play(url: string, shape: VoiceShape, recordSec?: number, reverse?: boolean): Promise<boolean>;
   stop(): void;
 }
 
@@ -442,8 +446,8 @@ export function voicePlayer(): VoicePlayer {
   };
 
   return {
-    async play(url, shape, recordSec = 0) {
-      const key = JSON.stringify([url, shape, recordSec]);
+    async play(url, shape, recordSec = 0, reverse = false) {
+      const key = JSON.stringify([url, shape, recordSec, reverse]);
       asked = key;
       if (now?.key === key) return true;
       const ctx = context();
@@ -467,6 +471,12 @@ export function voicePlayer(): VoicePlayer {
         for (let c = 0; c < buf.numberOfChannels; c++) {
           const d = buf.getChannelData(c);
           for (let i = 0; i < d.length; i++) mono[i] = mono[i]! + d[i]! / buf.numberOfChannels;
+        }
+        if (reverse) {
+          // The saying and its time-reversed copy, half and half (the gap after it stays).
+          const len = buf.length;
+          const fwd = mono.slice(0, len);
+          for (let i = 0; i < len; i++) mono[i] = 0.5 * fwd[i]! + 0.5 * fwd[len - 1 - i]!;
         }
         const t = ctx.currentTime;
         const fade = ctx.createGain();

@@ -125,6 +125,16 @@ export interface RehearseSettings {
   voiceRecordSec: number;
   /** The first layer says the whole text (made into a file), not the phrase (texts only). */
   voiceWhole: boolean;
+  /** The first layer heard (off: muted, kept as it is). */
+  voiceOn: boolean;
+  /** The first layer's every saying duplicated, the copy time-reversed, the two mixed half and half. */
+  voiceReverse: boolean;
+  /**
+   * A phrase's turn (a whole text made into sound, and run by itself): till the
+   * main voice (the first layer's first copy) has said it ("captain"), or till
+   * every copy of every layer has ("all").
+   */
+  voiceLead: VoiceLead;
   /** The voice made into a .wav (a .tts.wav): its sample rate (Hz). */
   ttsRate: TtsRate;
   /** The phrase's (or text's) .tts.wav looped as it is, at this volume. */
@@ -270,6 +280,9 @@ export function defaultSettings(): RehearseSettings {
     voiceRecord: false,
     voiceRecordSec: 30,
     voiceWhole: false,
+    voiceOn: true,
+    voiceReverse: false,
+    voiceLead: "captain",
     ttsRate: 48_000,
     ttsLoop: true,
     ttsVolume: 1,
@@ -399,6 +412,9 @@ export function loadRehearse(data: unknown): RehearseState {
   if (Array.isArray(t.voiceLayers))
     u.voiceLayers = t.voiceLayers.slice(0, MAX_VOICE_LAYERS - 1).map(loadVoiceLayer);
   if (typeof t.voiceWhole === "boolean") u.voiceWhole = t.voiceWhole;
+  if (typeof t.voiceOn === "boolean") u.voiceOn = t.voiceOn;
+  if (typeof t.voiceReverse === "boolean") u.voiceReverse = t.voiceReverse;
+  if (t.voiceLead === "captain" || t.voiceLead === "all") u.voiceLead = t.voiceLead;
   if (TTS_RATES.includes(t.ttsRate as TtsRate)) u.ttsRate = t.ttsRate as TtsRate;
   if (typeof t.ttsLoop === "boolean") u.ttsLoop = t.ttsLoop;
   u.ttsVolume = clampAmp(num(t.ttsVolume, u.ttsVolume));
@@ -1250,7 +1266,16 @@ export function voiceSpeeds(s: Pick<VoiceShape, "voiceCopies" | "voiceSpeedUp">)
  * A layer of voices: its own voice (in the same engine) and shape; and whether
  * it says the whole text (texts only: made into a file, not played live).
  */
-export type VoiceLayer = VoiceShape & { voiceName: string; voiceWhole: boolean };
+export type VoiceLayer = VoiceShape & {
+  voiceName: string;
+  voiceWhole: boolean;
+  /** Heard (off: muted, kept). */
+  voiceOn: boolean;
+  /** Each saying + its time-reversed copy, half and half. */
+  voiceReverse: boolean;
+};
+
+export type VoiceLead = "captain" | "all";
 
 /** A saved layer, each value checked. */
 export function loadVoiceLayer(raw: unknown): VoiceLayer {
@@ -1260,6 +1285,8 @@ export function loadVoiceLayer(raw: unknown): VoiceLayer {
   return {
     voiceName: typeof r.voiceName === "string" ? r.voiceName.slice(0, 200) : "",
     voiceWhole: r.voiceWhole === true,
+    voiceOn: r.voiceOn !== false,
+    voiceReverse: r.voiceReverse === true,
     voiceRate: clampVoiceRate(n("voiceRate")),
     voicePitch: clampVoicePitch(n("voicePitch")),
     voiceCopies: clampVoiceCopies(n("voiceCopies")),
@@ -1278,7 +1305,13 @@ export function loadVoiceLayer(raw: unknown): VoiceLayer {
 /** Every layer of voices: the first (the settings themselves), then the others. */
 export function voiceLayersOf(s: RehearseSettings): VoiceLayer[] {
   return [
-    { ...voiceShapeOf(s), voiceName: s.voiceName, voiceWhole: s.voiceWhole },
+    {
+      ...voiceShapeOf(s),
+      voiceName: s.voiceName,
+      voiceWhole: s.voiceWhole,
+      voiceOn: s.voiceOn,
+      voiceReverse: s.voiceReverse,
+    },
     ...s.voiceLayers,
   ];
 }
@@ -1314,10 +1347,15 @@ export function deleteVoiceLayer(s: RehearseSettings, i: number): Partial<Rehear
  * those that say the whole text, which are made into its file instead.
  */
 export function liveVoiceLayers(s: RehearseSettings, texts: boolean): VoiceLayer[] {
-  return voiceLayersOf(s).filter((l) => !texts || !l.voiceWhole);
+  return voiceLayersOf(s).filter((l) => l.voiceOn && (!texts || !l.voiceWhole));
 }
 
 /** Voices in all: each layer's copies added up. */
 export function voiceCount(s: RehearseSettings): number {
-  return voiceLayersOf(s).reduce((n, l) => n + l.voiceCopies, 0);
+  return voiceLayersOf(s).reduce((n, l) => n + (l.voiceOn ? l.voiceCopies : 0), 0);
+}
+
+/** The layers heard (muted ones left out), in their order: the first of them leads. */
+export function heardVoiceLayers(s: RehearseSettings): VoiceLayer[] {
+  return voiceLayersOf(s).filter((l) => l.voiceOn);
 }

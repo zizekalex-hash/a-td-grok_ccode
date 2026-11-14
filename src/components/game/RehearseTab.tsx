@@ -81,6 +81,8 @@ import {
   requestReader,
   playWav,
   playTts,
+  renderStatus,
+  subscribeRender,
   ttsGain,
   rehearseOpen,
   rehearseState,
@@ -578,6 +580,9 @@ export function RehearseTab() {
     voiceShapeOf(set),
     set.voiceLayers,
     set.voiceWhole,
+    set.voiceOn,
+    set.voiceReverse,
+    set.voiceLead,
     set.voiceRecord,
     set.voiceRecordSec,
     st.view,
@@ -1429,6 +1434,7 @@ export function RehearseTab() {
                 ) : null}
               </span>
             )}
+            {textsView && set.voice && set.voiceRecord && <RenderBadge />}
             {tapNote && (
               <span className="text-xs text-gold" role="status">
                 {tapNote}
@@ -2647,6 +2653,7 @@ function VoicePanel({
   const setL = (patch: Partial<VoiceLayer>) => setOpt(setVoiceLayer(set, at, patch));
   const preset = voicePresetOf(L);
   const whole = layers.filter((l) => l.voiceWhole).length;
+  const off = layers.filter((l) => !l.voiceOn).length;
   return (
     <>
       <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
@@ -2675,7 +2682,9 @@ function VoicePanel({
                 onClick={() => setLayer(k)}
               >
                 Layer {k + 1} ({l.voiceCopies}
-                {texts && l.voiceWhole ? ", whole text" : ""})
+                {texts && l.voiceWhole ? ", whole text" : ""}
+                {l.voiceReverse ? ", reversed" : ""}
+                {l.voiceOn ? "" : ", off"})
               </button>
             ))}
             <button
@@ -2702,11 +2711,15 @@ function VoicePanel({
             </button>
           </div>
           <Toggle
-            label="Pre-record it, then loop that (light for the phone)"
+            label={
+              texts
+                ? "Pre-render the whole text: then it runs by itself"
+                : "Pre-record it, then loop that (light for the phone)"
+            }
             on={set.voiceRecord}
             flip={() => setOpt({ voiceRecord: !set.voiceRecord })}
           />
-          {set.voiceRecord && (
+          {set.voiceRecord && !texts && (
             <Num
               label="Recorded length (s), looped"
               value={set.voiceRecordSec}
@@ -2714,11 +2727,46 @@ function VoicePanel({
               set={(v) => setOpt({ voiceRecordSec: clampRecordSec(v) })}
             />
           )}
+          {texts && set.voiceRecord && <RenderLine />}
+          {texts && (
+            <div className="space-y-1">
+              <p className="text-xs text-muted">
+                A phrase's turn (pre-rendered, and in its .tts.wav) lasts till
+              </p>
+              <div
+                className="grid grid-cols-2 gap-1"
+                role="radiogroup"
+                aria-label="A phrase's turn lasts till"
+              >
+                {(
+                  [
+                    ["captain", "The main voice is through (layer 1's first)"],
+                    ["all", "Every copy of every layer is through"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    role="radio"
+                    aria-checked={set.voiceLead === k}
+                    data-on={set.voiceLead === k}
+                    className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+                    onClick={() => setOpt({ voiceLead: k })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="text-[0.65rem] text-muted">
-            {layers.length} layer{layers.length === 1 ? "" : "s"}, {voiceCount(set)} voice
-            {voiceCount(set) === 1 ? "" : "s"} in all, all at once
+            {layers.length} layer{layers.length === 1 ? "" : "s"}
+            {off ? ` (${off} off: muted, kept)` : ""}, {voiceCount(set)} voice
+            {voiceCount(set) === 1 ? "" : "s"} heard in all, all at once
             {texts && whole
-              ? ` (${whole} reading the whole text: in its .tts.wav, made below, not live${whole === layers.length ? "; none says the phrase live" : ""})`
+              ? set.voiceRecord
+                ? ` (${whole} reading the whole text: heard in the render, and in its .tts.wav)`
+                : ` (${whole} reading the whole text: in its .tts.wav, made below, not live${whole === layers.length ? "; none says the phrase live" : ""})`
               : ""}
             . Below: layer {at + 1}.
           </p>
@@ -2750,6 +2798,16 @@ function VoicePanel({
               </button>
             </div>
           )}
+          <Toggle
+            label={`Layer ${at + 1} heard (off: muted, kept as it is)`}
+            on={L.voiceOn}
+            flip={() => setL({ voiceOn: !L.voiceOn })}
+          />
+          <Toggle
+            label="+ Its reversed copy, half and half"
+            on={L.voiceReverse}
+            flip={() => setL({ voiceReverse: !L.voiceReverse })}
+          />
           {where === "phone" && (
             <label className="block text-xs">
               <span className="text-muted">Voice engine</span>
@@ -2837,7 +2895,7 @@ function VoicePanel({
           <Toggle
             label={
               texts && L.voiceWhole
-                ? "Again from the top (the fast copies, till the slowest is through)"
+                ? "Fast copies start the text again till the slowest has read it once"
                 : "Over and over while on the phrase"
             }
             on={L.voiceLoop}
@@ -3171,5 +3229,40 @@ export function StereoChoices({
         sums.
       </p>
     </>
+  );
+}
+
+/** A whole text pre-rendered: how far it is, or that it runs by itself (the phone app). */
+function RenderLine() {
+  const r = useSyncExternalStore(subscribeRender, renderStatus, renderStatus);
+  return (
+    <div className="space-y-1" role="status">
+      {r.busy && (
+        <div className="h-1.5 w-full overflow-hidden rounded bg-cyan/15">
+          <div className="h-full bg-cyan" style={{ width: `${Math.round(r.part * 100)}%` }} />
+        </div>
+      )}
+      <p className="text-[0.65rem] leading-snug text-gold">
+        {r.busy
+          ? `Rendering the whole text, ${Math.floor(r.part * 100)}%: ${r.note} Till it is ready, taps move the phrases.`
+          : r.playing
+            ? "Rendered: it runs by itself. The main voice (layer 1's first) moves the phrases, each a rep; a tap, ‹ ›, the window or the reader jumps it there."
+            : r.note ||
+              "Rendered in the background with the robot voice on (the Android app), then it runs by itself; till then, taps."}
+      </p>
+    </div>
+  );
+}
+
+/** On the card: the whole text being rendered (how far), or running by itself. */
+function RenderBadge() {
+  const r = useSyncExternalStore(subscribeRender, renderStatus, renderStatus);
+  if (!r.busy && !r.playing) return null;
+  return (
+    <span className="text-[0.65rem] text-gold" role="status">
+      {r.busy
+        ? `Rendering the whole text: ${Math.floor(r.part * 100)}% (taps move it till then)`
+        : "▶ Runs by itself: the main voice moves the phrases"}
+    </span>
   );
 }

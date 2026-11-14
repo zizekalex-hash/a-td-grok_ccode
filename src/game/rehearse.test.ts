@@ -66,6 +66,7 @@ import {
   voiceCount,
   voiceLayersOf,
   liveVoiceLayers,
+  heardVoiceLayers,
   libraryOf,
   currentText,
   applyBubble,
@@ -765,6 +766,71 @@ describe("rehearse: layers of voices", () => {
     assert.equal(back.settings.voiceCopiesVolume, 1);
     assert.equal(defaultSettings().voiceRecord, false);
     assert.equal(loadRehearse({ settings: { voiceRecordSec: 9999 } }).settings.voiceRecordSec, 600);
+  });
+});
+
+describe("rehearse: layers on or off, reversed, and who leads", () => {
+  it("a layer off is kept as it is, but not heard (live, or in the files)", () => {
+    let s = { ...defaultSettings(), voiceCopies: 3 };
+    s = { ...s, ...copyVoiceLayer(s, 0) };
+    s = { ...s, ...setVoiceLayer(s, 1, { voiceCopies: 4, voiceOn: false }) };
+    assert.equal(voiceLayersOf(s).length, 2);
+    assert.deepEqual(
+      liveVoiceLayers(s, false).map((l) => l.voiceCopies),
+      [3],
+    );
+    assert.deepEqual(
+      heardVoiceLayers(s).map((l) => l.voiceCopies),
+      [3],
+    );
+    assert.equal(voiceCount(s), 3);
+    // The first off, the second on: the second is heard (and leads).
+    s = { ...s, ...setVoiceLayer(s, 0, { voiceOn: false }) };
+    s = { ...s, ...setVoiceLayer(s, 1, { voiceOn: true }) };
+    assert.equal(s.voiceOn, false);
+    assert.deepEqual(
+      heardVoiceLayers(s).map((l) => l.voiceCopies),
+      [4],
+    );
+    // Both off: nothing heard, both still there.
+    s = { ...s, ...setVoiceLayer(s, 1, { voiceOn: false }) };
+    assert.equal(heardVoiceLayers(s).length, 0);
+    assert.equal(liveVoiceLayers(s, false).length, 0);
+    assert.equal(voiceLayersOf(s).length, 2);
+    const back = loadRehearse(JSON.parse(JSON.stringify({ settings: s }))).settings;
+    assert.equal(back.voiceOn, false);
+    assert.equal(back.voiceLayers[0]!.voiceOn, false);
+    assert.equal(back.voiceLayers[0]!.voiceCopies, 4);
+  });
+  it("reversed and the turn's lead: kept, checked, on by default as before", () => {
+    const d = defaultSettings();
+    assert.deepEqual([d.voiceOn, d.voiceReverse, d.voiceLead], [true, false, "captain"]);
+    let s = { ...d, ...copyVoiceLayer(d, 0) };
+    s = { ...s, ...setVoiceLayer(s, 1, { voiceReverse: true }) };
+    assert.deepEqual(
+      voiceLayersOf(s).map((l) => l.voiceReverse),
+      [false, true],
+    );
+    const ok = loadRehearse(
+      JSON.parse(JSON.stringify({ settings: { ...s, voiceLead: "all", voiceReverse: true } })),
+    ).settings;
+    assert.equal(ok.voiceLead, "all");
+    assert.equal(ok.voiceReverse, true);
+    assert.equal(ok.voiceLayers[0]!.voiceReverse, true);
+    const bad = loadRehearse({
+      settings: {
+        voiceLead: "loudest",
+        voiceOn: "no",
+        voiceReverse: 1,
+        voiceLayers: [{ voiceOn: 0, voiceReverse: "yes" }],
+      },
+    }).settings;
+    assert.deepEqual([bad.voiceLead, bad.voiceOn, bad.voiceReverse], ["captain", true, false]);
+    // Saved before there were switches: on, not reversed.
+    assert.deepEqual(
+      [bad.voiceLayers[0]!.voiceOn, bad.voiceLayers[0]!.voiceReverse],
+      [true, false],
+    );
   });
 });
 

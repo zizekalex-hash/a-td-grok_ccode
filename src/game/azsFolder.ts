@@ -18,8 +18,12 @@ interface AzsFolderApi {
     name: string;
     data: string;
     append: boolean;
+    dir?: "render";
   }): Promise<{ file: string; size: number }>;
-  cacheDrop(o: { name: string }): Promise<void>;
+  cacheDrop(o: { name: string; dir?: "render" }): Promise<void>;
+  renderHas(o: { name: string }): Promise<{ has: boolean }>;
+  renderPlay(o: { name: string; volume: number; from: number; turns: number[] }): Promise<void>;
+  renderStop(): Promise<void>;
   saveCached(o: {
     name: string;
     path: string;
@@ -37,6 +41,10 @@ interface AzsFolderApi {
   addListener(
     event: "stereoProgress",
     fn: (e: { part: number }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
+  addListener(
+    event: "renderTurn",
+    fn: (e: { index: number }) => void,
   ): Promise<{ remove: () => Promise<void> }>;
 }
 
@@ -225,4 +233,61 @@ export async function folderStereo(
 export async function folderStereoStop() {
   const p = await folderPlugin();
   await p?.api.stereoStop().catch(() => {});
+}
+
+// ---- A whole text rendered for the app itself (its cache, not the folder): it runs by itself ----
+
+/** Writes a render into the app's cache (the newest few kept); null: not the phone app. */
+export async function renderWriter(name: string): Promise<FolderWriter | null> {
+  const p = await folderPlugin();
+  if (!p) return null;
+  let first = true;
+  return {
+    async write(bytes) {
+      await p.api.cacheWrite({ name, data: await base64(bytes), append: !first, dir: "render" });
+      first = false;
+    },
+    async save() {
+      return 0;
+    },
+    async drop() {
+      await p.api.cacheDrop({ name, dir: "render" }).catch(() => {});
+    },
+  };
+}
+
+export async function renderHas(name: string): Promise<boolean> {
+  const p = await folderPlugin();
+  if (!p) return false;
+  try {
+    return (await p.api.renderHas({ name })).has;
+  } catch {
+    return false;
+  }
+}
+
+/** Plays a render from frame `from` (turns: each phrase's first frame); a new call jumps. */
+export async function renderPlay(name: string, from: number, turns: number[]): Promise<boolean> {
+  const p = await folderPlugin();
+  if (!p) return false;
+  try {
+    await p.api.renderPlay({ name, volume: 1, from, turns });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function renderStop() {
+  const p = await folderPlugin();
+  await p?.api.renderStop().catch(() => {});
+}
+
+let turnListener: Promise<{ remove: () => Promise<void> }> | null = null;
+
+/** Each time the render's phrase heard changes: its index. One listener for the app. */
+export async function onRenderTurn(fn: (index: number) => void) {
+  const p = await folderPlugin();
+  if (!p || turnListener) return;
+  turnListener = p.api.addListener("renderTurn", (e) => fn(e.index));
 }
