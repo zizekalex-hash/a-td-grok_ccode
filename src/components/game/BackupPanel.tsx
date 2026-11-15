@@ -280,10 +280,10 @@ export function BackupPanel() {
           {folder && (
             <>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <button type="button" className="btn min-h-12" disabled={busy} onClick={toFolder}>
+                <button type="button" className="btn" disabled={busy} onClick={toFolder}>
                   Save everything to it
                 </button>
-                <button type="button" className="btn min-h-12" disabled={busy} onClick={fromFolder}>
+                <button type="button" className="btn" disabled={busy} onClick={fromFolder}>
                   Load everything from it
                 </button>
               </div>
@@ -310,34 +310,24 @@ export function BackupPanel() {
       <div className="mt-1 grid grid-cols-2 gap-2">
         {native ? (
           <>
-            <button type="button" className="btn btn-gold min-h-12" disabled={busy} onClick={share}>
+            <button type="button" className="btn btn-gold" disabled={busy} onClick={share}>
               <Share2 className="size-4" aria-hidden />
               Share file
             </button>
-            <button
-              type="button"
-              className="btn min-h-12"
-              disabled={busy}
-              onClick={saveToDocuments}
-            >
+            <button type="button" className="btn" disabled={busy} onClick={saveToDocuments}>
               <HardDriveDownload className="size-4" aria-hidden />
               Save to Documents
             </button>
           </>
         ) : (
-          <button
-            type="button"
-            className="btn btn-gold min-h-12"
-            disabled={busy}
-            onClick={download}
-          >
+          <button type="button" className="btn btn-gold" disabled={busy} onClick={download}>
             <Download className="size-4" aria-hidden />
             Save file
           </button>
         )}
         <button
           type="button"
-          className={`btn min-h-12 ${native ? "col-span-2" : ""}`}
+          className={`btn ${native ? "col-span-2" : ""}`}
           disabled={busy}
           onClick={copy}
         >
@@ -352,14 +342,14 @@ export function BackupPanel() {
       <div className="mt-1 grid grid-cols-2 gap-2">
         <button
           type="button"
-          className="btn min-h-12"
+          className="btn"
           disabled={busy}
           onClick={() => fileRef.current?.click()}
         >
           <FileUp className="size-4" aria-hidden />
           Load file
         </button>
-        <button type="button" className="btn min-h-12" disabled={busy} onClick={pasteBackup}>
+        <button type="button" className="btn" disabled={busy} onClick={pasteBackup}>
           <ClipboardPaste className="size-4" aria-hidden />
           Paste text
         </button>

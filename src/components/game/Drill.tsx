@@ -20,8 +20,18 @@ import { ReadTab } from "@/components/game/ReadTab";
 import { RehearseTab } from "@/components/game/RehearseTab";
 import { LegionTab } from "@/components/game/LegionTab";
 import { PostureChip, PosturesTab } from "@/components/game/PosturesTab";
+import { ThemeButton } from "@/components/game/ThemePicker";
 
 type DrillTab = "rehearse" | "recall" | "read" | "reps" | "history" | "legion" | "postures";
+const DRILL_TABS: [DrillTab, string][] = [
+  ["rehearse", "Rehearse"],
+  ["recall", "Recall"],
+  ["read", "Read"],
+  ["reps", "Reps"],
+  ["history", "History"],
+  ["legion", "Legion"],
+  ["postures", "Postures"],
+];
 const TAB_KEY = "azshara-drill-tab";
 
 /** The tab last used, so the drill opens where you left it. */
@@ -140,16 +150,16 @@ export function DrillPanel() {
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-bg/90 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       <div className="glass flex min-h-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-3 border-b border-cyan/30 px-3 py-2">
-          <div>
-            <h2 className="font-display text-sm tracking-[0.16em] text-cyan">RECITATION</h2>
-            <p className="text-xs text-muted">Practise your sectors and level the skill.</p>
+        <header className="flex items-center justify-between gap-2 border-b border-cyan/30 px-3 py-1.5">
+          <h2 className="font-display text-sm tracking-[0.16em] text-cyan">RECITATION</h2>
+          <div className="flex items-center gap-1.5">
+            <ThemeButton />
+            <button type="button" className="btn stepper" onClick={setPanel} aria-label="Close drill">
+              <X className="size-4" aria-hidden />
+            </button>
           </div>
-          <button type="button" className="btn" onClick={setPanel} aria-label="Close drill">
-            <X className="size-4" aria-hidden />
-          </button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
           <SkillBar skill="recitation" />
           {/* Reps only gives Recitation XP: the rest stays out of the way of your phrases. */}
           {(tab === "rehearse" || tab === "recall") && (
@@ -162,29 +172,21 @@ export function DrillPanel() {
           {/* A posture being timed: its time on every tab. */}
           {tab !== "postures" && <PostureChip open={() => setTab("postures")} />}
 
-          {/* Seven tabs: three rows on a phone. */}
-          <div className="mt-4 grid grid-cols-7 gap-2 max-[480px]:grid-cols-3">
-            <button type="button" className="btn" data-on={tab === "rehearse"} aria-pressed={tab === "rehearse"} onClick={() => setTab("rehearse")}>
-              Rehearse
-            </button>
-            <button type="button" className="btn" data-on={tab === "recall"} aria-pressed={tab === "recall"} onClick={() => setTab("recall")}>
-              Recall
-            </button>
-            <button type="button" className="btn" data-on={tab === "read"} aria-pressed={tab === "read"} onClick={() => setTab("read")}>
-              Read
-            </button>
-            <button type="button" className="btn" data-on={tab === "reps"} aria-pressed={tab === "reps"} onClick={() => setTab("reps")}>
-              Reps
-            </button>
-            <button type="button" className="btn" data-on={tab === "history"} aria-pressed={tab === "history"} onClick={() => setTab("history")}>
-              History
-            </button>
-            <button type="button" className="btn" data-on={tab === "legion"} aria-pressed={tab === "legion"} onClick={() => setTab("legion")}>
-              Legion
-            </button>
-            <button type="button" className="btn max-[480px]:col-span-3" data-on={tab === "postures"} aria-pressed={tab === "postures"} onClick={() => setTab("postures")}>
-              Postures
-            </button>
+          {/* The tabs: each as wide as its word at least, in rows that fill the width (never a word past its button). */}
+          <div className="mt-3 flex flex-wrap gap-1.5" role="tablist" aria-label="The drill's tabs">
+            {DRILL_TABS.map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                className="btn grow px-2 text-[0.62rem] tracking-[0.05em] whitespace-nowrap"
+                data-on={tab === id}
+                aria-selected={tab === id}
+                onClick={() => setTab(id)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
           {tab === "rehearse" ? (

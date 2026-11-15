@@ -33,6 +33,7 @@ export const SAVE_NAMES: Record<string, string> = {
   "azshara-reader-v1": "The Read tab: its settings and your place in each text",
   "azshara-legion-v1": "The Legion tab's settings",
   "azshara-postures-v1": "The Postures tab: your postures and every sitting timed",
+  "azshara-theme-v1": "The look: theme, your own colours, compact or roomy",
   "azshara-chess-v1": "Auto chess",
   "azshara-td-v1": "Tower defense",
   "azshara-td-run-v1": "A tower defense run in progress",

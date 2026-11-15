@@ -2,6 +2,7 @@ import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-r
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
+import { THEME_BOOT } from "@/game/theme";
 
 const APP_NAME = "Azshara's Signal Defense";
 
@@ -19,7 +20,7 @@ export const Route = createRootRoute({
         content:
           "A holographic wake-core rite. Load a text tome, fire its lines at the sleep-signals, and hold the center with Azshara.",
       },
-      { name: "theme-color", content: "#020005" },
+      { name: "theme-color", content: "#06030d" },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
@@ -38,6 +39,8 @@ export const Route = createRootRoute({
     <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
+        {/* The saved look, before the page shows (no flash of another). */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
       <body>
         <PreviewHostBridge />

@@ -163,14 +163,14 @@ export function RepsPicker({
       <div className="sticky bottom-0 mt-3 grid grid-cols-[1fr_auto] gap-2 bg-bg/95 py-2">
         <button
           type="button"
-          className="btn btn-gold min-h-12"
+          className="btn btn-gold"
           disabled={!picked.size}
           onClick={() => onAdd(rows.filter((r) => picked.has(r.i)).map((r) => r.text))}
         >
           <Plus className="size-4" aria-hidden />
           Add {picked.size.toLocaleString()} to the list
         </button>
-        <button type="button" className="btn min-h-12" onClick={onClose}>
+        <button type="button" className="btn" onClick={onClose}>
           Close
         </button>
       </div>

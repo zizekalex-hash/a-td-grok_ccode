@@ -1309,7 +1309,7 @@ export function TdHud() {
           <div className="mt-1 flex gap-1" role="group" aria-label="Boards of the stitched map">
             <button
               type="button"
-              className="btn min-h-7 px-2 py-0 text-[0.65rem]"
+              className="btn px-2 py-0 text-[0.65rem]"
               data-on={v.board < 0}
               aria-pressed={v.board < 0}
               onClick={() => game()?.tdSetView(-1)}
@@ -1320,7 +1320,7 @@ export function TdHud() {
               <button
                 key={i}
                 type="button"
-                className="btn min-h-7 min-w-0 flex-1 px-1 py-0 text-[0.65rem] tracking-normal"
+                className="btn min-w-0 flex-1 px-1 py-0 text-[0.65rem] tracking-normal"
                 data-on={v.board === i}
                 aria-pressed={v.board === i}
                 onClick={() => game()?.tdSetView(i)}
@@ -1550,7 +1550,7 @@ export function MapPicker() {
       </div>
       <button
         type="button"
-        className="btn mt-2 min-h-9 w-full py-1 text-[0.7rem]"
+        className="btn mt-2 w-full py-1 text-[0.7rem]"
         data-on={stitching}
         aria-pressed={stitching}
         onClick={toggle}
@@ -1566,7 +1566,7 @@ export function MapPicker() {
             role="radio"
             aria-checked={key === level}
             data-on={key === level}
-            className="btn min-h-9 py-1 text-[0.7rem]"
+            className="btn py-1 text-[0.7rem]"
             title={difficulty(key).copy}
             onClick={() => useGame.setState({ tdDifficulty: key })}
           >

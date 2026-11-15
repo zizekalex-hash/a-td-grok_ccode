@@ -8,6 +8,10 @@ import {
   postureStats,
   postureToday,
   removePosture,
+  renamePosture,
+  pausePosture,
+  resumePosture,
+  applyPostureEvents,
   resetPosture,
   runningMs,
   stopPosture,
@@ -28,10 +32,10 @@ describe("postures: the timer", () => {
     let s = newPostures();
     assert.deepEqual(
       s.postures.map((p) => p.name),
-      ["Headstand", "On all fours", "Standing"],
+      ["Headstand", "Quadstanding", "Standing"],
     );
     s = tapPosture(s, "headstand", noon);
-    assert.deepEqual(s.running, { id: "headstand", since: noon });
+    assert.deepEqual(s.running, { id: "headstand", since: noon, pausedAt: 0, pausedMs: 0 });
     assert.equal(runningMs(s, noon + 5 * MIN), 5 * MIN);
     s = tapPosture(s, "headstand", noon + 5 * MIN);
     assert.equal(s.running, null);
@@ -40,7 +44,12 @@ describe("postures: the timer", () => {
   it("another posture: the first stops (counted) and that one starts", () => {
     let s = tapPosture(newPostures(), "headstand", noon);
     s = tapPosture(s, "standing", noon + 3 * MIN);
-    assert.deepEqual(s.running, { id: "standing", since: noon + 3 * MIN });
+    assert.deepEqual(s.running, {
+      id: "standing",
+      since: noon + 3 * MIN,
+      pausedAt: 0,
+      pausedMs: 0,
+    });
     assert.equal(s.log[0]!.id, "headstand");
     assert.equal(s.log[0]!.ms, 3 * MIN);
   });
@@ -109,5 +118,59 @@ describe("postures: your own, and the stats", () => {
     assert.equal(odd.log.length, 1);
     assert.equal(loadPostures(null).postures.length, 3);
     assert.equal(loadPostures({ postures: [] }).postures.length, 0, "all taken off stays so");
+  });
+});
+
+describe("postures: paused, renamed, and the floating window's taps", () => {
+  it("paused: its time stops (not counted), and goes on again", () => {
+    let s = tapPosture(newPostures(), "headstand", noon);
+    s = pausePosture(s, noon + 2 * MIN);
+    assert.equal(runningMs(s, noon + 9 * MIN), 2 * MIN, "stopped while paused");
+    assert.equal(pausePosture(s, noon + 3 * MIN), s, "paused already");
+    s = resumePosture(s, noon + 5 * MIN);
+    assert.equal(runningMs(s, noon + 6 * MIN), 3 * MIN);
+    s = stopPosture(s, noon + 6 * MIN);
+    assert.equal(s.log[0]!.ms, 3 * MIN);
+    // Stopped while paused: what it had.
+    let t = tapPosture(newPostures(), "fours", noon);
+    t = pausePosture(t, noon + MIN);
+    t = stopPosture(t, noon + 20 * MIN);
+    assert.equal(t.log[0]!.ms, MIN);
+  });
+  it("renamed: its sittings too; never two of a name", () => {
+    let s = tapPosture(newPostures(), "fours", noon);
+    s = stopPosture(s, noon + MIN);
+    s = renamePosture(s, "fours", "  Quad  stand ");
+    assert.equal(s.postures[1]!.name, "Quad stand");
+    assert.equal(s.log[0]!.name, "Quad stand");
+    assert.equal(renamePosture(s, "fours", "headstand"), s, "taken by another");
+    assert.equal(renamePosture(s, "fours", " "), s);
+  });
+  it("its first name, on all fours, becomes quadstanding (its sittings too)", () => {
+    const old = loadPostures({
+      postures: [{ id: "fours", name: "On all fours" }],
+      log: [{ id: "fours", name: "On all fours", at: noon, ms: 5000 }],
+    });
+    assert.equal(old.postures[0]!.name, "Quadstanding");
+    assert.equal(old.log[0]!.name, "Quadstanding");
+    const mine = loadPostures({ postures: [{ id: "fours", name: "Cat pose" }] });
+    assert.equal(mine.postures[0]!.name, "Cat pose", "a name of your own stays");
+  });
+  it("the window's taps, put on in the order they were made, at their own times", () => {
+    const s = applyPostureEvents(newPostures(), [
+      { kind: "tap", id: "standing", at: noon + 10 * MIN },
+      { kind: "tap", id: "headstand", at: noon },
+      { kind: "pause", at: noon + 4 * MIN },
+      { kind: "resume", at: noon + 6 * MIN },
+    ]);
+    // Headstand: 0..10 min, 2 min of it paused; then standing from 10 min.
+    assert.deepEqual(
+      s.log.map((e) => [e.id, e.ms]),
+      [["headstand", 8 * MIN]],
+    );
+    assert.equal(s.running!.id, "standing");
+    const reset = applyPostureEvents(s, [{ kind: "reset", at: noon + 11 * MIN }]);
+    assert.equal(reset.running, null);
+    assert.equal(reset.log.length, 1);
   });
 });

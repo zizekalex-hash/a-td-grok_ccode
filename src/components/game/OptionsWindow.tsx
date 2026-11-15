@@ -1,5 +1,6 @@
 import { BookOpen, ImageDown, RotateCcw, X } from "lucide-react";
 import { BackupPanel } from "@/components/game/BackupPanel";
+import { ThemePicker } from "@/components/game/ThemePicker";
 import { CfgEditor } from "@/components/game/CfgEditor";
 import { FileLoad, SliderRow, TextList } from "@/components/game/Chrome";
 import { saveRawJpg } from "@/game/coreImage";
@@ -214,6 +215,14 @@ export function OptionsWindow() {
                   </dl>
                 </section>
               ))}
+            {tab.id === "display" && (
+              <section className="mt-3">
+                <h3 className="font-display text-xs tracking-[0.16em] text-violet uppercase">The look</h3>
+                <div className="mt-2">
+                  <ThemePicker />
+                </div>
+              </section>
+            )}
             {tab.id === "backup" && <BackupPanel />}
             {tab.id === "advanced" && (
               <div className="mt-3">

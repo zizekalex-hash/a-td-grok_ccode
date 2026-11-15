@@ -1,5 +1,5 @@
 /**
- * Postures: a timer for meditating in a posture (a headstand, on all fours,
+ * Postures: a timer for meditating in a posture (a headstand, quadstanding,
  * standing, or your own). Tap one to start it; tapping another stops the
  * first (counted) and starts that one; tapping the one going stops it. Each
  * sitting is kept (when it started, how long), so its stats (today, all time,
@@ -22,10 +22,18 @@ export interface PostureSitting {
   ms: number;
 }
 
+/** The posture being timed: since when, paused since when (0: going), and the time paused so far (not counted). */
+export interface PostureRun {
+  id: string;
+  since: number;
+  pausedAt: number;
+  pausedMs: number;
+}
+
 export interface PostureState {
   postures: Posture[];
-  /** The posture being timed now, and since when (ms since 1970). */
-  running: { id: string; since: number } | null;
+  /** The posture being timed now (null: none). */
+  running: PostureRun | null;
   /** Every sitting, newest first (up to POSTURE_LOG_KEEP). */
   log: PostureSitting[];
 }
@@ -39,7 +47,7 @@ export const MAX_POSTURE_NAME = 60;
 
 export const DEFAULT_POSTURES: readonly Posture[] = [
   { id: "headstand", name: "Headstand" },
-  { id: "fours", name: "On all fours" },
+  { id: "fours", name: "Quadstanding" },
   { id: "standing", name: "Standing" },
 ];
 
@@ -60,7 +68,9 @@ export function loadPostures(data: unknown): PostureState {
   for (const raw of d.postures) {
     const r = obj(raw);
     const id = typeof r.id === "string" ? r.id.slice(0, 40) : "";
-    const name = typeof r.name === "string" ? cleanName(r.name) : "";
+    const named = typeof r.name === "string" ? cleanName(r.name) : "";
+    // The first name of quadstanding, as it was called once.
+    const name = id === "fours" && named === "On all fours" ? "Quadstanding" : named;
     if (!id || !name || seen.has(id)) continue;
     seen.add(id);
     postures.push({ id, name });
@@ -69,7 +79,12 @@ export function loadPostures(data: unknown): PostureState {
   const run = obj(d.running);
   const running =
     typeof run.id === "string" && seen.has(run.id) && num(run.since, 0) > 0
-      ? { id: run.id, since: num(run.since, 0) }
+      ? {
+          id: run.id,
+          since: num(run.since, 0),
+          pausedAt: Math.max(0, num(run.pausedAt, 0)),
+          pausedMs: Math.max(0, num(run.pausedMs, 0)),
+        }
       : null;
   return { postures, running, log: loadLog(d.log) };
 }
@@ -79,7 +94,8 @@ function loadLog(v: unknown): PostureSitting[] {
   for (const raw of Array.isArray(v) ? v : []) {
     const r = obj(raw);
     const id = typeof r.id === "string" ? r.id.slice(0, 40) : "";
-    const name = typeof r.name === "string" ? cleanName(r.name) : "";
+    const named = typeof r.name === "string" ? cleanName(r.name) : "";
+    const name = id === "fours" && named === "On all fours" ? "Quadstanding" : named;
     const at = num(r.at, 0);
     const ms = num(r.ms, -1);
     if (!id || !name || at <= 0 || ms < 0) continue;
@@ -89,16 +105,33 @@ function loadLog(v: unknown): PostureSitting[] {
   return log;
 }
 
-/** How long the one going has gone (ms; 0 when none). */
+/** How long the one going has gone (ms; 0 when none), its pauses left out. */
 export function runningMs(s: PostureState, now: number): number {
-  return s.running ? Math.max(0, now - s.running.since) : 0;
+  const r = s.running;
+  return r ? Math.max(0, (r.pausedAt || now) - r.since - r.pausedMs) : 0;
+}
+
+/** The one going paused (its time stops) or going again. */
+export function pausePosture(s: PostureState, now: number): PostureState {
+  const r = s.running;
+  if (!r || r.pausedAt) return s;
+  return { ...s, running: { ...r, pausedAt: Math.max(r.since, now) } };
+}
+
+export function resumePosture(s: PostureState, now: number): PostureState {
+  const r = s.running;
+  if (!r || !r.pausedAt) return s;
+  return {
+    ...s,
+    running: { ...r, pausedAt: 0, pausedMs: r.pausedMs + Math.max(0, now - r.pausedAt) },
+  };
 }
 
 /** The one going stops, counted (unless it was only a tap too many). */
 export function stopPosture(s: PostureState, now: number): PostureState {
   const r = s.running;
   if (!r) return s;
-  const ms = Math.max(0, now - r.since);
+  const ms = runningMs(s, now);
   const name = s.postures.find((p) => p.id === r.id)?.name ?? r.id;
   const log =
     ms >= MIN_SITTING_MS
@@ -112,7 +145,9 @@ export function tapPosture(s: PostureState, id: string, now: number): PostureSta
   if (!s.postures.some((p) => p.id === id)) return s;
   const was = s.running?.id;
   const stopped = stopPosture(s, now);
-  return was === id ? stopped : { ...stopped, running: { id, since: now } };
+  return was === id
+    ? stopped
+    : { ...stopped, running: { id, since: now, pausedAt: 0, pausedMs: 0 } };
 }
 
 /** Reset: the one going stops, not counted (fell asleep). */
@@ -128,6 +163,38 @@ export function addPosture(s: PostureState, name: string, now: number): PostureS
   let id = `p${now.toString(36)}`;
   while (s.postures.some((p) => p.id === id)) id += "x";
   return { ...s, postures: [...s.postures, { id, name: clean }] };
+}
+
+/** A posture renamed (its sittings too, in the history); none twice, by name. */
+export function renamePosture(s: PostureState, id: string, name: string): PostureState {
+  const clean = cleanName(name);
+  if (!clean || !s.postures.some((p) => p.id === id)) return s;
+  if (s.postures.some((p) => p.id !== id && p.name.toLowerCase() === clean.toLowerCase())) return s;
+  return {
+    ...s,
+    postures: s.postures.map((p) => (p.id === id ? { ...p, name: clean } : p)),
+    log: s.log.map((e) => (e.id === id ? { ...e, name: clean } : e)),
+  };
+}
+
+/** What was tapped on the floating window, in turn, each at its own time. */
+export interface PostureEvent {
+  kind: "tap" | "stop" | "reset" | "pause" | "resume";
+  id?: string;
+  at: number;
+}
+
+/** The floating window's taps put on the state, in the order they were made. */
+export function applyPostureEvents(s: PostureState, events: PostureEvent[]): PostureState {
+  let t = s;
+  for (const e of [...events].sort((a, b) => a.at - b.at)) {
+    if (e.kind === "tap" && e.id) t = tapPosture(t, e.id, e.at);
+    else if (e.kind === "stop") t = stopPosture(t, e.at);
+    else if (e.kind === "reset") t = resetPosture(t);
+    else if (e.kind === "pause") t = pausePosture(t, e.at);
+    else if (e.kind === "resume") t = resumePosture(t, e.at);
+  }
+  return t;
 }
 
 /** A posture taken off (the one going stops first, counted); its sittings stay in the history. */

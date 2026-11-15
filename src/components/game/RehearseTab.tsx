@@ -392,11 +392,15 @@ export function Info({ title, children }: { title: string; children: React.React
   useEffect(() => {
     if (!open) return;
     close.current?.focus();
+    // Escape closes the popup only (not the drill behind it).
     const esc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
     };
-    window.addEventListener("keydown", esc);
-    return () => window.removeEventListener("keydown", esc);
+    window.addEventListener("keydown", esc, true);
+    return () => window.removeEventListener("keydown", esc, true);
   }, [open]);
   const show = (e: React.SyntheticEvent) => {
     e.preventDefault();
@@ -535,8 +539,8 @@ export function Toggle({
       aria-pressed={on}
       onClick={flip}
     >
-      <span>{label}</span>
-      <span className="font-display text-[0.6rem] tracking-wider uppercase">
+      <span className="min-w-0 text-left">{label}</span>
+      <span className="shrink-0 font-display text-[0.6rem] tracking-wider uppercase">
         {on ? "On" : "Off"}
       </span>
     </button>

@@ -425,11 +425,11 @@ export function ReadTab() {
         texts becomes a folder of its own, kept apart from the rest.
       </p>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <button type="button" className="btn min-h-11" onClick={() => fileRef.current?.click()}>
+        <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
           <Upload className="size-4" aria-hidden />
           Load .txt
         </button>
-        <button type="button" className="btn min-h-11" onClick={() => zipRef.current?.click()}>
+        <button type="button" className="btn" onClick={() => zipRef.current?.click()}>
           <FolderArchive className="size-4" aria-hidden />
           Load .zip (a folder)
         </button>
@@ -698,7 +698,10 @@ function Stepper({
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === "Enter") commit();
-            if (e.key === "Escape") setTyping(null);
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setTyping(null);
+            }
           }}
           onFocus={(e) => e.currentTarget.select()}
           autoFocus
@@ -733,13 +736,7 @@ function Toggle({
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      className="btn min-h-10 px-1"
-      data-on={on}
-      aria-pressed={on}
-      onClick={onClick}
-    >
+    <button type="button" className="btn px-1" data-on={on} aria-pressed={on} onClick={onClick}>
       {children}
     </button>
   );
@@ -1699,7 +1696,7 @@ function Reader({
         <div className="mt-1.5 grid grid-cols-3 gap-1.5">
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() =>
               set({ streamOrder: reader.streamOrder === "random" ? "order" : "random" })
             }
@@ -1709,7 +1706,7 @@ function Reader({
           </button>
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => set({ streamFlow: cycle(STREAM_FLOWS, reader.streamFlow) })}
             aria-label={`Stream flow: ${reader.streamFlow}. Change it`}
           >
@@ -1717,7 +1714,7 @@ function Reader({
           </button>
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => set({ streamColor: cycle(ACCENT_NAMES, reader.streamColor) })}
             aria-label={`Stream colour: ${reader.streamColor}. Change it`}
           >
@@ -1812,7 +1809,7 @@ function Reader({
           </Toggle>
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => void exportText(text.name, lines)}
             aria-label={`Export ${text.name} as .txt`}
           >
@@ -1872,7 +1869,7 @@ function Reader({
           </Toggle>
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => set({ wordX: 0.5, phraseX: 0.5 })}
             aria-label="Center the word and the phrase"
           >
@@ -1882,7 +1879,7 @@ function Reader({
         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => set({ accent: cycle(ACCENT_NAMES, reader.accent) })}
             aria-label={`Colour: ${reader.accent}. Change it`}
           >
@@ -1895,7 +1892,7 @@ function Reader({
           </button>
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => set({ font: cycle(FONTS, reader.font) })}
             aria-label={`Font: ${FONT_NAME[reader.font]}. Change it`}
           >
@@ -1914,7 +1911,7 @@ function Reader({
           </Toggle>
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => {
               const d = newReader();
               set({ wordX: d.wordX, wordY: d.wordY, phraseX: d.phraseX, phraseY: d.phraseY });
@@ -1924,7 +1921,7 @@ function Reader({
           </button>
           {hasMini && (
             <>
-              <button type="button" className="btn min-h-10 px-1" onClick={openMini}>
+              <button type="button" className="btn px-1" onClick={openMini}>
                 <PictureInPicture2 className="size-4" aria-hidden />
                 Mini window now
               </button>
@@ -1938,7 +1935,7 @@ function Reader({
           )}
           {hasOverlay && (
             <>
-              <button type="button" className="btn min-h-10 px-1" onClick={openOverlay}>
+              <button type="button" className="btn px-1" onClick={openOverlay}>
                 <Layers className="size-4" aria-hidden />
                 See-through window now
               </button>
@@ -1993,11 +1990,7 @@ function Reader({
               >
                 Touches through it: {reader.overlayThrough ? "on" : "off"}
               </Toggle>
-              <button
-                type="button"
-                className="btn min-h-10 px-1"
-                onClick={() => void overlayResetPlace()}
-              >
+              <button type="button" className="btn px-1" onClick={() => void overlayResetPlace()}>
                 See-through: reset its place
               </button>
             </>
@@ -2044,14 +2037,14 @@ function Reader({
         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => set({ bytesSharp: !reader.bytesSharp })}
           >
             {reader.bytesSharp ? "Sharp" : "Smooth"}
           </button>
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => void exportPicture(text.name, lines, reader.layers, reader.bytesSharp)}
             aria-label={`Export ${text.name} as a .png picture`}
           >
@@ -2129,7 +2122,7 @@ function Reader({
           />
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => set({ flashColor: cycle(ACCENT_NAMES, reader.flashColor) })}
             aria-label={`Flash colour: ${reader.flashColor}. Change it`}
           >
@@ -2142,7 +2135,7 @@ function Reader({
           </button>
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => set({ flashReverse: cycle(FLASH_REVERSE, reader.flashReverse) })}
             aria-label={`Reversed round: ${REVERSE_NAME[reader.flashReverse]}. Change it`}
           >
@@ -2150,7 +2143,7 @@ function Reader({
           </button>
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => set({ flashOrder: reader.flashOrder === "random" ? "order" : "random" })}
             aria-label={`Flash order: ${reader.flashOrder === "random" ? "random" : "in order"}. Change it`}
           >
@@ -2171,14 +2164,14 @@ function Reader({
         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => testFlash.current?.(reader.flashMs, reader.flashOpacity)}
           >
             Test once (as set)
           </button>
           <button
             type="button"
-            className="btn min-h-10 px-1"
+            className="btn px-1"
             onClick={() => testFlash.current?.(1500, Math.max(0.6, reader.flashOpacity))}
           >
             Test slow (1.5 s, clear)
@@ -2221,7 +2214,7 @@ function Reader({
           ) : (
             <button
               type="button"
-              className="btn mt-4 min-h-12 w-full max-w-sm"
+              className="btn mt-4 w-full max-w-sm"
               style={{ color: "#4ade80", borderColor: "#4ade80" }}
               onClick={() => {
                 save(markChecked(reader, text.name, lines, Date.now(), text.folder));
@@ -2237,7 +2230,7 @@ function Reader({
           <div className="mt-4 grid w-full max-w-sm grid-cols-2 gap-2">
             <button
               type="button"
-              className="btn btn-gold min-h-12"
+              className="btn btn-gold"
               onClick={() => {
                 session.current = { began: Date.now(), phrases: 0, logged: false };
                 setFinished(false);
@@ -2246,7 +2239,7 @@ function Reader({
             >
               Again from the top
             </button>
-            <button type="button" className="btn min-h-12" onClick={onClose}>
+            <button type="button" className="btn" onClick={onClose}>
               Back to my texts
             </button>
           </div>
@@ -2394,10 +2387,10 @@ function Reader({
                   autoFocus
                 />
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  <button type="button" className="btn btn-gold min-h-12" onClick={saveEdit}>
+                  <button type="button" className="btn btn-gold" onClick={saveEdit}>
                     Save
                   </button>
-                  <button type="button" className="btn min-h-12" onClick={endEdit}>
+                  <button type="button" className="btn" onClick={endEdit}>
                     Cancel
                   </button>
                 </div>
@@ -2405,7 +2398,7 @@ function Reader({
             ) : (
               <button
                 type="button"
-                className={`btn min-h-12 w-full text-base ${at.over ? "btn-gold" : "opacity-70"}`}
+                className={`btn w-full text-base ${at.over ? "btn-gold" : "opacity-70"}`}
                 aria-disabled={!at.over}
                 onPointerDown={(e) => {
                   e.preventDefault();
@@ -2418,7 +2411,7 @@ function Reader({
             <div className="mt-2 grid grid-cols-4 gap-1.5">
               <button
                 type="button"
-                className="btn min-h-10 px-1"
+                className="btn px-1"
                 onClick={() => goTo(index - 1)}
                 disabled={index === 0 || editing !== null}
                 aria-label="Previous phrase"
@@ -2426,12 +2419,7 @@ function Reader({
                 <ChevronLeft className="size-4" aria-hidden />
                 Back
               </button>
-              <button
-                type="button"
-                className="btn min-h-10 px-1"
-                onClick={hold}
-                disabled={editing !== null}
-              >
+              <button type="button" className="btn px-1" onClick={hold} disabled={editing !== null}>
                 {heldAt === null ? (
                   <>
                     <Pause className="size-4" aria-hidden />
@@ -2446,7 +2434,7 @@ function Reader({
               </button>
               <button
                 type="button"
-                className="btn min-h-10 px-1"
+                className="btn px-1"
                 onClick={edit}
                 disabled={editing !== null}
                 aria-label="Edit this phrase"
@@ -2456,7 +2444,7 @@ function Reader({
               </button>
               <button
                 type="button"
-                className="btn min-h-10 px-1"
+                className="btn px-1"
                 onClick={() => goTo(index + 1)}
                 disabled={index + 1 >= total || editing !== null}
                 aria-label="Next phrase"
@@ -2475,7 +2463,7 @@ function Reader({
                       role="tab"
                       aria-selected={reader.tab === t}
                       data-on={reader.tab === t}
-                      className="btn min-h-9 px-0.5"
+                      className="btn px-0.5"
                       onClick={() => set({ tab: t })}
                     >
                       {TAB_NAME[t]}

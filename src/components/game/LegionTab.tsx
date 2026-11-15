@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
+  Info,
   Num,
   StereoChoices,
   Toggle,
   TtsMake,
   type TtsJobHere,
 } from "@/components/game/RehearseTab";
+import { legionInfo } from "@/game/legionInfo";
 import { hasFolder, listFolder } from "@/game/azsFolder";
 import {
   LEGION_FIELDS,
@@ -205,30 +207,46 @@ export function LegionTab() {
   );
 }
 
-/** One setting: a switch, a number, a choice or a list, labelled with its own name too. */
+/** A setting's ⓘ: what it does, in full. */
+function about(f: LegionField) {
+  return (
+    <>
+      {legionInfo(f).map((t, i) => (
+        <p key={i}>{t}</p>
+      ))}
+    </>
+  );
+}
+
+/** One setting: a switch, a number, a choice or a list, labelled with its own name too, with its ⓘ. */
 function Field({ f, s }: { f: LegionField; s: LegionSettings }) {
   const v = s[f.key];
   const set = (x: unknown) => legionUpdate({ [f.key]: legionValue(f, x) });
   const label = f.label === f.key ? f.key : `${f.label} · ${f.key}`;
   if (f.kind === "toggle")
     return f.section === "Layers" ? (
-      <button
-        type="button"
-        className="btn px-1 text-[0.6rem] tracking-normal normal-case"
-        data-on={v === true}
-        aria-pressed={v === true}
-        onClick={() => set(!v)}
-        title={f.help}
-      >
-        {f.label}
-      </button>
+      <div className="flex min-w-0 items-center gap-1">
+        <button
+          type="button"
+          className="btn min-w-0 flex-1 px-1 text-[0.6rem] tracking-normal normal-case"
+          data-on={v === true}
+          aria-pressed={v === true}
+          onClick={() => set(!v)}
+        >
+          <span className="truncate">{f.label}</span>
+        </button>
+        <Info title={f.label}>{about(f)}</Info>
+      </div>
     ) : (
-      <Toggle label={label} on={v === true} flip={() => set(!v)} />
+      <Toggle label={label} on={v === true} flip={() => set(!v)} info={about(f)} />
     );
   if (f.kind === "choice")
     return (
       <div className={f.section === "Layers" ? "col-span-2 space-y-1" : "space-y-1"}>
-        <p className="text-xs text-muted">{label}</p>
+        <p className="flex items-center gap-1.5 text-xs text-muted">
+          {label}
+          <Info title={f.label}>{about(f)}</Info>
+        </p>
         <div className="grid grid-cols-2 gap-1" role="radiogroup" aria-label={f.label}>
           {f.choices?.map(([id, text]) => (
             <button
@@ -244,22 +262,27 @@ function Field({ f, s }: { f: LegionField; s: LegionSettings }) {
             </button>
           ))}
         </div>
-        {f.help && <p className="text-[0.6rem] leading-snug text-muted">{f.help}</p>}
       </div>
     );
   if (f.kind === "list")
-    return <ListField f={f} value={(v as number[]) ?? []} set={set} label={label} />;
-  return (
-    <>
-      <Num
+    return (
+      <ListField
+        f={f}
+        value={(v as number[]) ?? []}
+        set={set}
         label={label}
-        value={Number(v)}
-        step={f.step ?? 0.001}
-        digits={f.digits ?? 3}
-        set={(x) => set(x)}
+        info={<Info title={f.label}>{about(f)}</Info>}
       />
-      {f.help && <p className="text-[0.6rem] leading-snug text-muted">{f.help}</p>}
-    </>
+    );
+  return (
+    <Num
+      label={label}
+      value={Number(v)}
+      step={f.step ?? 0.001}
+      digits={f.digits ?? 3}
+      set={(x) => set(x)}
+      info={about(f)}
+    />
   );
 }
 
@@ -269,11 +292,13 @@ function ListField({
   value,
   set,
   label,
+  info,
 }: {
   f: LegionField;
   value: number[];
   set: (x: unknown) => void;
   label: string;
+  info: React.ReactNode;
 }) {
   const [text, setText] = useState<string | null>(null);
   const commit = () => {
@@ -287,7 +312,10 @@ function ListField({
   };
   return (
     <label className="block text-xs">
-      <span className="text-muted">{label}</span>
+      <span className="flex items-center gap-1.5 text-muted">
+        {label}
+        {info}
+      </span>
       <input
         className="mt-1 w-full rounded border border-cyan/40 bg-transparent p-2 text-fg"
         value={text ?? value.join(", ")}

@@ -6,6 +6,10 @@ import "@fontsource/orbitron/700.css";
 import "@fontsource/share-tech-mono/400.css";
 import "@/styles.css";
 import { Stage } from "@/components/game/Stage";
+import { startTheme } from "@/game/themeRun";
+
+// The saved look, before anything shows.
+startTheme();
 
 // The phone build has no server behind it: the game runs entirely on the device.
 // Keep the game below the Android status bar so the HUD is never drawn under it.

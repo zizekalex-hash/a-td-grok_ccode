@@ -21,6 +21,8 @@ import { settleAlarms } from "@/game/alarm";
 import { autoSaveToFolder } from "@/game/folderBackup";
 import { readReps } from "@/game/reps";
 import { startRehearseBackground } from "@/game/rehearseRun";
+import { startTheme } from "@/game/themeRun";
+import { startPostureBackground } from "@/game/postureWindow";
 import { useGame } from "@/game/store";
 
 export function Stage() {
@@ -61,6 +63,10 @@ export function Stage() {
     settleAlarms(!!readReps().active);
     // Rehearse's floating window: its taps counted as they come, Rehearse open or not.
     startRehearseBackground();
+    // The look chosen (already on the page; the phone's status bar too).
+    startTheme();
+    // The Postures window: what was tapped on it while the app was away, put on the timer.
+    startPostureBackground();
     // Leaving the app: everything saved into the azs-folder, if one is chosen.
     const away = () => {
       if (document.hidden) autoSaveToFolder();

@@ -3,20 +3,38 @@
    automatic detection would miss the game's component classes. */
 @source "./";
 
+/* The colours: the theme chosen (game/theme.ts sets them on the page; these, void
+   crystal, are the first). "cyan" is the main accent, "violet" what is on or
+   picked, "gold" what stands out. */
 @theme {
-  --color-bg: #020005;
-  --color-fg: #f4f7ff;
-  --color-muted: #9aa3b8;
-  --color-cyan: #00ffff;
-  --color-violet: #a855f7;
-  --color-gold: #e8c872;
-  --color-danger: #ff4d6d;
+  --color-bg: #06030d;
+  --color-fg: #efe8ff;
+  --color-muted: #a59bc6;
+  --color-cyan: #c4a5ff;
+  --color-violet: #8b5cf6;
+  --color-gold: #ff9ee7;
+  --color-danger: #ff5c8a;
   /* ATP, the tower defense's third currency, and the wake core's stages. */
   --color-atp: #7dffb2;
   --color-panel: #100c18;
   --font-display: "Orbitron", "Arial Narrow", Impact, sans-serif;
   --font-mono: "Share Tech Mono", ui-monospace, monospace;
   --radius: 0.85rem;
+}
+
+/* Compact (to start) or roomy: the buttons' height and padding. */
+:root {
+  --btn-h: 36px;
+  --btn-py: 0.36rem;
+  --btn-px: 0.5rem;
+  --line: color-mix(in oklab, var(--color-cyan) 40%, transparent);
+  --field-bg: color-mix(in oklab, var(--color-bg) 70%, transparent);
+}
+
+:root[data-density="comfortable"] {
+  --btn-h: 44px;
+  --btn-py: 0.55rem;
+  --btn-px: 0.7rem;
 }
 
 @layer base {
@@ -61,177 +79,204 @@
   touch-action: none;
 }
 
-.glass {
-  background: rgba(8, 6, 16, 0.84);
-  border: 1px solid rgba(0, 255, 255, 0.42);
-  box-shadow:
-    0 0 0 1px rgba(168, 85, 247, 0.14),
-    0 18px 48px rgba(0, 0, 0, 0.38);
-  backdrop-filter: blur(14px);
-  border-radius: var(--radius);
-}
+/* The app's own pieces sit in the components layer, so a utility written on one
+   of them (normal-case, px-1, text-left …) wins over them, as Tailwind means. */
+@layer components {
+  /* A crystal pane: the theme's "on" colour catching the light at its top edge. */
+  .glass {
+    background: linear-gradient(
+      160deg,
+      color-mix(
+        in oklab,
+        var(--color-violet) 20%,
+        color-mix(in oklab, var(--color-bg) 86%, transparent)
+      ),
+      color-mix(in oklab, var(--color-bg) 88%, transparent) 62%
+    );
+    border: 1px solid var(--line);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 0 0 1px color-mix(in oklab, var(--color-violet) 18%, transparent),
+      0 0 26px color-mix(in oklab, var(--color-violet) 12%, transparent),
+      0 18px 48px rgb(0 0 0 / 0.42);
+    backdrop-filter: blur(14px);
+    border-radius: var(--radius);
+  }
 
-.btn {
-  min-height: 44px;
-  border: 1px solid var(--color-cyan);
-  color: var(--color-cyan);
-  background: transparent;
-  font-family: var(--font-display);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-size: 0.68rem;
-  line-height: 1.15;
-  padding: 0.55rem 0.7rem;
-  border-radius: 0.45rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  transition:
-    background 160ms ease,
-    color 160ms ease,
-    border-color 160ms ease;
-}
+  .btn {
+    min-height: var(--btn-h);
+    border: 1px solid color-mix(in oklab, var(--color-cyan) 75%, transparent);
+    color: var(--color-cyan);
+    background: transparent;
+    font-family: var(--font-display);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 0.68rem;
+    line-height: 1.15;
+    padding: var(--btn-py) var(--btn-px);
+    border-radius: 0.45rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    transition:
+      background 160ms ease,
+      color 160ms ease,
+      border-color 160ms ease;
+  }
 
-.btn:active:not(:disabled) {
-  background: var(--color-cyan);
-  color: var(--color-bg);
-}
+  .btn:active:not(:disabled) {
+    background: var(--color-cyan);
+    color: var(--color-bg);
+  }
 
-/* The tower build menu: ten towers in two rows of five, and the row of tabs above
-   them. .btn's own padding would leave their text no room on a phone. */
-.btn.btn-tower {
-  padding: 0.25rem 0.1rem;
-  min-width: 0;
-}
+  /* The tower build menu: ten towers in two rows of five, and the row of tabs above
+     them. .btn's own padding would leave their text no room on a phone. */
+  .btn.btn-tower {
+    padding: 0.25rem 0.1rem;
+    min-width: 0;
+  }
 
-.btn.btn-tab {
-  min-height: 2rem;
-  padding: 0.15rem 0.3rem;
-  gap: 0.25rem;
-  font-size: 0.62rem;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  min-width: 0;
-}
+  .btn.btn-tab {
+    min-height: 2rem;
+    padding: 0.15rem 0.3rem;
+    gap: 0.25rem;
+    font-size: 0.62rem;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    min-width: 0;
+  }
 
-.btn[data-on="true"] {
-  background: var(--color-violet);
-  border-color: var(--color-violet);
-  color: var(--color-fg);
-  box-shadow: 0 0 16px rgba(168, 85, 247, 0.45);
-}
+  .btn[data-on="true"] {
+    background: linear-gradient(
+      135deg,
+      var(--color-violet),
+      color-mix(in oklab, var(--color-violet) 62%, var(--color-cyan))
+    );
+    border-color: color-mix(in oklab, var(--color-violet) 70%, var(--color-cyan));
+    color: var(--color-fg);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.16),
+      0 0 16px color-mix(in oklab, var(--color-violet) 45%, transparent);
+  }
 
-.btn:disabled {
-  border-color: rgba(154, 163, 184, 0.35);
-  color: var(--color-muted);
-}
+  .btn:disabled {
+    border-color: color-mix(in oklab, var(--color-muted) 35%, transparent);
+    color: var(--color-muted);
+  }
 
-.btn-gold {
-  border-color: var(--color-gold);
-  color: var(--color-gold);
-  animation: bless-pulse 1.5s ease-in-out infinite;
-}
+  /* On, but waiting (locked): still plainly on, its words readable. */
+  .btn[data-on="true"]:disabled {
+    color: color-mix(in oklab, var(--color-fg) 78%, transparent);
+    filter: saturate(0.55);
+  }
 
-.btn-gold:active:not(:disabled) {
-  background: var(--color-gold);
-  color: var(--color-bg);
-}
+  .btn-gold {
+    border-color: var(--color-gold);
+    color: var(--color-gold);
+    animation: bless-pulse 1.5s ease-in-out infinite;
+  }
 
-.btn:focus-visible,
-input:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid var(--color-cyan);
-  outline-offset: 2px;
-}
+  .btn-gold:active:not(:disabled) {
+    background: var(--color-gold);
+    color: var(--color-bg);
+  }
 
-.meter {
-  height: 8px;
-  border-radius: 99px;
-  background: rgba(244, 247, 255, 0.06);
-  overflow: hidden;
-  border: 1px solid rgba(0, 255, 255, 0.28);
-}
+  .btn:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--color-cyan);
+    outline-offset: 2px;
+  }
 
-.meter > span {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: var(--color-cyan);
-  transition: width 120ms linear;
-}
+  .meter {
+    height: 8px;
+    border-radius: 99px;
+    background: rgba(244, 247, 255, 0.06);
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--color-cyan) 28%, transparent);
+  }
 
-.meter[data-low="true"] > span {
-  background: var(--color-danger);
-}
+  .meter > span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--color-cyan);
+    transition: width 120ms linear;
+  }
 
-.meter[data-shield="true"] > span {
-  background: var(--color-gold);
-}
+  .meter[data-low="true"] > span {
+    background: var(--color-danger);
+  }
 
-.toast {
-  position: absolute;
-  z-index: 40;
-  top: max(0.75rem, env(safe-area-inset-top));
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: calc(100% - 1.5rem);
-  padding: 0.55rem 0.9rem;
-  color: var(--color-gold);
-  border: 1px solid var(--color-gold);
-  background: rgba(8, 6, 16, 0.92);
-  font-family: var(--font-display);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  font-size: 0.68rem;
-  text-align: center;
-  pointer-events: none;
-  border-radius: 0.4rem;
-}
+  .meter[data-shield="true"] > span {
+    background: var(--color-gold);
+  }
 
-.az-ring {
-  transform-origin: 32px 32px;
-  animation: az-spin 14s linear infinite;
-}
+  .toast {
+    position: absolute;
+    z-index: 40;
+    top: max(0.75rem, env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 1.5rem);
+    padding: 0.55rem 0.9rem;
+    color: var(--color-gold);
+    border: 1px solid var(--color-gold);
+    background: color-mix(in oklab, var(--color-bg) 92%, transparent);
+    font-family: var(--font-display);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 0.68rem;
+    text-align: center;
+    pointer-events: none;
+    border-radius: 0.4rem;
+  }
 
-.stepper {
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
-  padding: 0;
-}
+  .az-ring {
+    transform-origin: 32px 32px;
+    animation: az-spin 14s linear infinite;
+  }
 
-input[type="range"] {
-  width: 100%;
-  accent-color: var(--color-cyan);
-  height: 28px;
-  background: transparent;
-}
+  .stepper {
+    width: var(--btn-h);
+    min-width: var(--btn-h);
+    height: var(--btn-h);
+    padding: 0;
+  }
 
-textarea {
-  width: 100%;
-  resize: vertical;
-  min-height: 4.5rem;
-  background: rgba(2, 0, 5, 0.65);
-  color: var(--color-fg);
-  border: 1px solid rgba(0, 255, 255, 0.35);
-  border-radius: 0.45rem;
-  padding: 0.6rem 0.7rem;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  line-height: 1.45;
-}
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--color-cyan);
+    height: 28px;
+    background: transparent;
+  }
 
-.text-input {
-  width: 100%;
-  min-height: 44px;
-  background: rgba(2, 0, 5, 0.65);
-  color: var(--color-fg);
-  border: 1px solid rgba(0, 255, 255, 0.35);
-  border-radius: 0.45rem;
-  padding: 0.5rem 0.7rem;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
+  textarea {
+    width: 100%;
+    resize: vertical;
+    min-height: 4.5rem;
+    background: var(--field-bg);
+    color: var(--color-fg);
+    border: 1px solid color-mix(in oklab, var(--color-cyan) 35%, transparent);
+    border-radius: 0.45rem;
+    padding: 0.6rem 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    line-height: 1.45;
+  }
+
+  .text-input {
+    width: 100%;
+    min-height: var(--btn-h);
+    background: var(--field-bg);
+    color: var(--color-fg);
+    border: 1px solid color-mix(in oklab, var(--color-cyan) 35%, transparent);
+    border-radius: 0.45rem;
+    padding: 0.5rem 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+  }
 }
 
 .flash-panel canvas {
@@ -243,7 +288,11 @@ textarea {
 }
 
 .flash-caption {
-  background: linear-gradient(rgba(8, 6, 16, 0.92), rgba(8, 6, 16, 0.75) 70%, rgba(8, 6, 16, 0));
+  background: linear-gradient(
+    color-mix(in oklab, var(--color-bg) 92%, transparent),
+    color-mix(in oklab, var(--color-bg) 75%, transparent) 70%,
+    transparent
+  );
   opacity: 0;
   transition: opacity 400ms ease;
 }

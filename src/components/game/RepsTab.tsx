@@ -288,7 +288,7 @@ export function RepsTab() {
       >
         {/* A box that keeps line breaks, so a pasted block arrives whole. */}
         <textarea
-          className="text-input min-h-11 min-w-0 flex-1 resize-y py-2"
+          className="text-input min-w-0 flex-1 resize-y py-2"
           rows={draft.includes("\n") ? 4 : 1}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -379,7 +379,7 @@ export function RepsTab() {
           <button
             key={mode}
             type="button"
-            className="btn min-h-11 flex-col gap-0"
+            className="btn flex-col gap-0"
             data-on={state.mode === mode}
             aria-pressed={state.mode === mode}
             onClick={() => save({ ...state, mode })}
@@ -431,7 +431,7 @@ export function RepsTab() {
                 <button
                   key={first}
                   type="button"
-                  className="btn min-h-10 text-[0.6rem]"
+                  className="btn text-[0.6rem]"
                   data-on={state.first === first}
                   aria-pressed={state.first === first}
                   onClick={() => save({ ...state, first })}
@@ -652,7 +652,7 @@ export function RepsTab() {
           </p>
           <button
             type="button"
-            className="btn btn-gold mt-2 min-h-12 w-full"
+            className="btn btn-gold mt-2 w-full"
             onClick={() => start(saved.id)}
           >
             <RotateCcw className="size-4" aria-hidden />

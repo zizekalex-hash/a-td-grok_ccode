@@ -1,8 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { legionInfo } from "./legionInfo.ts";
 import {
   buildMatrix,
   dualDomain,
+  LEGION_FIELDS,
   legionDefaults,
   legionMaster,
   loadLegion,
@@ -266,5 +268,23 @@ describe("legion: settings", () => {
     assert.equal(s.MATRIX_SEC, 0.05);
     assert.equal(loadLegion({ CROSS_MODE: "sideways" }).CROSS_MODE, "sum");
     assert.equal(loadLegion(null).LEGION_ON, false);
+  });
+});
+
+describe("legion: every setting says what it does (its ⓘ)", () => {
+  it("each with its stage, its range and its name in the engines", () => {
+    for (const f of LEGION_FIELDS) {
+      const info = legionInfo(f);
+      assert.ok(info.length >= 3, `${f.key}: ${info.length} paragraphs`);
+      assert.ok(info.at(-1)!.includes(f.key), f.key);
+      assert.ok(
+        info.some((t) => t.startsWith(`${f.section}: `)),
+        `${f.key}: its stage (${f.section}) described`,
+      );
+    }
+    const gain = legionInfo(LEGION_FIELDS.find((f) => f.key === "CROSSMOD_GAIN")!);
+    assert.ok(gain.some((t) => t.includes("tanh")));
+    const raw = legionInfo(LEGION_FIELDS.find((f) => f.key === "RAW_UTF8")!);
+    assert.ok(raw.some((t) => t.startsWith("RAW: the text as UTF-8 bytes")));
   });
 });

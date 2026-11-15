@@ -22,10 +22,10 @@ export function Confirm({
     >
       <p className="text-sm text-fg">{text}</p>
       <div className="mt-2 grid grid-cols-2 gap-2">
-        <button type="button" className="btn min-h-12" onClick={onNo} autoFocus>
+        <button type="button" className="btn" onClick={onNo} autoFocus>
           {no}
         </button>
-        <button type="button" className="btn min-h-12" style={DANGER} onClick={onYes}>
+        <button type="button" className="btn" style={DANGER} onClick={onYes}>
           {yes}
         </button>
       </div>

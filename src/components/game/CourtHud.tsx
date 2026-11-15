@@ -429,7 +429,7 @@ function PlaceSheet({ place, v }: { place: PlaceKey; v: CourtView }) {
         </div>
         <button
           type="button"
-          className="btn btn-gold mt-3 min-h-12 w-full"
+          className="btn btn-gold mt-3 w-full"
           disabled={!open}
           onClick={() => game()?.courtTravel(place)}
         >
@@ -645,7 +645,7 @@ function Bonds({ q }: { q: QueenKey }) {
           <li key={b.queen}>
             <button
               type="button"
-              className="btn min-h-10 gap-1.5 py-1 pr-2.5 pl-1 text-xs tracking-normal normal-case"
+              className="btn gap-1.5 py-1 pr-2.5 pl-1 text-xs tracking-normal normal-case"
               onClick={() => game()?.courtOpen({ kind: "queen", queen: b.queen })}
               style={{ borderColor: `${C.queens[b.queen].color}88` }}
             >
@@ -1303,12 +1303,12 @@ function FeedCard({ v }: { v: CourtView }) {
         </p>
       </div>
       <div className="flex shrink-0 flex-col gap-1.5">
-        <button type="button" className="btn btn-gold min-h-10 px-3" onClick={feed}>
+        <button type="button" className="btn btn-gold px-3" onClick={feed}>
           {h.kind === "pray" ? "Pray ▶" : names.length > 1 ? "Feed them ▶" : "Feed her ▶"}
         </button>
         <button
           type="button"
-          className="btn min-h-9 px-3 text-[0.6rem]"
+          className="btn px-3 text-[0.6rem]"
           onClick={() => game()?.courtFeedLater()}
         >
           Later
@@ -1429,12 +1429,12 @@ function BonusRound({ v, color }: { v: CourtView; color: string }) {
         {s.queen && would.affection ? ` · +${would.affection} ♥` : ""}
       </p>
       <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
-        <button type="button" className="btn btn-gold min-h-12" onClick={start}>
+        <button type="button" className="btn btn-gold" onClick={start}>
           {going ? "Go on with the set ▶" : "Start the bonus set ▶"}
         </button>
         <button
           type="button"
-          className="btn min-h-12 px-3"
+          className="btn px-3"
           disabled={going || reps.items.length < 2}
           onClick={() =>
             setPick(pickBonus(reps, Math.random, C.bonus.maxWords, item.id)?.id ?? item.id)
