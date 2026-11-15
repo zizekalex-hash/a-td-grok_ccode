@@ -1,6 +1,15 @@
-import { useState } from "react";
-import { BookOpen, History, RotateCcw, Trash2 } from "lucide-react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { BookOpen, History, Repeat, RotateCcw, Trash2 } from "lucide-react";
 import { Confirm } from "@/components/game/Confirm";
+import { clearPostureLog } from "@/game/postures";
+import { postureState, postureUpdate, subscribePostures } from "@/game/postureRun";
+import { SITTING_IDLE_MS, sittingMs } from "@/game/rehearse";
+import {
+  closeIdleSitting,
+  rehearseLibrary,
+  rehearseState,
+  subscribeRehearse,
+} from "@/game/rehearseRun";
 import {
   clearHistory,
   clock,
@@ -10,6 +19,7 @@ import {
   localDay,
   readReps,
   writeReps,
+  type LogEntry,
   type RepsState,
   type Tally,
 } from "@/game/reps";
@@ -73,8 +83,33 @@ export function RepsHistory() {
   const [state, setState] = useState<RepsState>(() => readReps());
   const [asking, setAsking] = useState(false);
   const [days, setDays] = useState(DAYS_STEP);
+  const postures = useSyncExternalStore(subscribePostures, postureState, postureState);
+  const reh = useSyncExternalStore(subscribeRehearse, rehearseState, rehearseState);
+  // A sitting idle long enough: over, in the history, before it is read.
+  useEffect(() => {
+    closeIdleSitting();
+    setState(readReps());
+  }, []);
   const now = Date.now();
-  const h = historyOf(state.log, now);
+  const sit = reh.sitting && now - reh.sitting.last <= SITTING_IDLE_MS ? reh.sitting : null;
+  const sitName = sit ? (rehearseLibrary().find((t) => t.key === sit.key)?.name ?? "a text") : "";
+  // The postures' sittings (kept by the Postures tab) with the rest, by time.
+  const merged: LogEntry[] = [
+    ...state.log,
+    ...postures.log.map((p): LogEntry => ({
+      kind: "posture",
+      at: p.at,
+      text: p.name,
+      reps: 0,
+      ms: p.ms,
+    })),
+  ].sort((a, b) => b.at - a.at);
+  const h = historyOf(merged, now);
+  const sumOf = (es: LogEntry[], kind: LogEntry["kind"]) =>
+    es.reduce((t, e) => t + (e.kind === kind ? e.ms : 0), 0);
+  const todayEntries = h.days.find((d) => localDay(d.at) === localDay(now))?.entries ?? [];
+  const todayPosture = sumOf(todayEntries, "posture");
+  const todayRehearse = sumOf(todayEntries, "rehearse");
   const active = state.active;
   const activeText = active ? state.items.find((i) => i.id === active.id)?.text : "";
 
@@ -91,10 +126,25 @@ export function RepsHistory() {
         </p>
       )}
 
-      {state.log.length === 0 ? (
+      {sit && (
+        <p className="mt-2 rounded-md border border-gold/50 p-2 text-xs text-gold" role="status">
+          Rehearsing “{sitName}” now · {sit.reps.toLocaleString()} phrase{sit.reps === 1 ? "" : "s"}{" "}
+          · {clock(sittingMs(reh, sit.key, now))}. It goes in below when it is over: another text,
+          or 10 minutes without a rep.
+        </p>
+      )}
+      {(todayPosture > 0 || todayRehearse > 0) && (
+        <p className="mt-2 text-xs text-muted">
+          Today
+          {todayRehearse > 0 ? ` · Rehearse ${clock(todayRehearse)}` : ""}
+          {todayPosture > 0 ? ` · 🧘 postures ${clock(todayPosture)}` : ""}
+        </p>
+      )}
+      {merged.length === 0 ? (
         <p className="mt-4 text-sm text-muted">
           <History className="mr-1 inline size-4 align-[-3px]" aria-hidden />
-          No sets yet. Every set you finish in Reps shows up here, with its time.
+          Nothing yet. Every set you finish in Reps shows up here, with its time; so do your
+          readings, your sittings on a text in Rehearse, and your postures.
         </p>
       ) : (
         <>
@@ -121,24 +171,64 @@ export function RepsHistory() {
             <section key={d.day} className="mt-2" aria-label={dayLabel(d.at, now)}>
               <p className="flex items-baseline justify-between gap-2 border-b border-cyan/20 pb-0.5 text-sm">
                 <span className="font-display text-cyan">{dayLabel(d.at, now)}</span>
-                {d.sets > 0 && (
-                  <span className="text-xs text-muted">
-                    <span className="text-gold">{d.reps.toLocaleString()}</span> reps ·{" "}
-                    {clock(d.ms)} · {d.sets} set{d.sets === 1 ? "" : "s"}
-                  </span>
-                )}
+                <span className="text-right text-xs text-muted">
+                  {[
+                    d.sets > 0 ? (
+                      <>
+                        <span className="text-gold">{d.reps.toLocaleString()}</span> reps ·{" "}
+                        {clock(d.ms)} · {d.sets} set{d.sets === 1 ? "" : "s"}
+                      </>
+                    ) : null,
+                    sumOf(d.entries, "rehearse") > 0
+                      ? `Rehearse ${clock(sumOf(d.entries, "rehearse"))}`
+                      : null,
+                    sumOf(d.entries, "posture") > 0
+                      ? `🧘 ${clock(sumOf(d.entries, "posture"))}`
+                      : null,
+                  ]
+                    .filter((x) => x !== null)
+                    .map((x, i) => (
+                      <span key={i}>
+                        {i ? " · " : ""}
+                        {x}
+                      </span>
+                    ))}
+                </span>
               </p>
               <ul className="mt-1 space-y-0.5">
                 {d.entries.map((e, i) =>
-                  e.kind === "read" ? (
+                  e.kind === "posture" ? (
+                    <li key={`${e.at}-${i}`} className="flex gap-2 text-sm">
+                      <span className="w-11 shrink-0 pt-0.5 text-xs text-muted tabular-nums">
+                        {timeOf(e.at)}
+                      </span>
+                      <span className="min-w-0 break-words text-fg">
+                        🧘 {e.text}{" "}
+                        <span className="whitespace-nowrap text-cyan">· {clock(e.ms)}</span>
+                      </span>
+                    </li>
+                  ) : e.kind === "rehearse" ? (
+                    <li key={`${e.at}-${i}`} className="flex gap-2 text-sm">
+                      <span className="w-11 shrink-0 pt-0.5 text-xs text-muted tabular-nums">
+                        {timeOf(e.at)}
+                      </span>
+                      <span className="min-w-0 break-words text-gold">
+                        <Repeat className="mr-1 inline size-3.5 align-[-2px]" aria-hidden />
+                        Rehearsed “{e.text}” · {e.reps.toLocaleString()} phrase
+                        {e.reps === 1 ? "" : "s"}
+                        {e.passes ? ` · ${e.passes} pass${e.passes === 1 ? "" : "es"}` : ""}{" "}
+                        <span className="whitespace-nowrap text-cyan">· {clock(e.ms)}</span>
+                      </span>
+                    </li>
+                  ) : e.kind === "read" ? (
                     <li key={`${e.at}-${i}`} className="flex gap-2 text-sm">
                       <span className="w-11 shrink-0 pt-0.5 text-xs text-muted tabular-nums">
                         {timeOf(e.at)}
                       </span>
                       <span className="min-w-0 break-words text-violet">
                         <BookOpen className="mr-1 inline size-3.5 align-[-2px]" aria-hidden />
-                        {e.done ? "Finished" : "Read"} “{e.text}” ·{" "}
-                        {e.reps.toLocaleString()} phrase{e.reps === 1 ? "" : "s"}{" "}
+                        {e.done ? "Finished" : "Read"} “{e.text}” · {e.reps.toLocaleString()} phrase
+                        {e.reps === 1 ? "" : "s"}{" "}
                         <span className="whitespace-nowrap text-cyan">· {clock(e.ms)}</span>
                       </span>
                     </li>
@@ -187,13 +277,14 @@ export function RepsHistory() {
           <div className="mt-4 border-t border-cyan/20 pt-3">
             {asking ? (
               <Confirm
-                text="Clear the whole history, and every total in Reps with it (back to 0)? Your words and phrases stay."
+                text="Clear the whole history, and every total in Reps with it (back to 0), and the postures' times? Your words, phrases and postures stay."
                 yes="Yes, clear it"
                 no="No, keep it"
                 onYes={() => {
                   const next = clearHistory(state);
                   setState(next);
                   writeReps(next);
+                  postureUpdate(clearPostureLog);
                   setAsking(false);
                 }}
                 onNo={() => setAsking(false)}

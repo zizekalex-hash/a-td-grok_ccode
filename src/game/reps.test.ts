@@ -33,6 +33,7 @@ import {
   startSet,
   timeLeft,
   wordsOf,
+  logRehearse,
 } from "./reps.ts";
 
 const R = CONFIG.reps;
@@ -369,5 +370,27 @@ describe("reps done elsewhere", () => {
     });
     assert.equal(recordReps(s, "nope", 3, 1, 1), s, "an unknown phrase changes nothing");
     assert.equal(recordReps(s, id, 0, 1, 1), s);
+  });
+});
+
+describe("reps: a sitting in Rehearse in the history", () => {
+  it("kept with its phrases, passes and time; not counted as a set; saved and loaded", () => {
+    let s = newReps();
+    s = logRehearse(s, { at: 5000, text: "Chloride", phrases: 42, passes: 1, ms: 754_000 });
+    s = logRehearse(s, { at: 9000, text: "Other", phrases: 3, passes: 0, ms: 60_000 });
+    assert.deepEqual(s.log[1], {
+      kind: "rehearse",
+      at: 5000,
+      text: "Chloride",
+      reps: 42,
+      ms: 754_000,
+      passes: 1,
+    });
+    assert.equal("passes" in s.log[0]!, false);
+    const h = historyOf(s.log, 9000);
+    assert.equal(h.all.sets, 0, "not a set of Reps");
+    assert.equal(h.days[0]!.entries.length, 2);
+    const back = loadReps(JSON.parse(JSON.stringify(s)));
+    assert.deepEqual(back.log, s.log);
   });
 });

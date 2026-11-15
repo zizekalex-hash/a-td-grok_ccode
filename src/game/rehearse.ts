@@ -188,6 +188,26 @@ export interface TextProgress {
 /** The most a gap between two reps adds to a text's time (a break counts as this much). */
 export const SPENT_GAP_MS = 5 * 60_000;
 
+/**
+ * A sitting on one text in Rehearse: from its first rep to its last, its time
+ * as a text's is counted (a gap of over SPENT_GAP_MS counts as that). It is
+ * over when another text is repped, or after SITTING_IDLE_MS without a rep;
+ * then it goes into the History.
+ */
+export interface TextSitting {
+  key: string;
+  /** Its first rep and its last (ms since 1970). */
+  start: number;
+  last: number;
+  /** Its time (ms), its reps (phrases done) and its passes through the text. */
+  ms: number;
+  reps: number;
+  passes: number;
+}
+
+/** A sitting is over after this long without a rep. */
+export const SITTING_IDLE_MS = 10 * 60_000;
+
 export interface RehearseState {
   items: RehearsePhrase[];
   /** The phrase being repped ("" for the first). */
@@ -205,6 +225,10 @@ export interface RehearseState {
    * kept whatever is reset, the mark that it has been read (and checked) at least once.
    */
   done: Record<string, number>;
+  /** The sitting going on a text (taps, the window, the voice moving it on). */
+  sitting: TextSitting | null;
+  /** Sittings over, not yet in the History (it takes them at once). */
+  sat: TextSitting[];
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -315,6 +339,25 @@ export function newRehearse(): RehearseState {
     text: "",
     progress: {},
     done: {},
+    sitting: null,
+    sat: [],
+  };
+}
+
+/** A saved sitting, checked (null: none, or not one). */
+function loadSitting(v: unknown): TextSitting | null {
+  const r = obj(v);
+  const key = typeof r.key === "string" ? r.key.slice(0, 2000) : "";
+  const start = num(r.start, 0);
+  const last = num(r.last, 0);
+  if (!key || start <= 0 || last < start) return null;
+  return {
+    key,
+    start,
+    last,
+    ms: Math.max(0, num(r.ms, 0)),
+    reps: Math.max(0, Math.floor(num(r.reps, 0))),
+    passes: Math.max(0, Math.floor(num(r.passes, 0))),
   };
 }
 
@@ -356,6 +399,11 @@ export function loadRehearse(data: unknown): RehearseState {
   for (const [key, when] of Object.entries(obj(d.done))) {
     if (key && typeof when === "number" && Number.isFinite(when) && when > 0) s.done[key] = when;
   }
+  s.sitting = loadSitting(d.sitting);
+  s.sat = (Array.isArray(d.sat) ? d.sat : [])
+    .map(loadSitting)
+    .filter((x): x is TextSitting => !!x)
+    .slice(-100);
   const t = obj(d.settings);
   const u = s.settings;
   if (typeof t.sound === "boolean") u.sound = t.sound;
@@ -885,17 +933,47 @@ export function textTap(
   const p = textProgress(s, key);
   const here = Math.max(0, Math.min(total - 1, Math.floor(at)));
   const wrap = here + 1 >= total;
+  const reps = Math.max(1, Math.floor(n));
+  // The sitting on this text goes on (or one starts: the one before, on another text or long idle, is over).
+  const was = s.sitting;
+  const going = !!was && was.key === key && now >= was.last && now - was.last <= SITTING_IDLE_MS;
+  const sitting: TextSitting =
+    going && was
+      ? {
+          ...was,
+          last: now,
+          ms: was.ms + Math.min(now - was.last, SPENT_GAP_MS),
+          reps: was.reps + reps,
+          passes: was.passes + (wrap ? 1 : 0),
+        }
+      : { key, start: now, last: now, ms: 0, reps, passes: wrap ? 1 : 0 };
   const next = {
     ...withProgress(s, key, {
       at: wrap ? 0 : here + 1,
       passes: p.passes + (wrap ? 1 : 0),
-      reps: p.reps + Math.max(1, Math.floor(n)),
+      reps: p.reps + reps,
       last: now,
       spentMs: spentAt(p, now),
     }),
     lastTap: now,
+    sitting,
+    sat: was && !going ? [...s.sat, was] : s.sat,
   };
   return wrap ? markDone(next, key, now) : next;
+}
+
+/** The sitting going is over if it has been idle long enough (or `force`): it waits for the History. */
+export function closeSitting(s: RehearseState, now: number, force = false): RehearseState {
+  const c = s.sitting;
+  if (!c || (!force && now - c.last <= SITTING_IDLE_MS)) return s;
+  return { ...s, sitting: null, sat: [...s.sat, c] };
+}
+
+/** The sitting on this text now: its time so far (the phrase being done too, as its time counts), 0 if none. */
+export function sittingMs(s: RehearseState, key: string, now: number): number {
+  const c = s.sitting;
+  if (!c || c.key !== key || now - c.last > SITTING_IDLE_MS) return 0;
+  return c.ms + Math.min(Math.max(0, now - c.last), SPENT_GAP_MS);
 }
 
 /** A text read through to its end: marked so (the first time is kept, whatever is reset). */

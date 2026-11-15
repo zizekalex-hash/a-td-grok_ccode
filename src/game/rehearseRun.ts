@@ -12,7 +12,7 @@ import { flashToast, grantSkillXp } from "@/game/engine";
 import { checkState, markChecked, readReader, writeReader } from "@/game/readtext";
 import { saveConfirmed } from "@/game/textFiles";
 import { levelForXp, repXp } from "@/game/recite";
-import { wordsOf } from "@/game/reps";
+import { logRehearse, readReps, writeReps, wordsOf } from "@/game/reps";
 import { useGame } from "@/game/store";
 import { browserSay, voiceFile, voiceHere } from "@/game/voice";
 import {
@@ -60,6 +60,7 @@ import {
   textGo,
   textProgress,
   textTap,
+  closeSitting,
   voiceLayersOf,
   type RehearseSettings,
   type VoiceLayer,
@@ -100,8 +101,10 @@ export function rehearseState(): RehearseState {
 /** A change to it: kept on the device at once, and shown wherever it is open. */
 export function rehearseUpdate(fn: (s: RehearseState) => RehearseState) {
   const before = rehearseState();
-  const next = fn(before);
+  let next = fn(before);
   if (next === state) return;
+  // Sittings over (another text, or long idle): into the History, at once.
+  if (next.sat.length && logSittings(next)) next = { ...next, sat: [] };
   state = next;
   try {
     localStorage.setItem(REHEARSE_KEY, JSON.stringify(next));
@@ -191,6 +194,34 @@ export function rehearseLibrary(): LibText[] {
   return libraryOf(g.texts, g.custom, g.lines, g.folders);
 }
 
+/** The sitting on a text, if idle long enough: over, into the History. */
+export function closeIdleSitting() {
+  rehearseUpdate((s) => closeSitting(s, Date.now()));
+}
+
+/** Sittings over go into the History (Reps' log): each text's name as it is now. False: not written (kept for next time). */
+function logSittings(s: RehearseState): boolean {
+  try {
+    const lib = rehearseLibrary();
+    let reps = readReps();
+    for (const c of s.sat) {
+      if (c.reps <= 0) continue;
+      const t = lib.find((x) => x.key === c.key);
+      reps = logRehearse(reps, {
+        at: c.start,
+        text: t ? (t.folder ? `${t.folder} / ${t.name}` : t.name) : "a text",
+        phrases: c.reps,
+        passes: c.passes,
+        ms: c.ms,
+      });
+    }
+    writeReps(reps);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Recitation XP for reps of a phrase (and the new level, if it went up). */
 export function repXpFor(text: string, n: number) {
   const before = levelForXp(useGame.getState().skills.recitation);
@@ -264,6 +295,9 @@ let started = false;
 export function startRehearseBackground() {
   if (started || typeof document === "undefined") return;
   started = true;
+  // A sitting long idle (the app away meanwhile, or closed): over, into the History; and again each minute.
+  closeIdleSitting();
+  window.setInterval(closeIdleSitting, 60_000);
   void onBubble(() => void takeBubble());
   document.addEventListener("visibilitychange", () => {
     if (alive) wakeAudio();

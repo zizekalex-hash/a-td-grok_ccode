@@ -19,15 +19,21 @@ import { RepsHistory } from "@/components/game/RepsHistory";
 import { ReadTab } from "@/components/game/ReadTab";
 import { RehearseTab } from "@/components/game/RehearseTab";
 import { LegionTab } from "@/components/game/LegionTab";
+import { PostureChip, PosturesTab } from "@/components/game/PosturesTab";
 
-type DrillTab = "rehearse" | "recall" | "read" | "reps" | "history" | "legion";
+type DrillTab = "rehearse" | "recall" | "read" | "reps" | "history" | "legion" | "postures";
 const TAB_KEY = "azshara-drill-tab";
 
 /** The tab last used, so the drill opens where you left it. */
 function lastTab(): DrillTab {
   try {
     const t = localStorage.getItem(TAB_KEY);
-    return t === "recall" || t === "read" || t === "reps" || t === "history" || t === "legion"
+    return t === "recall" ||
+      t === "read" ||
+      t === "reps" ||
+      t === "history" ||
+      t === "legion" ||
+      t === "postures"
       ? t
       : "rehearse";
   } catch {
@@ -153,8 +159,11 @@ export function DrillPanel() {
             </>
           )}
 
-          {/* Six tabs: two rows on a phone. */}
-          <div className="mt-4 grid grid-cols-6 gap-2 max-[480px]:grid-cols-3">
+          {/* A posture being timed: its time on every tab. */}
+          {tab !== "postures" && <PostureChip open={() => setTab("postures")} />}
+
+          {/* Seven tabs: three rows on a phone. */}
+          <div className="mt-4 grid grid-cols-7 gap-2 max-[480px]:grid-cols-3">
             <button type="button" className="btn" data-on={tab === "rehearse"} aria-pressed={tab === "rehearse"} onClick={() => setTab("rehearse")}>
               Rehearse
             </button>
@@ -173,6 +182,9 @@ export function DrillPanel() {
             <button type="button" className="btn" data-on={tab === "legion"} aria-pressed={tab === "legion"} onClick={() => setTab("legion")}>
               Legion
             </button>
+            <button type="button" className="btn max-[480px]:col-span-3" data-on={tab === "postures"} aria-pressed={tab === "postures"} onClick={() => setTab("postures")}>
+              Postures
+            </button>
           </div>
 
           {tab === "rehearse" ? (
@@ -182,6 +194,10 @@ export function DrillPanel() {
           ) : tab === "legion" ? (
             <div className="mt-4">
               <LegionTab />
+            </div>
+          ) : tab === "postures" ? (
+            <div className="mt-4">
+              <PosturesTab />
             </div>
           ) : tab === "reps" || tab === "history" || tab === "read" ? (
             <div className="mt-4">

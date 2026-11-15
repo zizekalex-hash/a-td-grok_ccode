@@ -171,6 +171,7 @@ import {
   textFileNames,
   textProgress,
   textPercent,
+  sittingMs,
   TTS_RATES,
   textStep,
   textTap,
@@ -600,6 +601,15 @@ export function RehearseTab() {
   const at = textAt(st, textKeyNow, total);
   const unit = units[at];
   const prog = textProgress(st, textKeyNow);
+  // The sitting on this text (from its first rep; over after another text or 10 minutes idle): its time, a second at a time.
+  const [, setSitTick] = useState(0);
+  const sitting = textsView && st.sitting?.key === textKeyNow ? st.sitting : null;
+  useEffect(() => {
+    if (!sitting) return;
+    const id = window.setInterval(() => setSitTick((x) => x + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [sitting]);
+  const sitNow = sitting ? sittingMs(st, textKeyNow, Date.now()) : 0;
   const textSumNow = useMemo(() => (textNow ? textSum(textNow.lines) : ""), [textNow]);
   /** The phrase being repped now: a single phrase, or the text's phrase it is at. */
   const activeText = textsView ? (unit?.text ?? "") : (item?.text ?? "");
@@ -1563,6 +1573,12 @@ export function RehearseTab() {
                 {prog.passes.toLocaleString()} pass{prog.passes === 1 ? "" : "es"} ·{" "}
                 {prog.reps.toLocaleString()} reps · {textPercent(at, total)}% ·{" "}
                 {clock(prog.spentMs)} on it
+                {sitNow > 0 ? (
+                  <span className="text-gold" title="This sitting: since its first rep">
+                    {" "}
+                    · ⏱ {clock(sitNow)} now
+                  </span>
+                ) : null}
                 {st.done[textKeyNow] ? (
                   <span className="text-emerald-400">
                     {" "}

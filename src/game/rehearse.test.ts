@@ -68,6 +68,9 @@ import {
   voiceLayersOf,
   liveVoiceLayers,
   heardVoiceLayers,
+  sittingMs,
+  closeSitting,
+  SITTING_IDLE_MS,
   libraryOf,
   currentText,
   applyBubble,
@@ -863,6 +866,53 @@ describe("rehearse: layers on or off, reversed, and who leads", () => {
       [bad.voiceLayers[0]!.voiceOn, bad.voiceLayers[0]!.voiceReverse],
       [true, false],
     );
+  });
+});
+
+describe("rehearse: a sitting on a text", () => {
+  const MIN = 60_000;
+  it("starts at the first rep; goes on with each (a gap counted up to 5 minutes)", () => {
+    let s = textTap(newRehearse(), "A", 3, 1000);
+    assert.deepEqual(s.sitting, { key: "A", start: 1000, last: 1000, ms: 0, reps: 1, passes: 0 });
+    s = textTap(s, "A", 3, 1000 + 2 * MIN, 10);
+    s = textTap(s, "A", 3, 1000 + 2 * MIN + 8 * MIN);
+    assert.equal(s.sitting!.ms, 2 * MIN + 5 * MIN);
+    assert.equal(s.sitting!.reps, 12);
+    assert.equal(s.sitting!.passes, 1, "the third tap went round the 3-phrase text");
+    assert.deepEqual(s.sat, []);
+    // Live: as far as now (the phrase being done too), not past the cap.
+    assert.equal(sittingMs(s, "A", s.sitting!.last + 30_000), 7 * MIN + 30_000);
+    assert.equal(sittingMs(s, "B", s.sitting!.last), 0);
+  });
+  it("over when another text is repped, or after 10 minutes without a rep", () => {
+    let s = textTap(newRehearse(), "A", 5, 1000);
+    s = textTap(s, "B", 5, 2000);
+    assert.deepEqual(
+      s.sat.map((x) => x.key),
+      ["A"],
+    );
+    assert.equal(s.sitting!.key, "B");
+    s = textTap(s, "B", 5, 2000 + SITTING_IDLE_MS + 1);
+    assert.deepEqual(
+      s.sat.map((x) => [x.key, x.start]),
+      [
+        ["A", 1000],
+        ["B", 2000],
+      ],
+    );
+    assert.equal(s.sitting!.start, 2000 + SITTING_IDLE_MS + 1);
+    assert.equal(sittingMs(s, "B", s.sitting!.last + SITTING_IDLE_MS + 1), 0);
+  });
+  it("closed when idle long enough (or asked); kept and loaded as it was", () => {
+    const s = textTap(newRehearse(), "A", 5, 1000);
+    assert.equal(closeSitting(s, 1000 + SITTING_IDLE_MS), s, "not yet");
+    const c = closeSitting(s, 1000 + SITTING_IDLE_MS + 1);
+    assert.equal(c.sitting, null);
+    assert.equal(c.sat.length, 1);
+    assert.equal(closeSitting(s, 1001, true).sat.length, 1);
+    const back = loadRehearse(JSON.parse(JSON.stringify(s)));
+    assert.deepEqual(back.sitting, s.sitting);
+    assert.deepEqual(loadRehearse({ sitting: { key: "x", start: 5, last: 1 } }).sitting, null);
   });
 });
 

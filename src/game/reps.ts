@@ -56,8 +56,13 @@ export interface ActiveSet {
 
 /** A line in the history: a finished set (its phrase as it was, reps and time), or a reset (what it cleared). */
 export interface LogEntry {
-  /** A finished set, a reset, or a reading in the Read tab (text: its name, reps: phrases read). */
-  kind: "set" | "reset" | "read";
+  /**
+   * A finished set, a reset, a reading in the Read tab (text: its name, reps:
+   * phrases read), a sitting on a text in Rehearse (text: its name, reps:
+   * phrases done), or (shown, not kept here: the Postures tab keeps them) a
+   * sitting in a posture (text: its name).
+   */
+  kind: "set" | "reset" | "read" | "rehearse" | "posture";
   /** When (ms since 1970). */
   at: number;
   text: string;
@@ -67,6 +72,8 @@ export interface LogEntry {
   timed?: boolean;
   /** A reading that reached the end of its text. */
   done?: boolean;
+  /** A sitting in Rehearse: the passes through its text. */
+  passes?: number;
 }
 
 export interface RepsState {
@@ -393,6 +400,22 @@ export function logRead(
   });
 }
 
+/** A sitting on a text in Rehearse goes into the history: its name, phrases done, passes and time. */
+export function logRehearse(
+  s: RepsState,
+  e: { at: number; text: string; phrases: number; passes: number; ms: number },
+): RepsState {
+  const passes = Math.max(0, Math.floor(e.passes));
+  return logged(s, {
+    kind: "rehearse",
+    at: e.at,
+    text: e.text,
+    reps: Math.max(0, Math.floor(e.phrases)),
+    ms: Math.max(0, Math.round(e.ms)),
+    ...(passes ? { passes } : {}),
+  });
+}
+
 /**
  * Empties the history and puts every count and time in Reps back to 0 with it,
  * so the two always agree; the words and phrases stay (and a set going on goes on).
@@ -635,7 +658,9 @@ export function loadReps(data: unknown): RepsState {
     if (!raw || typeof raw !== "object") continue;
     const e = raw as Record<string, unknown>;
     const kind =
-      e.kind === "reset" ? "reset" : e.kind === "set" ? "set" : e.kind === "read" ? "read" : null;
+      e.kind === "reset" || e.kind === "set" || e.kind === "read" || e.kind === "rehearse"
+        ? e.kind
+        : null;
     if (!kind) continue;
     s.log.push({
       kind,
@@ -645,6 +670,7 @@ export function loadReps(data: unknown): RepsState {
       ms: whole(e.ms),
       ...(e.timed === true ? { timed: true } : {}),
       ...(e.done === true ? { done: true } : {}),
+      ...(kind === "rehearse" && whole(e.passes) > 0 ? { passes: whole(e.passes) } : {}),
     });
   }
   const a = d.active as Record<string, unknown> | null | undefined;
