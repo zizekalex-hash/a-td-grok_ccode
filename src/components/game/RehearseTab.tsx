@@ -155,6 +155,9 @@ import {
   voiceShapeOf,
   clampPanHz,
   clampRecordSec,
+  clampVoiceRepeats,
+  layerVoices,
+  LIVE_VOICES,
   copyVoiceLayer,
   deleteVoiceLayer,
   MAX_VOICE_LAYERS,
@@ -174,7 +177,7 @@ import {
   sittingMs,
   TTS_RATES,
   textStep,
-  textTap,
+  textTapOn,
   WAV_PRESETS,
   WAV_SHAPES,
   wavSettingsOf,
@@ -710,6 +713,9 @@ export function RehearseTab() {
     set.voiceAuto,
     set.voiceRecord,
     set.voiceRecordSec,
+    set.voiceRepeats,
+    // Said a number of times: each tap says it again.
+    set.voiceRepeats > 0 ? st.lastTap : 0,
     set.paused,
     st.view,
     phraseText,
@@ -957,9 +963,12 @@ export function RehearseTab() {
             continue;
           }
           if (!lines.length || lines.join("\n") === t.lines.join("\n")) continue;
-          // A text changed here and not saved yet keeps its own words: it is saved over the file.
           const k = f.toLowerCase();
-          if (sums[k] && sums[k] !== textSum(t.lines)) continue;
+          // The file holds more of the same text (one the app cut when it loaded it, 400
+          // lines before 2 Nov): always read, as that cut text is never your own edit.
+          const longer = lines.length > t.lines.length && t.lines.every((l, j) => l === lines[j]);
+          // A text changed here and not saved yet keeps its own words: it is saved over the file.
+          if (!longer && sums[k] && sums[k] !== textSum(t.lines)) continue;
           sums[k] = textSum(lines);
           changed.push({ name: t.name, lines, folder: t.folder });
         }
@@ -967,8 +976,22 @@ export function RehearseTab() {
           writeSums(sums);
           for (const c of changed) updateText(c.name, c.lines, c.folder);
         }
+        // Still 400 lines, its file too: only the cut copy is there (the app saved it so).
+        const fixed = new Set(changed.map((c) => c.name));
+        const stillCut = library.filter(
+          (t) => !t.builtIn && t.lines.length === OLD_LINE_LIMIT && !fixed.has(t.name),
+        );
         setRefreshNote(
-          `Refreshed from ${TEXT_FOLDER}: ${files.length} .txt file${s(files.length)}, ${changed.length} changed outside and read again${fresh ? `, ${fresh} new (load ${fresh === 1 ? "it" : "them"} with the button above)` : ""}; ${wavCount} .wav file${s(wavCount)}.`,
+          `Refreshed from ${TEXT_FOLDER}: ${files.length} .txt file${s(files.length)}, ${changed.length} changed outside and read again${fresh ? `, ${fresh} new (load ${fresh === 1 ? "it" : "them"} with the button above)` : ""}; ${wavCount} .wav file${s(wavCount)}.${
+            stillCut.length
+              ? ` Still 400 lines: ${stillCut.length} (${stillCut
+                  .slice(0, 3)
+                  .map((t) => `“${t.name}”`)
+                  .join(
+                    ", ",
+                  )}${stillCut.length > 3 ? " …" : ""}). Their files in ${TEXT_FOLDER} hold only the 400 lines too, so nothing longer is there to read: put the whole original .txt over each (the same name) and tap Refresh again, or Import the original: the rest is added, your place and passes stay.`
+              : ""
+          }`,
         );
         return;
       }
@@ -1219,7 +1242,7 @@ export function RehearseTab() {
       const key = textKeyNow;
       const count = total;
       const here = at;
-      update((s) => textTap(s, key, count, t, n, here));
+      update((s) => textTapOn(s, library, key, count, t, n, here));
       // A pass through the whole text: done, and a check that it is all written right.
       if (here + 1 >= count && textNow) {
         flashToast(`“${textNow.name}”: pass ${prog.passes + 1} through it ✓`);
@@ -1254,6 +1277,7 @@ export function RehearseTab() {
     barSp: set.bubbleBarSp,
     bottomSp: set.bubbleBottomSp,
     showBottom: set.bubbleBottom,
+    paused: set.paused,
   };
   const bubbleSetup = (): BubbleSetup =>
     textsView
@@ -1481,11 +1505,12 @@ export function RehearseTab() {
         : "TAP = 1 REP · HOLD TO KEEP IT ON";
 
   return (
-    <div>
-      {emitter.picture}
+    <div data-cinema={locked}>
+      <div data-stage>{emitter.picture}</div>
       <button
         type="button"
         className="btn mb-3 w-full tracking-normal normal-case"
+        data-stage
         data-on={set.paused}
         aria-pressed={set.paused}
         onClick={() => setOpt({ paused: !set.paused })}
@@ -1533,6 +1558,7 @@ export function RehearseTab() {
         <>
           <button
             type="button"
+            data-stage
             className="glass mt-3 flex w-full flex-col items-center justify-center gap-2 p-4 text-center select-none"
             style={{
               height: `${set.tapHeight}dvh`,
@@ -1659,6 +1685,7 @@ export function RehearseTab() {
       <button
         type="button"
         className="btn mt-2 w-full tracking-normal normal-case"
+        data-stage
         data-on={locked}
         aria-pressed={locked}
         onClick={() => {
@@ -2839,12 +2866,14 @@ function VoicePanel({
   const L = layers[at]!;
   const setL = (patch: Partial<VoiceLayer>) => setOpt(setVoiceLayer(set, at, patch));
   const preset = voicePresetOf(L);
-  const whole = layers.filter((l) => l.voiceWhole).length;
   const off = layers.filter((l) => !l.voiceOn).length;
-  // The layer with the main voice: the first heard (its first copy).
+  // The layer with the main voice: the first heard (its first voice).
   const mainAt = layers.findIndex((l) => l.voiceOn);
-  // Whole texts: the main voice reads the text, a phrase at a time (rendered, or its layer reading it).
+  // Whole texts: the main voice reads the text, a phrase at a time (its layer reading it, or rendered).
   const reads = texts && (set.voiceRecord || !!layers[mainAt]?.voiceWhole);
+  // Each layer's voices (a stacked layer's multiplied), and all of them heard.
+  const perLayer = layerVoices(layers).map((v) => v.length);
+  const heardN = voiceCount(set);
   return (
     <>
       <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
@@ -2890,7 +2919,8 @@ function VoicePanel({
                 onClick={() => setLayer(k)}
               >
                 Layer {k + 1}
-                {k === mainAt ? " ★" : ""} ({l.voiceCopies}
+                {k === mainAt ? " ★" : ""} ({k > 0 && l.voiceStack ? "×" : ""}
+                {perLayer[k]}
                 {texts && l.voiceWhole ? ", whole text" : ""}
                 {l.voiceReverse ? ", reversed" : ""}
                 {l.voiceOn ? "" : ", off"})
@@ -2902,7 +2932,7 @@ function VoicePanel({
               disabled={layers.length >= MAX_VOICE_LAYERS}
               onClick={() => {
                 setOpt(copyVoiceLayer(set, at));
-                setLayer(layers.length);
+                setLayer(at + 1);
               }}
             >
               Copy layer {at + 1}
@@ -2980,6 +3010,34 @@ function VoicePanel({
               set={(v) => setOpt({ voiceRecordSec: clampRecordSec(v) })}
             />
           )}
+          <Num
+            label={
+              texts && layers[mainAt]?.voiceWhole
+                ? "The main voice says each phrase (times; 0 or 1: once)"
+                : "The main voice says it (times; 0: over and over)"
+            }
+            value={set.voiceRepeats}
+            step={1}
+            set={(v) => setOpt({ voiceRepeats: clampVoiceRepeats(v) })}
+            info={
+              <>
+                <p>
+                  How many times the main voice (★) says the phrase. 0: over and over, as long as
+                  you are on it. 1, 2, 3 …: that many times, then it is quiet and waits for your
+                  tap; your tap counts the rep and it says it that many times again.
+                </p>
+                <p>
+                  Reading a whole text (its layer reads the whole text), it says each phrase that
+                  many times (at least once), then goes on to the next by itself, or waits for your
+                  tap (below).
+                </p>
+                <p>
+                  The other voices never wait: they go on whatever the main voice does. To hear only
+                  them, set the main voice's volume to 0.
+                </p>
+              </>
+            }
+          />
           {reads && (
             <>
               <Toggle
@@ -2995,20 +3053,15 @@ function VoicePanel({
                     <p>
                       On: when the main voice has said a phrase and its silence, the text goes on to
                       the next phrase by itself (1/100, 2/100 …), counted as a rep, as a tap would.
-                      After the last, a pass, and round again.
                     </p>
                     <p>
-                      Off: the main voice says the phrase once, then waits. Your tap counts it, and
-                      the main voice says the next one.
+                      Off: the main voice says the phrase, then waits. Your tap counts it, and the
+                      main voice says the next one.
                     </p>
                     <p>
                       Either way every other voice keeps playing all the time, never waiting, and a
                       tap, ‹ ›, the floating window or the reader moves the main voice to that
-                      phrase.
-                    </p>
-                    <p>
-                      It reads like this pre-rendered, and live too when its layer (★) reads the
-                      whole text.
+                      phrase. Live, nothing to make first.
                     </p>
                   </>
                 }
@@ -3016,19 +3069,62 @@ function VoicePanel({
               {set.voiceRecord && <RenderLine auto={set.voiceAuto} />}
             </>
           )}
+          {texts && (
+            <>
+              <Ask
+                text="When the text is read through"
+                info={
+                  <>
+                    <p>
+                      When the last phrase is done (by the main voice moving on, your tap, or the
+                      floating window), a pass is counted, and then:
+                    </p>
+                    <p>
+                      Next text: on to the next text in your list (after the last, the first), from
+                      where you left it. Random text: another text, at random. Stop: every sound
+                      stops (Play all sound, at the top, starts it again, from the first phrase).
+                    </p>
+                    <p>One text only: it goes round again.</p>
+                  </>
+                }
+              />
+              <div
+                className="grid grid-cols-3 gap-1"
+                role="radiogroup"
+                aria-label="When the text is read through"
+              >
+                {(
+                  [
+                    ["next", "Next text"],
+                    ["random", "Random text"],
+                    ["stop", "Stop"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    role="radio"
+                    aria-checked={set.textEnd === k}
+                    data-on={set.textEnd === k}
+                    className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+                    onClick={() => setOpt({ textEnd: k })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           <p className="text-[0.65rem] leading-snug text-muted">
             {layers.length} layer{layers.length === 1 ? "" : "s"}
-            {off ? ` (${off} off: muted, kept)` : ""}, {voiceCount(set)} voice
-            {voiceCount(set) === 1 ? "" : "s"} heard
-            {mainAt >= 0 ? `; the main voice: layer ${mainAt + 1}'s first copy (★)` : ""}.
+            {off ? ` (${off} off: muted, kept)` : ""}, {heardN.toLocaleString()} voice
+            {heardN === 1 ? "" : "s"} heard
+            {heardN > LIVE_VOICES
+              ? ` (live: the nearest ${LIVE_VOICES} of them; Pre-render plays them all)`
+              : ""}
+            {mainAt >= 0 ? `; the main voice: layer ${mainAt + 1}'s first voice (★)` : ""}.
             {texts
-              ? set.voiceRecord
-                ? " Rendered: the main voice reads phrase after phrase, every other voice the whole text by itself."
-                : layers[mainAt]?.voiceWhole
-                  ? ` Live: the main voice reads the text phrase after phrase${layers.length - whole ? `, with the ${layers.length - whole} layer${layers.length - whole === 1 ? "" : "s"} saying the phrase` : ""}; the other voices reading the whole text are heard when it is pre-rendered.`
-                  : whole
-                    ? ` Live: the layers that say the phrase (${layers.length - whole}); the ${whole} reading the whole text are heard when it is pre-rendered.`
-                    : ""
+              ? " Layers reading the whole text: every voice reads it by itself from its first phrase, round and round; layers saying the phrase: the phrase you are at."
               : ""}{" "}
             Below: layer {at + 1}.
           </p>
@@ -3038,21 +3134,20 @@ function VoicePanel({
               info={
                 <>
                   <p>
-                    Live (Pre-render off): a layer that says the phrase says the phrase you are at,
-                    its copies again and again. A layer that reads the whole text: if it holds the
-                    main voice (★), its main voice reads the text live, a phrase at a time, moving
-                    on by itself (or waiting for your tap); its other copies, and the other layers
-                    reading the whole text, are heard once it is pre-rendered (the whole text has to
-                    be made first).
+                    Says the phrase: its voices say the phrase you are at, over and over, and move
+                    with you.
                   </p>
                   <p>
-                    Rendered (Pre-render on) and in the .tts.wav: the main voice reads phrase after
-                    phrase, and every other voice reads the whole text by itself, whichever this is.
+                    Reads the whole text: every voice of it reads the whole text by itself, from its
+                    first phrase, at its own speed (the faster copies get through it sooner), and
+                    round again, never waiting for the main voice or for your taps. If it holds the
+                    main voice (★), the main voice reads it a phrase at a time from where you are,
+                    moving on by itself or waiting for your tap.
                   </p>
                   <p>
-                    So: says the phrase = all its copies heard live, on the phrase you are at; reads
-                    the whole text = the main voice reading live (its layer only), everything else
-                    rendered.
+                    All of it live: nothing to make first. Pre-render (optional) makes it into sound
+                    once, lighter for the phone; there every voice but the main one reads the whole
+                    text.
                   </p>
                 </>
               }
@@ -3072,7 +3167,7 @@ function VoicePanel({
                 className="btn px-1 text-[0.65rem] tracking-normal normal-case"
                 onClick={() => setL({ voiceWhole: false })}
               >
-                Says the phrase (live too)
+                Says the phrase
               </button>
               <button
                 type="button"
@@ -3082,9 +3177,7 @@ function VoicePanel({
                 className="btn px-1 text-[0.65rem] tracking-normal normal-case"
                 onClick={() => setL({ voiceWhole: true })}
               >
-                {at === mainAt
-                  ? "Reads the whole text (the main voice live too)"
-                  : "Reads the whole text (rendered only)"}
+                Reads the whole text
               </button>
             </div>
           )}
@@ -3103,6 +3196,31 @@ function VoicePanel({
               </>
             }
           />
+          {at > 0 && (
+            <Toggle
+              label={`× Layer ${at}: copies of each of its ${perLayer[at - 1]!.toLocaleString()} voices (${perLayer[at]!.toLocaleString()} here)`}
+              on={L.voiceStack}
+              flip={() => setL({ voiceStack: !L.voiceStack })}
+              info={
+                <>
+                  <p>
+                    On: this layer makes its copies of every voice of layer {at}: 9 voices there and
+                    9 copies here make 81 here. Their starts add up and their speeds multiply (each
+                    copy here faster again by its speed-up). A voice past 256× faster or slower is
+                    left out: it would be no sound at all.
+                  </p>
+                  <p>
+                    It is made of layer {at}&apos;s voices even when layer {at} is off (muted), and
+                    a layer × a layer that is itself × another multiplies again. Off: this layer is
+                    only its own copies.
+                  </p>
+                  <p>
+                    Copy layer makes the new layer × the one it was copied from, right after it.
+                  </p>
+                </>
+              }
+            />
+          )}
           <Toggle
             label={
               at === mainAt

@@ -417,18 +417,38 @@ export function fileLoop(): FileLoop {
  * loudness rung against a tone (the robot), at its volume. The same voice and
  * shape again: it goes on as it is.
  */
+/** One voice played: when it starts (s), its speed (pitch and pace) and its loudness. */
+export interface VoiceAt {
+  at: number;
+  speed: number;
+  gain: number;
+}
+
 /** How a voice plays. */
 export interface VoicePlay {
+  /** The voices to play (none given: the shape's own copies). */
+  voices?: VoiceAt[];
   /** Above 0: its copies recorded once, that long, then that one sound looped (light for the phone). */
   recordSec?: number;
   /** Each saying with its time-reversed copy, half and half. */
   reverse?: boolean;
   /** But not the first copy (the main voice, heard as it is said). */
   mainForward?: boolean;
-  /** Said once, not looped: called after it and its silence (not if stopped first). */
+  /** Said this many times (with its silence after each), then quiet; 0: as its loop is set. */
+  times?: number;
+  /** Called after the first voice's last saying and its silence (not if stopped first); with no times, once. */
   once?: () => void;
-  /** Tells apart two plays of the same sound (said once again at another place). */
+  /** Tells apart two plays of the same sound (said again: a tap, or another place). */
   tag?: string;
+}
+
+/** A shape's own copies: each spreadMs after the one before and speedUp times faster. */
+function copiesOfShape(shape: VoiceShape): VoiceAt[] {
+  return voiceSpeeds(shape).map((speed, k) => ({
+    at: (k * shape.voiceSpreadMs) / 1000,
+    speed,
+    gain: Math.max(0, k === 0 ? shape.voiceVolume : shape.voiceCopiesVolume),
+  }));
 }
 
 export interface VoicePlayer {
@@ -463,7 +483,26 @@ export function voicePlayer(): VoicePlayer {
   return {
     async play(url, shape, o = {}) {
       const { recordSec = 0, reverse = false, mainForward = false, once, tag = "" } = o;
-      const key = JSON.stringify([url, shape, recordSec, reverse, mainForward, !!once, tag]);
+      const voices = o.voices ?? copiesOfShape(shape);
+      // Said once with a call after: one time; else as many times as asked (0: as its loop is set).
+      const times = Math.max(0, Math.floor(o.times ?? (once ? 1 : 0)));
+      if (!voices.length) {
+        asked = "";
+        fadeOut(now);
+        now = null;
+        return true;
+      }
+      const key = JSON.stringify([
+        url,
+        shape,
+        recordSec,
+        reverse,
+        mainForward,
+        !!once,
+        tag,
+        voices,
+        times,
+      ]);
       // This play (its end told only if it is still the one playing).
       const me = {};
       asked = key;
@@ -483,9 +522,9 @@ export function voicePlayer(): VoicePlayer {
       if (asked !== key) return false;
       try {
         // The saying and the gap after it, one channel.
-        // Said once: its silence too, before it is over.
+        // Said a number of times: its silence too, before it is over.
         const gap =
-          shape.voiceLoop || once ? Math.round((buf.sampleRate * shape.voiceGapMs) / 1000) : 0;
+          shape.voiceLoop || times > 0 ? Math.round((buf.sampleRate * shape.voiceGapMs) / 1000) : 0;
         const one = ctx.createBuffer(1, buf.length + gap, buf.sampleRate);
         const mono = one.getChannelData(0);
         for (let c = 0; c < buf.numberOfChannels; c++) {
@@ -510,14 +549,14 @@ export function voicePlayer(): VoicePlayer {
         fade.gain.linearRampToValueAtTime(1, t + FADE);
         fade.connect(ctx.destination);
         let nodes: AudioScheduledSourceNode[];
-        if (recordSec && recordSec > 0 && shape.voiceLoop) {
+        if (recordSec && recordSec > 0 && shape.voiceLoop && times === 0) {
           // Recorded once (all its copies), then that one sound looped.
           const off = new OfflineAudioContext(
             2,
             Math.max(1, Math.round(one.sampleRate * recordSec)),
             one.sampleRate,
           );
-          voiceGraph(off, off.destination, one, shape, 0, first);
+          voiceGraph(off, off.destination, one, shape, voices, 0, first);
           const rec = await off.startRendering();
           if (asked !== key) return false;
           const src = ctx.createBufferSource();
@@ -532,15 +571,18 @@ export function voicePlayer(): VoicePlayer {
             fade,
             one,
             shape,
+            voices,
             t,
             first,
-            once &&
-              (() => {
-                // Over by itself (not stopped, nor followed by another).
-                if (now?.me !== me) return;
-                now = null;
-                once();
-              }),
+            times,
+            times > 0
+              ? () => {
+                  // Over by itself (not stopped, nor followed by another).
+                  if (now?.me !== me) return;
+                  now = null;
+                  once?.();
+                }
+              : undefined,
           ).nodes;
         const out = fade;
         fadeOut(now);
@@ -558,18 +600,13 @@ export function voicePlayer(): VoicePlayer {
   };
 }
 
-/** The voice's copies, robot and turning, played from t into dest (live, or recorded). */
-function voiceGraph(
+/** A layer's robot and turning, from t into dest: what its voices play into, and its own nodes. */
+function voiceChain(
   c: BaseAudioContext,
   dest: AudioNode,
-  one: AudioBuffer,
   shape: VoiceShape,
   t: number,
-  /** The first copy's own sound (the main voice as it is said), if not `one`. */
-  first?: AudioBuffer,
-  /** Played once (no copy loops): called when the first copy is over. */
-  ended?: () => void,
-): { nodes: AudioScheduledSourceNode[]; out: GainNode } {
+): { into: AudioNode; out: GainNode; nodes: AudioScheduledSourceNode[] } {
   const out = c.createGain();
   const nodes: AudioScheduledSourceNode[] = [];
   // Turned round left to right and back, panHz times a second.
@@ -597,18 +634,286 @@ function voiceGraph(
     nodes.push(tone);
     into = ring;
   }
-  voiceSpeeds(shape).forEach((speed, k) => {
+  return { into, out, nodes };
+}
+
+/**
+ * The voices (each its start, speed and loudness), with the layer's robot and
+ * turning, played from t into dest (live, or recorded). times above 0: each
+ * says it that many times, then stops (ended: after the first voice's last);
+ * 0: each loops if the shape loops.
+ */
+function voiceGraph(
+  c: BaseAudioContext,
+  dest: AudioNode,
+  one: AudioBuffer,
+  shape: VoiceShape,
+  voices: VoiceAt[],
+  t: number,
+  /** The first voice's own sound (the main voice as it is said), if not `one`. */
+  first?: AudioBuffer,
+  times = 0,
+  ended?: () => void,
+): { nodes: AudioScheduledSourceNode[]; out: GainNode } {
+  const { into, out, nodes } = voiceChain(c, dest, shape, t);
+  voices.forEach((v, k) => {
     const src = c.createBufferSource();
     src.buffer = k === 0 && first ? first : one;
-    src.loop = shape.voiceLoop && !ended;
-    if (k === 0 && ended) src.onended = ended;
-    src.playbackRate.value = speed;
-    // The first is the main voice (its volume); the copies have theirs.
+    src.playbackRate.value = v.speed;
     const g = c.createGain();
-    g.gain.value = Math.max(0, k === 0 ? shape.voiceVolume : shape.voiceCopiesVolume);
+    g.gain.value = Math.max(0, v.gain);
     src.connect(g).connect(into);
-    src.start(t + (k * shape.voiceSpreadMs) / 1000);
+    const start = t + v.at;
+    if (times > 0) {
+      src.loop = times > 1;
+      src.start(start);
+      if (times > 1) src.stop(start + (times * src.buffer.duration) / v.speed);
+    } else {
+      src.loop = shape.voiceLoop;
+      src.start(start);
+    }
+    if (k === 0 && ended) src.onended = ended;
     nodes.push(src);
   });
   return { nodes, out };
+}
+
+// ---- A whole text read by voices, each by itself ----
+
+/** A layer of voices reading a whole text: its shape (robot, turning, loop, silence) and whether reversed. */
+export interface ReadLayer {
+  shape: VoiceShape;
+  reverse: boolean;
+}
+
+/** Voices reading a whole text, each by itself. */
+export interface TextRead {
+  /** What is read and how (the same again: it goes on as it is, never jumping). */
+  key: string;
+  /** How many phrases the text has. */
+  phrases: number;
+  layers: ReadLayer[];
+  /** Each voice: its layer, when it starts (s), its speed and loudness. */
+  voices: (VoiceAt & { layer: number })[];
+  /** A phrase as a layer's voice says it: its file. */
+  say(layer: number, phrase: number): Promise<string>;
+}
+
+export interface TextVoices {
+  /** Every voice reads the text from its first phrase at its own speed, round and round (if its layer loops). */
+  play(r: TextRead): boolean;
+  stop(): void;
+  /** How many voices are reading now. */
+  reading(): number;
+}
+
+/** The phrases kept said and decoded (the voices on one text share them). */
+const READ_KEEP = 48;
+/** Sayings asked of the phone at once (so the main voice's next phrase never waits behind them). */
+const READ_ASKS = 2;
+
+/**
+ * Voices reading a whole text, each by itself from the first phrase, at its
+ * own speed, never waiting for another or for the main voice: each phrase
+ * played as its layer's voice says it, its silence after it, then the next;
+ * after the last, the first again (its layer looping). Each phrase is said by
+ * the phone once per voice and shared; what is near is made ahead.
+ */
+export function textVoices(): TextVoices {
+  interface Reader {
+    v: VoiceAt & { layer: number };
+    g: GainNode;
+    i: number;
+    next: number;
+    done: boolean;
+    miss: number;
+  }
+  interface Run {
+    r: TextRead;
+    ctx: AudioContext;
+    out: GainNode;
+    chains: { into: AudioNode; nodes: AudioScheduledSourceNode[] }[];
+    readers: Reader[];
+    srcs: Set<AudioBufferSourceNode>;
+    timer: number;
+    ready: Map<string, AudioBuffer | null>;
+    making: Set<string>;
+    /** Sayings wanted, by when they are needed (the soonest asked first). */
+    wanted: Map<string, { layer: number; phrase: number; need: number }>;
+    asking: number;
+  }
+  let run: Run | null = null;
+  const decoded = new Map<string, AudioBuffer>();
+  const reversedOf = new WeakMap<AudioBuffer, AudioBuffer>();
+
+  const reversed = (c: AudioContext, b: AudioBuffer) => {
+    let r = reversedOf.get(b);
+    if (!r) {
+      r = c.createBuffer(b.numberOfChannels, b.length, b.sampleRate);
+      for (let ch = 0; ch < b.numberOfChannels; ch++) {
+        const d = b.getChannelData(ch);
+        const o = r.getChannelData(ch);
+        const n = d.length;
+        for (let k = 0; k < n; k++) o[k] = 0.5 * d[k]! + 0.5 * d[n - 1 - k]!;
+      }
+      reversedOf.set(b, r);
+    }
+    return r;
+  };
+
+  /** The sayings needed soonest asked of the phone, a few at a time. */
+  const ask = (x: Run) => {
+    while (x.asking < READ_ASKS && x.wanted.size) {
+      let best: string | null = null;
+      for (const [k, w] of x.wanted)
+        if (best === null || w.need < x.wanted.get(best)!.need) best = k;
+      const w = x.wanted.get(best!)!;
+      x.wanted.delete(best!);
+      x.making.add(best!);
+      x.asking += 1;
+      void make(x, best!, w.layer, w.phrase);
+    }
+  };
+
+  const make = async (x: Run, k: string, layer: number, phrase: number) => {
+    let buf: AudioBuffer | null = null;
+    try {
+      const url = await x.r.say(layer, phrase);
+      buf = decoded.get(url) ?? null;
+      if (!buf) {
+        buf = await x.ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+        decoded.set(url, buf);
+        while (decoded.size > READ_KEEP) decoded.delete(decoded.keys().next().value!);
+      }
+    } catch {
+      buf = null;
+    }
+    x.asking -= 1;
+    x.making.delete(k);
+    if (run !== x) return;
+    x.ready.set(k, buf);
+    while (x.ready.size > READ_KEEP * 2) x.ready.delete(x.ready.keys().next().value!);
+    pump(x);
+  };
+
+  const request = (x: Run, layer: number, phrase: number, need: number) => {
+    const k = `${layer}|${phrase}`;
+    if (x.ready.has(k) || x.making.has(k)) return;
+    const w = x.wanted.get(k);
+    if (!w || need < w.need) x.wanted.set(k, { layer, phrase, need });
+  };
+
+  const pump = (x: Run) => {
+    if (run !== x) return;
+    const n = x.r.phrases;
+    const now = x.ctx.currentTime;
+    // Hidden (the screen off, another app): further ahead, as the page wakes less often.
+    const ahead = typeof document !== "undefined" && document.hidden ? 30 : 4;
+    // What is wanted is asked again below, by when it is needed now.
+    x.wanted.clear();
+    for (const rd of x.readers) {
+      const L = x.r.layers[rd.v.layer]!;
+      const advance = () => {
+        rd.i += 1;
+        if (rd.i >= n) {
+          if (L.shape.voiceLoop) rd.i = 0;
+          else rd.done = true;
+        }
+      };
+      let steps = 0;
+      while (!rd.done && rd.next < now + ahead && steps++ < 64) {
+        const k = `${rd.v.layer}|${rd.i}`;
+        const b = x.ready.get(k);
+        if (b === undefined) {
+          request(x, rd.v.layer, rd.i, rd.next);
+          break;
+        }
+        // Used: kept longest.
+        x.ready.delete(k);
+        x.ready.set(k, b);
+        if (!b || b.duration <= 0) {
+          // Not said (the voice could not): on to the next; none at all, it stops.
+          if (++rd.miss > n) rd.done = true;
+          else advance();
+          continue;
+        }
+        rd.miss = 0;
+        const src = x.ctx.createBufferSource();
+        src.buffer = L.reverse ? reversed(x.ctx, b) : b;
+        src.playbackRate.value = rd.v.speed;
+        src.connect(rd.g);
+        const at = Math.max(rd.next, now + 0.03);
+        src.start(at);
+        x.srcs.add(src);
+        src.onended = () => {
+          x.srcs.delete(src);
+        };
+        rd.next = at + (b.duration + L.shape.voiceGapMs / 1000) / rd.v.speed;
+        advance();
+      }
+      // Its next phrase made ahead, so it never waits.
+      if (!rd.done) request(x, rd.v.layer, rd.i, rd.next);
+    }
+    ask(x);
+  };
+
+  const stop = () => {
+    const x = run;
+    run = null;
+    if (!x) return;
+    window.clearInterval(x.timer);
+    try {
+      const t = x.ctx.currentTime;
+      x.out.gain.cancelScheduledValues(t);
+      x.out.gain.setValueAtTime(x.out.gain.value, t);
+      x.out.gain.linearRampToValueAtTime(0, t + FADE);
+      for (const src of x.srcs) src.stop(t + FADE + 0.01);
+      for (const c of x.chains) for (const nd of c.nodes) nd.stop(t + FADE + 0.01);
+    } catch {
+      /* over already */
+    }
+  };
+
+  return {
+    play(r) {
+      if (run?.r.key === r.key) return true;
+      stop();
+      if (!r.voices.length || r.phrases <= 0) return true;
+      const ctx = context();
+      if (!ctx) return false;
+      const t = ctx.currentTime + 0.05;
+      const out = ctx.createGain();
+      out.gain.setValueAtTime(0, t);
+      out.gain.linearRampToValueAtTime(1, t + FADE);
+      out.connect(ctx.destination);
+      const chains = r.layers.map((L) => voiceChain(ctx, out, L.shape, t));
+      const readers = r.voices.map((v) => {
+        const g = ctx.createGain();
+        g.gain.value = Math.max(0, v.gain);
+        g.connect(chains[v.layer]!.into);
+        return { v, g, i: 0, next: t + v.at, done: false, miss: 0 };
+      });
+      const x: Run = {
+        r,
+        ctx,
+        out,
+        chains,
+        readers,
+        srcs: new Set(),
+        timer: 0,
+        ready: new Map(),
+        making: new Set(),
+        wanted: new Map(),
+        asking: 0,
+      };
+      run = x;
+      x.timer = window.setInterval(() => pump(x), 250);
+      pump(x);
+      return true;
+    },
+    stop,
+    reading() {
+      return run ? run.readers.filter((rd) => !rd.done).length : 0;
+    },
+  };
 }

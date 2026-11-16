@@ -12,6 +12,7 @@ import {
   ttsPlan,
   ttsSource,
   wavMono,
+  wholeCopies,
   type TtsLayer,
   type TtsPlan,
 } from "./ttsRender.ts";
@@ -354,5 +355,47 @@ describe("float32 .wav", () => {
     );
     assert.deepEqual(Array.from(wavMono(pcm(24, 1, [4194304, -8388608]))!.samples), [0.5, -1]);
     assert.equal(wavMono(new Uint8Array(60)), null);
+  });
+});
+
+describe("tts: the voices reading a whole text live, and stacked voices", () => {
+  it("every voice of the layers reading the whole text, but the main voice", () => {
+    const v = (n: number) =>
+      Array.from({ length: n }, (_, k) => ({ at: k * 0.1, speed: 1 + k, gain: 1 }));
+    const heard = [
+      { layer: { voiceWhole: true }, voices: v(3) },
+      { layer: { voiceWhole: false }, voices: v(2) },
+      { layer: { voiceWhole: true }, voices: v(4) },
+    ];
+    const w = wholeCopies(heard);
+    assert.deepEqual(
+      w.map((c) => c.layer),
+      [0, 0, 2, 2, 2, 2],
+    );
+    assert.equal(w[0]!.speed, 2);
+    // Silent ones left out; the first layer not reading the whole text: all of the third.
+    const quiet = [
+      { layer: { voiceWhole: false }, voices: v(2) },
+      { layer: { voiceWhole: true }, voices: [{ at: 0, speed: 1, gain: 0 }, ...v(1)] },
+    ];
+    assert.equal(wholeCopies(quiet).length, 1);
+  });
+  it("a layer's voices given (a stack's): the plan plays those", () => {
+    const layers: TtsLayer[] = [
+      {
+        shape: shape({ voiceCopies: 1, voiceLoop: false }),
+        voices: [
+          { at: 0, speed: 1, gain: 1 },
+          { at: 0.5, speed: 2, gain: 0.5 },
+          { at: 1, speed: 4, gain: 0.5 },
+        ],
+      },
+    ];
+    const plan = ttsPlan(layers, [[1]], false);
+    assert.equal(plan.plays.length, 3);
+    assert.deepEqual(
+      plan.plays.map((p) => p.speed),
+      [1, 2, 4],
+    );
   });
 });

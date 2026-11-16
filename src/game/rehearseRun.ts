@@ -15,12 +15,15 @@ import { levelForXp, repXp } from "@/game/recite";
 import { logRehearse, readReps, writeReps, wordsOf } from "@/game/reps";
 import { useGame } from "@/game/store";
 import { browserSay, voiceFile, voiceHere } from "@/game/voice";
+import { wholeCopies } from "@/game/ttsRender";
 import {
   fileLoop,
   holdAudio,
   phraseLoop,
+  textVoices,
   voicePlayer,
   wakeAudio,
+  type TextVoices,
   type VoicePlayer,
   type FileLoop,
   type LoopSound,
@@ -59,7 +62,7 @@ import {
   textAt,
   textGo,
   textProgress,
-  textTap,
+  textTapOn,
   closeSitting,
   voiceLayersOf,
   type RehearseSettings,
@@ -69,9 +72,10 @@ import {
   loadRehearse,
   newRehearse,
   REHEARSE_KEY,
-  heardVoiceLayers,
-  liveVoiceLayers,
+  heardVoices,
+  liveVoices,
   voiceShapeOf,
+  type LayerVoice,
   wavStyleOf,
   type LibText,
   type RehearseState,
@@ -492,20 +496,23 @@ async function closedTts(a: { dir: string; name: string }, on: boolean, volume: 
 
 // ---- The robot voice ----
 
-/** A player for each layer of voices. */
+/** A player for each layer saying the phrase (its voices; the main voice apart). */
 const voices: VoicePlayer[] = [];
-/** The main voice reading a whole text, a phrase at a time (its layer reads the whole text). */
-let reader: VoicePlayer | null = null;
-/** The place the reader last said through (said once: not again there, till it moves). */
+/** The main voice (the first heard layer's first voice): it says the phrase, or reads a whole text a phrase at a time. */
+let mainVoice: VoicePlayer | null = null;
+/** Every voice of the layers reading the whole text, each reading it by itself (whole texts). */
+let wholeVoices: TextVoices | null = null;
+/** The place the main voice last read through (said: not again there, till it moves). */
 let readerSaid = "";
 let voiceText = "";
 let voiceAsk = 0;
 let browserStop: (() => void) | null = null;
 
-/** Every live voice stops (the reader too, and the browser's). */
+/** Every live voice stops (the main voice, the ones reading the whole text, the browser's). */
 function stopVoices() {
   for (const v of voices) v.stop();
-  reader?.stop();
+  mainVoice?.stop();
+  wholeVoices?.stop();
   readerSaid = "";
   browserStop?.();
   browserStop = null;
@@ -526,7 +533,7 @@ function readerPlace(s: RehearseState) {
   };
 }
 
-/** The reader has said a phrase and its silence: on by itself, the text goes on (as a tap). */
+/** The main voice has read a phrase and its silence: on by itself, the text goes on (as a tap). */
 function readerEnded(key: string, at: number) {
   const s = rehearseState();
   if (!s.settings.voiceAuto || s.settings.paused || s.view !== "texts") return;
@@ -537,11 +544,56 @@ function readerEnded(key: string, at: number) {
   advanceByVoice(t, at, total);
 }
 
+/** How a layer's voice says it (its voice, rate and pitch, in Rehearse's engine). */
+const sayOf = (set: RehearseSettings, l: VoiceLayer) => ({
+  ...set,
+  voiceName: l.voiceName,
+  voiceRate: l.voiceRate,
+  voicePitch: l.voicePitch,
+});
+
 /**
- * The robot voice saying a phrase, over and over with its gap (or once), shaped
- * by Rehearse's settings; null (or the voice off) stops it. On whole texts, a
- * main voice whose layer reads the whole text reads it: the phrase once, then
- * (on by itself) the next. Gives back why it could not ("" when it plays).
+ * Whole texts: every voice of the layers reading the whole text reads it by
+ * itself, from its first phrase, at its own speed, round and round, never
+ * waiting for the main voice (the main voice itself apart). The same text and
+ * voices: they go on as they are.
+ */
+function playWhole(
+  st: RehearseState,
+  heard: { layer: VoiceLayer; voices: LayerVoice[] }[],
+  live: LayerVoice[][],
+) {
+  const t = st.view === "texts" ? currentText(st, rehearseLibrary()) : undefined;
+  const reading = wholeCopies(heard.map((h, i) => ({ layer: h.layer, voices: live[i]! })));
+  if (!t || !reading.length) {
+    wholeVoices?.stop();
+    return;
+  }
+  const units = readUnits(t.lines);
+  const set = st.settings;
+  wholeVoices ??= textVoices();
+  wholeVoices.play({
+    key: `${t.key}:${renderKeyOf(set, t.lines)}`,
+    phrases: units.length,
+    layers: heard.map((h) => ({ shape: voiceShapeOf(h.layer), reverse: h.layer.voiceReverse })),
+    voices: reading,
+    say: (layer, phrase) => voiceFile(units[phrase]!.text, sayOf(set, heard[layer]!.layer)),
+  });
+}
+
+/** How many voices read the whole text by themselves now (for a check). */
+export function wholeReading(): number {
+  return wholeVoices?.reading() ?? 0;
+}
+
+/**
+ * The robot voice, shaped by Rehearse's settings; null (or the voice off) stops
+ * it. The main voice (the first heard layer's first voice) says the phrase
+ * (Repeats times, then waits for the tap; 0: over and over) or, on a whole
+ * text with its layer reading the whole text, reads it a phrase at a time (on
+ * by itself, or waiting for the tap). Every other voice of a layer saying the
+ * phrase says it over and over; every voice of a layer reading the whole text
+ * reads it by itself from its first phrase. Gives back why it could not ("" when it plays).
  */
 export async function playVoice(text: string | null): Promise<string> {
   const st = rehearseState();
@@ -559,7 +611,7 @@ export async function playVoice(text: string | null): Promise<string> {
     return "";
   }
   // A whole text pre-rendered runs by itself (the phone app). Till its render is
-  // ready, the live voice says the phrases as they are tapped to, as without it.
+  // ready, the live voices play, as without it.
   if (text && set.voice && where === "phone" && renderWanted(st)) {
     renderCheck();
     if (renderReady(st)) {
@@ -570,20 +622,17 @@ export async function playVoice(text: string | null): Promise<string> {
     }
   } else stopRender();
   const texts = st.view === "texts";
-  const heard = heardVoiceLayers(set);
-  // Whole texts, the main voice's layer reading the whole text: its main voice reads it, live
-  // too, a phrase at a time (its other copies read it by themselves once rendered).
-  const readerLayer = texts && heard[0]?.voiceWhole ? heard[0] : null;
-  const place = readerLayer ? readerPlace(st) : null;
-  // The layers that say the phrase (those on).
-  const layers = liveVoiceLayers(set, texts);
-  if (!text || !set.voice || (!layers.length && !place)) {
+  const heard = heardVoices(set);
+  if (!text || !set.voice || !heard.length) {
     stopVoices();
     voiceText = "";
     keep();
     return "";
   }
-  // Said here already, and waiting for the tap (or, on by itself now: on to the next).
+  const main = heard[0]!;
+  // Whole texts, the main voice's layer reading the whole text: the main voice reads it, a phrase at a time.
+  const place = texts && main.layer.voiceWhole ? readerPlace(st) : null;
+  // Read here already, and waiting for the tap (or, on by itself now: on to the next).
   const sayAgain = !place || place.tag !== readerSaid;
   const readerDone = place
     ? () => {
@@ -593,12 +642,12 @@ export async function playVoice(text: string | null): Promise<string> {
     : undefined;
   if (place && !sayAgain && set.voiceAuto) readerEnded(place.key, place.at);
   if (where === "browser") {
-    // The browser's own voice: the reader (once), else the first layer's voice, rate, pitch, loop and volume.
+    // The browser's own voice: the main voice only (it says one thing at a time).
     browserStop?.();
     browserStop = null;
-    if (place && readerLayer) {
-      if (sayAgain) browserStop = browserSay(text, { ...set, ...readerLayer }, readerDone);
-    } else browserStop = browserSay(text, { ...set, ...layers[0]! });
+    if (place) {
+      if (sayAgain) browserStop = browserSay(text, { ...set, ...main.layer }, readerDone);
+    } else browserStop = browserSay(text, { ...set, ...main.layer });
     voiceText = text;
     keep();
     return "";
@@ -607,47 +656,64 @@ export async function playVoice(text: string | null): Promise<string> {
   voiceText = text;
   keep();
   try {
-    // Each layer: its own voice said, played with its own shape; layers no longer there stop.
-    const all = readerLayer && place ? [readerLayer, ...layers] : layers;
-    const off = all.length - layers.length;
-    const says = (l: VoiceLayer) => ({
-      ...set,
-      voiceName: l.voiceName,
-      voiceRate: l.voiceRate,
-      voicePitch: l.voicePitch,
-    });
-    const urls = await Promise.all(all.map((l) => voiceFile(text, says(l))));
+    const live = liveVoices(heard);
+    // The layers saying the phrase (on single phrases, every one).
+    const saying = heard.map((h, i) => ({ h, i })).filter(({ h }) => !texts || !h.layer.voiceWhole);
+    const files = new Map<number, Promise<string>>();
+    const fileOf = (i: number) => {
+      let f = files.get(i);
+      if (!f) {
+        f = voiceFile(text, sayOf(set, heard[i]!.layer));
+        files.set(i, f);
+      }
+      return f;
+    };
+    const mainUrl = await fileOf(0);
+    const urls = await Promise.all(saying.map(({ i }) => fileOf(i)));
     if (ask !== voiceAsk) return "";
-    while (voices.length < layers.length) voices.push(voicePlayer());
-    for (let k = layers.length; k < voices.length; k++) voices[k]!.stop();
-    // The main voice (the first heard layer's first copy) is never reversed: when its layer
-    // says the phrase live, it is the first of these.
-    const mainLive = !!heard[0] && (!texts || !heard[0].voiceWhole);
-    const plays = layers.map((l, k) =>
-      voices[k]!.play(urls[off + k]!, voiceShapeOf(l), {
+    while (voices.length < saying.length) voices.push(voicePlayer());
+    for (let k = saying.length; k < voices.length; k++) voices[k]!.stop();
+    const plays = saying.map(({ h, i }, k) =>
+      voices[k]!.play(urls[k]!, voiceShapeOf(h.layer), {
+        // The main voice is played apart (its own repeats; never reversed).
+        voices: i === 0 ? live[0]!.slice(1) : live[i]!,
         // Pre-record is single phrases' (on whole texts the switch pre-renders the text).
         recordSec: set.voiceRecord && !texts ? set.voiceRecordSec : 0,
-        reverse: l.voiceReverse,
-        mainForward: k === 0 && mainLive,
+        reverse: h.layer.voiceReverse,
       }),
     );
-    if (readerLayer && place) {
-      reader ??= voicePlayer();
-      // The main voice alone, as it is said, once with its silence: then the next phrase (or the tap).
+    const mainAt = live[0]![0];
+    mainVoice ??= voicePlayer();
+    if (!mainAt) {
+      mainVoice.stop();
+      readerSaid = "";
+    } else if (place) {
+      // Read a phrase at a time: said (Repeats times, at least once) with its silence, then the next (or the tap).
       if (sayAgain)
         plays.push(
-          reader.play(
-            urls[0]!,
-            { ...voiceShapeOf(readerLayer), voiceCopies: 1 },
-            { once: readerDone, tag: place.tag },
-          ),
+          mainVoice.play(mainUrl, voiceShapeOf(main.layer), {
+            voices: [mainAt],
+            times: Math.max(1, set.voiceRepeats),
+            once: readerDone,
+            tag: place.tag,
+          }),
         );
       // The next phrase said ahead (kept by the phone): no wait between the two.
-      if (place.next) void voiceFile(place.next, says(readerLayer)).catch(() => {});
+      if (place.next) void voiceFile(place.next, sayOf(set, main.layer)).catch(() => {});
     } else {
-      reader?.stop();
+      // Said Repeats times, then quiet till the tap (a tap: again); 0: over and over.
+      plays.push(
+        mainVoice.play(mainUrl, voiceShapeOf(main.layer), {
+          voices: [mainAt],
+          times: set.voiceRepeats,
+          tag: set.voiceRepeats > 0 ? `${st.lastTap}` : "",
+        }),
+      );
       readerSaid = "";
     }
+    // Whole texts: the voices reading the whole text, each by itself.
+    if (texts) playWhole(st, heard, live);
+    else wholeVoices?.stop();
     const oks = await Promise.all(plays);
     return oks.every(Boolean) || ask !== voiceAsk ? "" : "The voice's sound could not be played.";
   } catch (e) {
@@ -989,7 +1055,7 @@ function advanceByVoice(t: LibText, at: number, total: number) {
   following = true;
   try {
     if (unit) repXpFor(unit, 1);
-    rehearseUpdate((st) => textTap(st, t.key, total, Date.now(), 1, at));
+    rehearseUpdate((st) => textTapOn(st, rehearseLibrary(), t.key, total, Date.now(), 1, at));
     if (at + 1 >= total) flashToast(`“${t.name}”: a pass through it, by itself ✓`);
   } finally {
     following = false;
@@ -1022,6 +1088,7 @@ function bubbleSetupOf(s: RehearseState, lib: LibText[]): BubbleSetup | null {
     title: t.name,
     passes: prog.passes,
     locked: set.locked,
+    paused: set.paused,
     phraseSp: set.bubblePhraseSp,
     barSp: set.bubbleBarSp,
     bottomSp: set.bubbleBottomSp,

@@ -76,6 +76,12 @@ import {
   applyBubble,
   bubbleId,
   activeOf,
+  BUBBLE_PAUSE,
+  heardVoices,
+  layerVoices,
+  LIVE_VOICES,
+  liveVoices,
+  textTapOn,
 } from "./rehearse.ts";
 
 const ids = (i: number) => `p${i}`;
@@ -778,24 +784,37 @@ describe("rehearse: layers that read the whole text, and the .tts.wav", () => {
 });
 
 describe("rehearse: layers of voices", () => {
-  it("copies, changes and deletes layers; copies add up", () => {
+  it("copies, changes and deletes layers; a copy is × the layer it was copied from (9 × 9 = 81)", () => {
     let s = { ...defaultSettings(), voiceCopies: 9, voiceName: "a" };
     assert.equal(voiceCount(s), 9);
     s = { ...s, ...copyVoiceLayer(s, 0) };
+    assert.equal(voiceLayersOf(s)[1]!.voiceStack, true);
+    assert.equal(voiceCount(s), 9 + 81);
     s = { ...s, ...setVoiceLayer(s, 1, { voiceCopies: 2, voicePanHz: 3 }) };
-    assert.equal(voiceLayersOf(s).length, 2);
+    assert.equal(voiceCount(s), 9 + 18);
+    // Not stacked: its own copies only (they add up).
+    s = { ...s, ...setVoiceLayer(s, 1, { voiceStack: false }) };
     assert.equal(voiceCount(s), 11);
+    s = { ...s, ...setVoiceLayer(s, 1, { voiceStack: true }) };
+    // A copy of the first goes right after it, × it; the one after is now × that copy.
     s = { ...s, ...copyVoiceLayer(s, 0) };
-    assert.equal(voiceCount(s), 20);
+    assert.deepEqual(
+      voiceLayersOf(s).map((l) => l.voiceCopies),
+      [9, 9, 2],
+    );
+    assert.equal(voiceCount(s), 9 + 81 + 162);
+    // The first deleted: the next is first, stacked on nothing.
     s = { ...s, ...deleteVoiceLayer(s, 0) };
-    assert.equal(s.voiceCopies, 2);
-    assert.equal(s.voicePanHz, 3);
+    assert.equal(s.voiceCopies, 9);
+    assert.equal(s.voiceStack, false);
     assert.equal(voiceLayersOf(s).length, 2);
+    assert.equal(voiceCount(s), 9 + 18);
     const back = loadRehearse({
-      settings: { voiceLayers: [{ voiceCopies: 99999, voicePanHz: 500 }] },
+      settings: { voiceLayers: [{ voiceCopies: 99999, voicePanHz: 500, voiceStack: true }] },
     });
     assert.equal(back.settings.voiceLayers[0]!.voiceCopies, 1000);
     assert.equal(back.settings.voiceLayers[0]!.voicePanHz, 100);
+    assert.equal(back.settings.voiceLayers[0]!.voiceStack, true);
     assert.equal(back.settings.voiceCopiesVolume, 1);
     assert.equal(defaultSettings().voiceRecord, false);
     assert.equal(loadRehearse({ settings: { voiceRecordSec: 9999 } }).settings.voiceRecordSec, 600);
@@ -937,5 +956,112 @@ describe("rehearse: a text read through", () => {
     const back = loadRehearse({ done: { T: 20, "": 5, X: "no", Y: -1 } });
     assert.deepEqual(back.done, { T: 20 });
     assert.deepEqual(passedThrough(s, s), []);
+  });
+});
+
+describe("rehearse: voices multiplied, and how many play live", () => {
+  it("a stacked layer: its copies of every voice of the one before, speeds multiplied, starts added", () => {
+    let s = { ...defaultSettings(), voiceCopies: 3, voiceSpreadMs: 100, voiceSpeedUp: 2 };
+    s = { ...s, ...copyVoiceLayer(s, 0) };
+    const [a, b] = layerVoices(voiceLayersOf(s));
+    assert.deepEqual(
+      a!.map((v) => v.speed),
+      [1, 2, 4],
+    );
+    assert.equal(b!.length, 9);
+    // The layer's own voice as it is said comes first.
+    assert.deepEqual(b![0], { at: 0, speed: 1, gain: 1, rank: 0 });
+    assert.deepEqual(
+      [...new Set(b!.map((v) => v.speed))].sort((x, y) => x - y),
+      [1, 2, 4, 8, 16],
+    );
+    assert.ok(b!.some((v) => v.speed === 16 && Math.abs(v.at - 0.4) < 1e-9));
+    // A muted layer still makes the one stacked on it.
+    s = { ...s, voiceOn: false };
+    assert.equal(heardVoices(s).length, 1);
+    assert.equal(voiceCount(s), 9);
+    // Past 256× faster: no sound, left out.
+    const f = { ...defaultSettings(), voiceCopies: 10, voiceSpeedUp: 4 };
+    assert.equal(layerVoices(voiceLayersOf(f))[0]!.length, 5);
+  });
+  it("live: at most 256 voices, the nearest copies of each layer first, the main voice always", () => {
+    let s = { ...defaultSettings(), voiceCopies: 20 };
+    s = { ...s, ...copyVoiceLayer(s, 0) };
+    const heard = heardVoices(s);
+    assert.equal(voiceCount(s), 420);
+    const live = liveVoices(heard);
+    assert.equal(live.flat().length, LIVE_VOICES);
+    assert.deepEqual(live[0]![0], heard[0]!.voices[0]);
+    assert.equal(live[0]!.length, 20);
+    // Few enough: all of them.
+    assert.equal(liveVoices(heardVoices(defaultSettings())).flat().length, 1);
+  });
+  it("the main voice's repeats load checked (0: over and over)", () => {
+    assert.equal(defaultSettings().voiceRepeats, 0);
+    assert.equal(loadRehearse({ settings: { voiceRepeats: 3.4 } }).settings.voiceRepeats, 3);
+    assert.equal(loadRehearse({ settings: { voiceRepeats: -2 } }).settings.voiceRepeats, 0);
+  });
+});
+
+describe("rehearse: when a whole text is read through", () => {
+  const lib = libraryOf(
+    [
+      { name: "A", lines: ["a1", "a2"] },
+      { name: "B", lines: ["b1"] },
+      { name: "C", lines: ["c1"] },
+    ],
+    true,
+    [],
+    [],
+  );
+  const [A, B, C] = lib.map((t) => t.key);
+  it("next: on to the next text (after the last, the first), each keeping its place", () => {
+    let s: ReturnType<typeof newRehearse> = { ...newRehearse(), view: "texts", text: A! };
+    s = textTapOn(s, lib, A!, 2, 1);
+    assert.equal(s.text, A);
+    s = textTapOn(s, lib, A!, 2, 2);
+    assert.equal(s.text, B);
+    assert.equal(textProgress(s, A!).passes, 1);
+    s = textTapOn(s, lib, B!, 1, 3);
+    assert.equal(s.text, C);
+    s = textTapOn(s, lib, C!, 1, 4);
+    assert.equal(s.text, A);
+  });
+  it("random: another text; stop: every sound paused; one text: round again", () => {
+    const s = {
+      ...newRehearse(),
+      view: "texts" as const,
+      text: B!,
+      settings: { ...defaultSettings(), textEnd: "random" as const },
+    };
+    assert.equal(textTapOn(s, lib, B!, 1, 1, 1, 0, () => 0.99).text, C);
+    assert.equal(textTapOn(s, lib, B!, 1, 1, 1, 0, () => 0).text, A);
+    const stop = textTapOn({ ...s, settings: { ...s.settings, textEnd: "stop" } }, lib, B!, 1, 1);
+    assert.equal(stop.settings.paused, true);
+    assert.equal(stop.text, B);
+    const one = [lib[0]!];
+    const again = textTapOn({ ...s, text: A! }, one, A!, 2, 1, 1, 1);
+    assert.equal(again.text, A);
+    assert.equal(textAt(again, A!, 2), 0);
+    // Not the text being repped (a window's old tap): nothing follows.
+    const other = textTapOn({ ...s, text: C! }, lib, B!, 1, 1);
+    assert.equal(other.text, C);
+  });
+  it("loads its choice (the next text to start)", () => {
+    assert.equal(defaultSettings().textEnd, "next");
+    assert.equal(loadRehearse({ settings: { textEnd: "random" } }).settings.textEnd, "random");
+    assert.equal(loadRehearse({ settings: { textEnd: "nope" } }).settings.textEnd, "next");
+  });
+  it("the floating window's pause button pauses every sound and plays it again", () => {
+    const s = newRehearse();
+    const take = (n: number, at: number) => ({
+      reps: [{ id: BUBBLE_PAUSE, n, at }],
+      current: "",
+      shown: true,
+    });
+    const p = applyBubble(s, take(1, 5), lib, "").state;
+    assert.equal(p.settings.paused, true);
+    const q = applyBubble(p, take(0, 6), lib, "").state;
+    assert.equal(q.settings.paused, false);
   });
 });

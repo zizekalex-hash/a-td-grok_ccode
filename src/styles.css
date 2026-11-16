@@ -171,6 +171,19 @@
     filter: saturate(0.55);
   }
 
+  /* Locked in Rehearse: everything but the phrase screen dimmed, as in a cinema. */
+  [data-cinema] > *,
+  .cinema-dim {
+    transition:
+      opacity 400ms ease,
+      filter 400ms ease;
+  }
+  [data-cinema="true"] > :not([data-stage]),
+  [data-cinema-host="true"] .cinema-dim {
+    opacity: 0.16;
+    filter: saturate(0.3);
+  }
+
   .btn-gold {
     border-color: var(--color-gold);
     color: var(--color-gold);

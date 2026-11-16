@@ -93,17 +93,31 @@ export async function voiceList(engine: string): Promise<VoiceInfo[]> {
 type VoiceSay = Pick<RehearseSettings, "voiceEngine" | "voiceName" | "voiceRate" | "voicePitch">;
 
 /** The phrase said into a .wav by the phone, as an address the page can play (throws why it could not). */
-export async function voiceFile(text: string, s: VoiceSay): Promise<string> {
-  const n = await native();
-  if (!n) throw new Error("The phone's voice is in the Android app");
-  const r = await n.api.synth({
-    text,
-    engine: s.voiceEngine,
-    voice: s.voiceName,
-    rate: s.voiceRate,
-    pitch: s.voicePitch,
-  });
-  return n.convert(r.file);
+/** Sayings being made: the same one asked again meanwhile waits for it (never two into one file). */
+const making = new Map<string, Promise<string>>();
+
+export function voiceFile(text: string, s: VoiceSay): Promise<string> {
+  const key = JSON.stringify([text, s.voiceEngine, s.voiceName, s.voiceRate, s.voicePitch]);
+  const was = making.get(key);
+  if (was) return was;
+  const p = (async () => {
+    const n = await native();
+    if (!n) throw new Error("The phone's voice is in the Android app");
+    const r = await n.api.synth({
+      text,
+      engine: s.voiceEngine,
+      voice: s.voiceName,
+      rate: s.voiceRate,
+      pitch: s.voicePitch,
+    });
+    return n.convert(r.file);
+  })();
+  making.set(key, p);
+  const done = () => {
+    if (making.get(key) === p) making.delete(key);
+  };
+  p.then(done, done);
+  return p;
 }
 
 /**

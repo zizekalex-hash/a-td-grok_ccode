@@ -14,12 +14,7 @@ import {
   type FolderWriter,
   type StereoTurn,
 } from "@/game/azsFolder";
-import {
-  heardVoiceLayers,
-  voiceShapeOf,
-  type RehearseSettings,
-  type StereoKind,
-} from "@/game/rehearse";
+import { heardVoices, voiceShapeOf, type RehearseSettings, type StereoKind } from "@/game/rehearse";
 import {
   floatWavBytes,
   floatWavHeader,
@@ -191,11 +186,13 @@ async function sayAll(
   step: (note: string, part: number) => void,
   stopped: () => boolean,
 ): Promise<Voices> {
-  // The layers heard (muted ones left out); the first holds the main voice.
-  const all = heardVoiceLayers(set);
+  // The layers heard (muted ones left out), each with its voices (a stacked layer's
+  // multiplied); the first holds the main voice.
+  const heard = heardVoices(set);
+  const all = heard.map((h) => h.layer);
   if (!all.length) throw new Error("Every voice layer is off: turn one on");
   const n = job.phrases.length;
-  const layers: TtsLayer[] = all.map((l) => ({ shape: voiceShapeOf(l) }));
+  const layers: TtsLayer[] = heard.map((h) => ({ shape: voiceShapeOf(h.layer), voices: h.voices }));
   const sayKey = (l: (typeof all)[number]) =>
     JSON.stringify([l.voiceName, l.voiceRate, l.voicePitch]);
   const keys = [...new Set(all.map(sayKey))];

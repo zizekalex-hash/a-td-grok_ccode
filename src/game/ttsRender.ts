@@ -12,9 +12,10 @@ import { voiceSpeeds, type StereoKind, type VoiceShape } from "./rehearse.ts";
 
 export type { StereoKind };
 
-/** A layer as it is made into the file. */
+/** A layer as it is made into the file: its shape, and its voices (stacked layers' multiplied; none given: its copies). */
 export interface TtsLayer {
   shape: VoiceShape;
+  voices?: { at: number; speed: number; gain: number }[];
 }
 
 /** One saying of one phrase: a copy of a layer, from t0 (s) at its speed, cut off at tEnd. */
@@ -72,6 +73,31 @@ function copiesOf(shape: VoiceShape): { copies: Copy[]; skipped: number } {
   return { copies, skipped };
 }
 
+/** A copy reading a whole text by itself, live: its layer (among those heard), start (s), speed and loudness. */
+export interface WholeCopy extends Copy {
+  layer: number;
+}
+
+/**
+ * Whole texts, live: the voices that read the whole text by themselves, each
+ * at its own speed from its own start, never waiting for another: every voice
+ * of each heard layer set to read the whole text, but the main voice (the
+ * first heard layer's first voice), which reads phrase after phrase.
+ */
+export function wholeCopies(
+  heard: { layer: { voiceWhole: boolean }; voices: Copy[] }[],
+): WholeCopy[] {
+  const out: WholeCopy[] = [];
+  heard.forEach((h, layer) => {
+    if (!h.layer.voiceWhole) return;
+    h.voices.forEach((c, k) => {
+      if ((layer === 0 && k === 0) || c.gain <= 0) return;
+      out.push({ layer, at: c.at, speed: c.speed, gain: c.gain });
+    });
+  });
+  return out;
+}
+
 /** Till every copy has said it once (s); span: the saying and its gap. */
 function roundOf(copies: Copy[], span: number): number {
   let r = 0;
@@ -113,6 +139,7 @@ export function ttsPlan(
   const plays: TtsPlay[] = [];
   let skipped = 0;
   const each = layers.map((l, li) => {
+    if (l.voices) return { li, shape: l.shape, copies: l.voices.map((v) => ({ ...v })) };
     const c = copiesOf(l.shape);
     skipped += c.skipped;
     return { li, shape: l.shape, copies: c.copies };

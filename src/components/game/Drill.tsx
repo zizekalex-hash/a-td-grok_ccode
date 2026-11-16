@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { Lock, LockOpen, X } from "lucide-react";
 import { CONFIG } from "@/game/config";
 import { flashToast, grantSkillXp } from "@/game/engine";
 import { sectorWords } from "@/game/reader";
@@ -21,6 +21,7 @@ import { RehearseTab } from "@/components/game/RehearseTab";
 import { LegionTab } from "@/components/game/LegionTab";
 import { PostureChip, PosturesTab } from "@/components/game/PosturesTab";
 import { ThemeButton } from "@/components/game/ThemePicker";
+import { rehearseState, rehearseUpdate, subscribeRehearse } from "@/game/rehearseRun";
 
 type DrillTab = "rehearse" | "recall" | "read" | "reps" | "history" | "legion" | "postures";
 const DRILL_TABS: [DrillTab, string][] = [
@@ -142,6 +143,10 @@ export function DrillPanel() {
     window.addEventListener("azshara-drill-tab", go);
     return () => window.removeEventListener("azshara-drill-tab", go);
   });
+  // Rehearse locked: only the phrase screen lit, the rest dimmed (as in a cinema).
+  const rehearse = useSyncExternalStore(subscribeRehearse, rehearseState, rehearseState);
+  const locked = rehearse.settings.locked;
+  const cinema = tab === "rehearse" && locked;
   const count = lines.length;
   const safeIndex = count ? ((index % count) + count) % count : 0;
   const words = sectorWords(lines, safeIndex);
@@ -149,31 +154,57 @@ export function DrillPanel() {
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-bg/90 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-      <div className="glass flex min-h-0 flex-1 flex-col">
+      <div className="glass flex min-h-0 flex-1 flex-col" data-cinema-host={cinema}>
         <header className="flex items-center justify-between gap-2 border-b border-cyan/30 px-3 py-1.5">
-          <h2 className="font-display text-sm tracking-[0.16em] text-cyan">RECITATION</h2>
+          <h2 className="cinema-dim font-display text-sm tracking-[0.16em] text-cyan">RECITATION</h2>
           <div className="flex items-center gap-1.5">
-            <ThemeButton />
-            <button type="button" className="btn stepper" onClick={setPanel} aria-label="Close drill">
-              <X className="size-4" aria-hidden />
-            </button>
+            {tab === "rehearse" && (
+              <button
+                type="button"
+                className="btn stepper"
+                data-on={locked}
+                aria-pressed={locked}
+                onClick={() =>
+                  rehearseUpdate((s) => ({ ...s, settings: { ...s.settings, locked: !s.settings.locked } }))
+                }
+                aria-label={
+                  locked
+                    ? "Locked: only the tap works, the rest dimmed (tap to unlock)"
+                    : "Unlocked: settings work, taps don't count (tap to lock)"
+                }
+              >
+                {locked ? <Lock className="size-4" aria-hidden /> : <LockOpen className="size-4" aria-hidden />}
+              </button>
+            )}
+            <span className="cinema-dim flex items-center gap-1.5">
+              <ThemeButton />
+              <button type="button" className="btn stepper" onClick={setPanel} aria-label="Close drill">
+                <X className="size-4" aria-hidden />
+              </button>
+            </span>
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-          <SkillBar skill="recitation" />
-          {/* Reps only gives Recitation XP: the rest stays out of the way of your phrases. */}
-          {(tab === "rehearse" || tab === "recall") && (
-            <>
-              <SkillBar skill="recall" />
-              <CoreLine />
-            </>
-          )}
+          <div className="cinema-dim">
+            <SkillBar skill="recitation" />
+            {/* Reps only gives Recitation XP: the rest stays out of the way of your phrases. */}
+            {(tab === "rehearse" || tab === "recall") && (
+              <>
+                <SkillBar skill="recall" />
+                <CoreLine />
+              </>
+            )}
 
-          {/* A posture being timed: its time on every tab. */}
-          {tab !== "postures" && <PostureChip open={() => setTab("postures")} />}
+            {/* A posture being timed: its time on every tab. */}
+            {tab !== "postures" && <PostureChip open={() => setTab("postures")} />}
+          </div>
 
           {/* The tabs: each as wide as its word at least, in rows that fill the width (never a word past its button). */}
-          <div className="mt-3 flex flex-wrap gap-1.5" role="tablist" aria-label="The drill's tabs">
+          <div
+            className="cinema-dim mt-3 flex flex-wrap gap-1.5"
+            role="tablist"
+            aria-label="The drill's tabs"
+          >
             {DRILL_TABS.map(([id, label]) => (
               <button
                 key={id}

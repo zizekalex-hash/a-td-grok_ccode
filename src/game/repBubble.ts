@@ -24,6 +24,8 @@ export interface BubbleSetup {
   passes: number;
   /** Locked in the app: on the window too only the tap works (‹ › ◐ ◢ wait). */
   locked: boolean;
+  /** Every sound paused in the app: its pause button shows ▶ (a tap plays again). */
+  paused: boolean;
   /** Its look: the phrase's, top bar's and bottom line's letters (sp), and the bottom line shown. */
   phraseSp: number;
   barSp: number;

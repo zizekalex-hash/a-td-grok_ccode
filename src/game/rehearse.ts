@@ -131,6 +131,15 @@ export interface RehearseSettings {
   voiceOn: boolean;
   /** The first layer's every saying duplicated, the copy time-reversed, the two mixed half and half. */
   voiceReverse: boolean;
+  /** A layer's, kept here for the first: it has no layer before it to stack on (see VoiceLayer.voiceStack). */
+  voiceStack: boolean;
+  /**
+   * The main voice (the first heard layer's first copy) says the phrase this
+   * many times, then waits for your tap (0: over and over). Its copies go on.
+   */
+  voiceRepeats: number;
+  /** Whole texts: once a text is read through, the next text, a random one, or every sound stops. */
+  textEnd: TextEnd;
   /**
    * A whole text pre-rendered: the main voice (the first heard layer's first
    * copy) moves on to the next phrase by itself once it has said one and its
@@ -266,6 +275,11 @@ export const clampVoiceSpeedUp = (v: number) => clamp(Math.round(v * 100) / 100,
 export const clampRobot = (v: number) => clamp(Math.round(v * 100) / 100, 0, 1);
 export const clampRobotHz = (v: number) => clamp(Math.round(v * 10) / 10, 1, 5000);
 
+/** What follows a whole text read through: the next text, a random other one, or every sound stopped. */
+export type TextEnd = "next" | "random" | "stop";
+export const TEXT_ENDS: TextEnd[] = ["next", "random", "stop"];
+export const clampVoiceRepeats = (v: number) => clamp(Math.round(v), 0, 1000);
+
 export function defaultSettings(): RehearseSettings {
   return {
     sound: true,
@@ -310,6 +324,9 @@ export function defaultSettings(): RehearseSettings {
     voiceWhole: false,
     voiceOn: true,
     voiceReverse: false,
+    voiceStack: false,
+    voiceRepeats: 0,
+    textEnd: "next",
     voiceAuto: true,
     ttsRate: 48_000,
     ttsLoop: true,
@@ -468,6 +485,8 @@ export function loadRehearse(data: unknown): RehearseState {
   if (typeof t.voiceWhole === "boolean") u.voiceWhole = t.voiceWhole;
   if (typeof t.voiceOn === "boolean") u.voiceOn = t.voiceOn;
   if (typeof t.voiceReverse === "boolean") u.voiceReverse = t.voiceReverse;
+  u.voiceRepeats = clampVoiceRepeats(num(t.voiceRepeats, u.voiceRepeats));
+  if (TEXT_ENDS.includes(t.textEnd as TextEnd)) u.textEnd = t.textEnd as TextEnd;
   if (typeof t.voiceAuto === "boolean") u.voiceAuto = t.voiceAuto;
   if (TTS_RATES.includes(t.ttsRate as TtsRate)) u.ttsRate = t.ttsRate as TtsRate;
   if (typeof t.ttsLoop === "boolean") u.ttsLoop = t.ttsLoop;
@@ -1031,10 +1050,61 @@ export function textGo(s: RehearseState, key: string, at: number, total: number)
   return withProgress(s, key, { ...textProgress(s, key), at: to });
 }
 
+/**
+ * A text read through (a pass): what follows, as Rehearse is set (textEnd):
+ * the next text in the library (round to the first after the last), a random
+ * other one, or every sound stopped (Pause all sound; Play starts it again).
+ * Each text keeps its own place. One text alone: it goes round again.
+ */
+export function afterPass(
+  s: RehearseState,
+  key: string,
+  library: LibText[],
+  rand: () => number = Math.random,
+): RehearseState {
+  const end = s.settings.textEnd;
+  if (end === "stop")
+    return s.settings.paused ? s : { ...s, settings: { ...s.settings, paused: true } };
+  const others = library.filter((t) => t.key !== key);
+  if (!others.length) return s;
+  if (end === "random")
+    return {
+      ...s,
+      text: others[Math.min(others.length - 1, Math.floor(rand() * others.length))]!.key,
+    };
+  const i = library.findIndex((t) => t.key === key);
+  return { ...s, text: library[(i + 1) % library.length]!.key };
+}
+
+/**
+ * A tap on a text (textTap); when it reads the text being repped through (a
+ * pass), what follows at a text's end (afterPass).
+ */
+export function textTapOn(
+  s: RehearseState,
+  library: LibText[],
+  key: string,
+  total: number,
+  now: number,
+  n = 1,
+  at = textAt(s, key, total),
+  rand?: () => number,
+): RehearseState {
+  const before = textProgress(s, key).passes;
+  const next = textTap(s, key, total, now, n, at);
+  const passed = textProgress(next, key).passes > before;
+  return passed && currentText(next, library)?.key === key
+    ? afterPass(next, key, library, rand)
+    : next;
+}
+
 // ---- The floating window (repBubble): its reps and the phrase it shows ----
 
 /** A floating-window id for a text's phrase: its place, then the text's key. */
 export const bubbleId = (at: number, key: string) => `T${at}:${key}`;
+
+/** The floating window's pause button, among its reps: n 1 pauses every sound, 0 plays again. */
+export const BUBBLE_PAUSE = "!pause";
 
 export function fromBubbleId(id: string): { at: number; key: string } | null {
   const m = /^T(\d+):([\s\S]*)$/.exec(id);
@@ -1063,6 +1133,12 @@ export function applyBubble(
   let state = s;
   const xp: { text: string; n: number }[] = [];
   for (const t of take.reps) {
+    // Its pause button: every sound paused (n 1) or playing again (n 0).
+    if (t.id === BUBBLE_PAUSE) {
+      if (state.settings.paused !== t.n > 0)
+        state = { ...state, settings: { ...state.settings, paused: t.n > 0 } };
+      continue;
+    }
     const tid = fromBubbleId(t.id);
     if (tid) {
       const tx = library.find((x) => x.key === tid.key);
@@ -1070,7 +1146,7 @@ export function applyBubble(
       const u = us[tid.at];
       if (!tx || !u) continue;
       xp.push({ text: u.text, n: t.n });
-      state = textTap(state, tx.key, us.length, t.at, t.n, tid.at);
+      state = textTapOn(state, library, tx.key, us.length, t.at, t.n, tid.at);
       continue;
     }
     const it = state.items.find((i) => i.id === t.id);
@@ -1371,6 +1447,8 @@ export type VoiceLayer = VoiceShape & {
   voiceOn: boolean;
   /** Each saying + its time-reversed copy, half and half. */
   voiceReverse: boolean;
+  /** × the layer before it: its copies made of every voice of that one (9 × 9 = 81). */
+  voiceStack: boolean;
 };
 
 /** A saved layer, each value checked. */
@@ -1383,6 +1461,7 @@ export function loadVoiceLayer(raw: unknown): VoiceLayer {
     voiceWhole: r.voiceWhole === true,
     voiceOn: r.voiceOn !== false,
     voiceReverse: r.voiceReverse === true,
+    voiceStack: r.voiceStack === true,
     voiceRate: clampVoiceRate(n("voiceRate")),
     voicePitch: clampVoicePitch(n("voicePitch")),
     voiceCopies: clampVoiceCopies(n("voiceCopies")),
@@ -1407,6 +1486,8 @@ export function voiceLayersOf(s: RehearseSettings): VoiceLayer[] {
       voiceWhole: s.voiceWhole,
       voiceOn: s.voiceOn,
       voiceReverse: s.voiceReverse,
+      // The first has nothing before it to stack on.
+      voiceStack: false,
     },
     ...s.voiceLayers,
   ];
@@ -1422,12 +1503,16 @@ export function setVoiceLayer(
   return { voiceLayers: s.voiceLayers.map((l, k) => (k === i - 1 ? { ...l, ...patch } : l)) };
 }
 
-/** A copy of layer i added at the end (as many layers at most as MAX_VOICE_LAYERS). */
+/**
+ * A copy of layer i, right after it and × it (stacked: its copies made of
+ * every voice of layer i, 9 × 9 = 81); as many layers at most as MAX_VOICE_LAYERS.
+ */
 export function copyVoiceLayer(s: RehearseSettings, i: number): Partial<RehearseSettings> {
   const all = voiceLayersOf(s);
   const l = all[i];
   if (!l || all.length >= MAX_VOICE_LAYERS) return {};
-  return { voiceLayers: [...s.voiceLayers, { ...l }] };
+  const next = [...all.slice(0, i + 1), { ...l, voiceStack: true }, ...all.slice(i + 1)];
+  return { voiceLayers: next.slice(1) };
 }
 
 /** Layer i taken away (the first: the second takes its place); the last one left stays. */
@@ -1435,7 +1520,8 @@ export function deleteVoiceLayer(s: RehearseSettings, i: number): Partial<Rehear
   const all = voiceLayersOf(s);
   if (all.length <= 1) return {};
   const rest = all.filter((_, k) => k !== i);
-  return { ...rest[0]!, voiceLayers: rest.slice(1) };
+  // The one now first stacks on nothing.
+  return { ...rest[0]!, voiceStack: false, voiceLayers: rest.slice(1) };
 }
 
 /**
@@ -1446,9 +1532,100 @@ export function liveVoiceLayers(s: RehearseSettings, texts: boolean): VoiceLayer
   return voiceLayersOf(s).filter((l) => l.voiceOn && (!texts || !l.voiceWhole));
 }
 
-/** Voices in all: each layer's copies added up. */
+/** One voice of a layer: when it starts after the layer does (s), its speed and its loudness. */
+export interface LayerVoice {
+  at: number;
+  speed: number;
+  gain: number;
+  /** How far from the layer's own voice (the copies between): the first is 0. */
+  rank: number;
+}
+
+/** The most voices one layer makes (a stack multiplies them). */
+export const MAX_LAYER_VOICES = 4096;
+/** A voice faster or slower than this many times is no sound at all: left out. */
+export const MAX_VOICE_SPEED = 256;
+
+let voicesMemo: { key: string; out: LayerVoice[][] } | null = null;
+
+/**
+ * Each layer's voices: its copies (each spreadMs after the one before and
+ * speedUp times faster; the first at its volume, the others at the copies').
+ * A layer stacked on the one before (voiceStack) makes its copies of every
+ * voice of that one (9 × 9 = 81): their starts added, their speeds multiplied;
+ * the one before need not be heard. The layer's own voice as it is said first,
+ * then the nearest copies; speeds past 256× either way left out; at most
+ * MAX_LAYER_VOICES a layer.
+ */
+export function layerVoices(layers: VoiceLayer[]): LayerVoice[][] {
+  const key = JSON.stringify(layers);
+  if (voicesMemo?.key === key) return voicesMemo.out;
+  const out: LayerVoice[][] = [];
+  layers.forEach((l, i) => {
+    const own = voiceSpeeds(l).map((speed, k) => ({
+      at: (k * l.voiceSpreadMs) / 1000,
+      speed,
+      gain: Math.max(0, k === 0 ? l.voiceVolume : l.voiceCopiesVolume),
+      rank: k,
+    }));
+    const base: LayerVoice[] =
+      i > 0 && l.voiceStack ? out[i - 1]! : [{ at: 0, speed: 1, gain: 1, rank: 0 }];
+    // By rank: each voice of the one before with each of this layer's copies, nearest first.
+    const byRank = new Map<number, LayerVoice[]>();
+    for (const p of base) {
+      const r = byRank.get(p.rank);
+      if (r) r.push(p);
+      else byRank.set(p.rank, [p]);
+    }
+    const ranks = [...byRank.keys()].sort((a, b) => a - b);
+    const top = (ranks.at(-1) ?? 0) + own.length - 1;
+    const vs: LayerVoice[] = [];
+    for (let r = 0; r <= top && vs.length < MAX_LAYER_VOICES; r++) {
+      for (const pr of ranks) {
+        const q = own[r - pr];
+        if (!q) continue;
+        for (const p of byRank.get(pr)!) {
+          const speed = p.speed * q.speed;
+          if (!(speed >= 1 / MAX_VOICE_SPEED && speed <= MAX_VOICE_SPEED)) continue;
+          vs.push({ at: p.at + q.at, speed, gain: q.gain, rank: r });
+          if (vs.length >= MAX_LAYER_VOICES) break;
+        }
+        if (vs.length >= MAX_LAYER_VOICES) break;
+      }
+    }
+    out.push(vs);
+  });
+  voicesMemo = { key, out };
+  return out;
+}
+
+/** The layers heard, each with its voices (a layer muted still counts for one stacked on it). */
+export function heardVoices(s: RehearseSettings): { layer: VoiceLayer; voices: LayerVoice[] }[] {
+  const all = voiceLayersOf(s);
+  const vs = layerVoices(all);
+  return all.flatMap((layer, i) => (layer.voiceOn ? [{ layer, voices: vs[i]! }] : []));
+}
+
+/** The most voices played live at once (the nearest copies of each layer first); Pre-render plays them all. */
+export const LIVE_VOICES = 256;
+
+/**
+ * The voices to play live: each heard layer's, at most `most` in all, the
+ * nearest copies of each layer kept first (the main voice always).
+ */
+export function liveVoices(heard: { voices: LayerVoice[] }[], most = LIVE_VOICES): LayerVoice[][] {
+  const total = heard.reduce((n, h) => n + h.voices.length, 0);
+  if (total <= most) return heard.map((h) => h.voices);
+  const all = heard.flatMap((h, i) => h.voices.map((v, k) => ({ i, k, rank: v.rank })));
+  all.sort((a, b) => a.rank - b.rank || a.i - b.i || a.k - b.k);
+  const keep = heard.map(() => new Set<number>());
+  for (const x of all.slice(0, most)) keep[x.i]!.add(x.k);
+  return heard.map((h, i) => h.voices.filter((_, k) => keep[i]!.has(k)));
+}
+
+/** Voices in all: each heard layer's voices added up (a stacked layer's multiplied). */
 export function voiceCount(s: RehearseSettings): number {
-  return voiceLayersOf(s).reduce((n, l) => n + (l.voiceOn ? l.voiceCopies : 0), 0);
+  return heardVoices(s).reduce((n, h) => n + h.voices.length, 0);
 }
 
 /** The layers heard (muted ones left out), in their order: the first of them leads. */
