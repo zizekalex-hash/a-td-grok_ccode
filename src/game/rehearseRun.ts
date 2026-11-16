@@ -78,6 +78,8 @@ import {
   mainVoiceOf,
   voiceShapeOf,
   type HeardLayer,
+  clampVoicePitch,
+  clampVoiceRate,
   wavStyleOf,
   type LibText,
   type RehearseState,
@@ -120,6 +122,8 @@ export function rehearseUpdate(fn: (s: RehearseState) => RehearseState) {
   for (const f of subs) f();
   // Another sample rate: every sound again, fresh, at it.
   if (next.settings.ttsRate !== before.settings.ttsRate) applyRate(next.settings.ttsRate);
+  // The Court sounding its phrase meanwhile: as Rehearse is set now (paused, played again, another voice).
+  if (next.settings !== before.settings) courtAgain();
   // Background turned on or off while it plays: the app kept running, or let rest.
   keep();
   // Moved on elsewhere (the reader, the window) with the tab closed: the sound follows.
@@ -363,6 +367,9 @@ function applyRate(rate: number) {
   if (first || !changed) return;
   stopRehearseSound();
   stopRender();
+  // The Court's own voices too: what it sounds is played again at the new rate (rehearseUpdate).
+  stopCourtVoices();
+  courtHush();
   window.setTimeout(() => {
     if (!open && rehearseState().settings.background) void playClosed();
   }, 0);
@@ -574,7 +581,7 @@ function queueSwarm(p: SwarmPlay | null) {
   if (typeof window === "undefined") return;
   window.clearTimeout(swarmTimer);
   const st = swarmStats();
-  const same = !!p && !!swarmNext && swarmNext.key === p.key && swarmNext.list === p.list;
+  const same = !!p && !!swarmNext && swarmNext.key === p.key;
   swarmNext = p;
   if (!p || same || !st.running) {
     swarmPlay(p);
@@ -788,7 +795,11 @@ export async function playVoice(text: string | null): Promise<string> {
 /** The tab opened or closed: closed, the sound plays on (Background on) or stops. */
 export function rehearseOpen(on: boolean) {
   open = on;
-  if (on) return;
+  if (on) {
+    // The tab plays its own phrase now: the Court's, if it was sounding, is quiet.
+    courtQuiet();
+    return;
+  }
   if (rehearseState().settings.background) void playClosed();
   else stopRehearseSound();
 }
@@ -821,6 +832,8 @@ export function readerSound(text: string | null) {
 async function playClosed() {
   const s = rehearseState();
   if (!s.settings.background) return;
+  // The Court has the players while a phrase is recited there: Rehearse's own sound waits.
+  if (courtHas) return;
   const ask = ++playing;
   const a = activeOf(s, rehearseLibrary());
   const set = s.settings;
@@ -842,6 +855,276 @@ async function playClosed() {
     ((await folderName()) ? await folderFileUrl(`${a.dir}/${a.name}.wav`) : null);
   if (ask !== playing || open) return;
   await playWav(url, set.wavVolume, wavStyleOf(set));
+}
+
+// ---- The Court: its phrase, and what its queens say, sounded as Rehearse is set ----
+
+/** The Court has the players: the phrase recited there sounds, and Rehearse's own sound waits. */
+let courtHas = false;
+let courtAsk = 0;
+/** What the Court sounds now: its phrase and the pass it is at (sounded again when Rehearse's settings change). */
+let courtText = "";
+let courtTag = "";
+/** The main voice saying the Court's phrase (its background is the shared mix, as Rehearse's). */
+let courtMain: VoicePlayer | null = null;
+let courtBrowser: (() => void) | null = null;
+let courtBrowserKey = "";
+/** Till when a tap's burst of the phrase's sound plays (ms since 1970), and what ends it. */
+let courtTapUntil = 0;
+let courtTapTimer = 0;
+/** A queen's line said aloud, once: its own player (or the browser's voice). */
+let sayPlayer: VoicePlayer | null = null;
+let sayBrowser: (() => void) | null = null;
+let sayAsk = 0;
+
+/** Every voice saying the Court's phrase stops (the main voice, the others, the browser's). */
+function stopCourtVoices() {
+  // Its background is the shared mix: stopped only while the Court has it.
+  if (courtHas) queueSwarm(null);
+  courtMain?.stop();
+  courtBrowser?.();
+  courtBrowser = null;
+  courtBrowserKey = "";
+}
+
+/** The Court's sound stops where it is (Rehearse's own is not started again: whoever calls this plays next). */
+function courtQuiet() {
+  courtAsk += 1;
+  sayAsk += 1;
+  stopCourtVoices();
+  sayPlayer?.stop();
+  sayBrowser?.();
+  sayBrowser = null;
+  window.clearTimeout(courtTapTimer);
+  courtTapUntil = 0;
+  courtHas = false;
+}
+
+/** Rehearse's settings changed while the Court sounds its phrase (paused, played again, another voice): as set now. */
+function courtAgain() {
+  if (courtHas && courtText) void courtSound(courtText, courtTag);
+}
+
+/** How many times a pass the main voice says the Court's phrase, as Rehearse is set, in words. */
+function mainSays(set: RehearseSettings, loop: boolean): string {
+  if (set.voiceRepeats === 1) return "the main voice once a pass";
+  if (set.voiceRepeats > 1) return `the main voice ${set.voiceRepeats} times a pass`;
+  return loop ? "over and over" : "once a pass";
+}
+
+/** What of Rehearse's sound the Court would use now, in a few words (for its screens). */
+export function courtSoundNote(): string {
+  const set = rehearseState().settings;
+  if (set.paused) return "Rehearse's sound is paused (Play all sound, there, starts it again)";
+  const parts: string[] = [];
+  if (set.sound)
+    parts.push(set.nonstop ? "the phrase's sound, all the time" : "the phrase's sound on a tap");
+  if (set.voice) {
+    const heard = heardVoices(set);
+    if (heard.length) {
+      const n = heard.reduce((a, h) => a + h.voices.length, 0);
+      parts.push(
+        `the robot voice (${n} voice${n === 1 ? "" : "s"}, ${mainSays(set, heard[0]!.layer.voiceLoop)})`,
+      );
+    }
+  }
+  if (!parts.length) return "nothing: Rehearse's Sound and Robot voice are both off";
+  return `${parts.join(" and ")}, at ${set.ttsRate / 1000} kHz`;
+}
+
+/**
+ * The browser's own voice says the Court's phrase (it says one thing at a time:
+ * the main voice only): `times` times, each with its silence; 0: as its loop is
+ * set. The same saying again: it goes on as it is.
+ */
+function courtBrowserSay(
+  text: string,
+  s: Parameters<typeof browserSay>[1],
+  times: number,
+  tag: string,
+) {
+  const key = JSON.stringify([
+    text,
+    s.voiceName,
+    s.voiceRate,
+    s.voicePitch,
+    s.voiceVolume,
+    s.voiceLoop,
+    s.voiceGapMs,
+    times,
+    tag,
+  ]);
+  if (courtBrowser && key === courtBrowserKey) return;
+  courtBrowser?.();
+  courtBrowserKey = key;
+  if (times <= 0) {
+    courtBrowser = browserSay(text, s);
+    return;
+  }
+  let left = times;
+  const again = () => {
+    left -= 1;
+    if (left > 0 && courtBrowserKey === key) courtBrowser = browserSay(text, s, again);
+  };
+  courtBrowser = browserSay(text, s, again);
+}
+
+/**
+ * The phrase being recited in the Court (null: none) sounds as Rehearse is set.
+ * Its bytes sound all the time while it is up, when Rehearse's Sound and Nonstop
+ * are on (with Nonstop off it sounds on each tap: courtTapSound). The robot
+ * voice says it, when Rehearse's Robot voice is on, as on a single phrase
+ * there: every layer heard, with its voices (stacked layers multiplied, as many
+ * live as the sample rate allows) and its shape; the main voice says it Repeats
+ * times and then waits (0: over and over), and here a pass is the tap: each new
+ * `tag` (a pass) has it say it again. A layer not said over and over is said
+ * once a pass. Pause all sound, there, quiets it here too. Rehearse's own sound
+ * waits meanwhile, and comes back after, if it plays on in the background.
+ */
+export async function courtSound(text: string | null, tag = ""): Promise<void> {
+  const set = rehearseState().settings;
+  const ask = ++courtAsk;
+  courtText = text ?? "";
+  courtTag = text ? tag : "";
+  if (!text) {
+    stopCourtVoices();
+    if (!courtHas) return;
+    courtHas = false;
+    if (Date.now() >= courtTapUntil) playNonstop(null);
+    // Rehearse's own sound again (its tab, if open, plays it itself).
+    if (!open && set.background) void playClosed();
+    return;
+  }
+  if (open) return;
+  if (!courtHas) {
+    courtHas = true;
+    // Rehearse's own phrase is quiet while the Court's sounds.
+    void playWav(null);
+    void playTts(null);
+    stopVoices();
+    stopRenderPlay();
+  }
+  if (set.sound && set.nonstop && !set.paused) playNonstop(text, set);
+  else if (Date.now() >= courtTapUntil) playNonstop(null);
+  const heard = set.voice && !set.paused ? heardVoices(set) : [];
+  if (!heard.length) {
+    stopCourtVoices();
+    return;
+  }
+  const where = await voiceHere();
+  if (ask !== courtAsk) return;
+  if (!where) return;
+  const main = heard[0]!;
+  // Over and over by itself: a new pass changes nothing. Else each pass says it again.
+  const mainTag = set.voiceRepeats === 0 && main.layer.voiceLoop ? "" : tag;
+  if (where === "browser") {
+    courtBrowserSay(text, { ...set, ...main.layer }, set.voiceRepeats, mainTag);
+    return;
+  }
+  try {
+    // The background (every voice but the main one), mixed into one as in Rehearse: its
+    // layers say the Court's phrase; a layer not said over and over, again each pass.
+    const once = heard.some((h) => !h.layer.voiceLoop);
+    const bg = swarmOf({ ...rehearseState(), view: "phrases" }, text, heard);
+    queueSwarm(bg && { ...bg, list: `court:${text}${once ? `:${tag}` : ""}` });
+    const mainAt = mainVoiceOf(heard);
+    courtMain ??= voicePlayer();
+    if (!mainAt) {
+      courtMain.stop();
+      return;
+    }
+    const url = await voiceFile(text, sayOf(set, main.layer));
+    if (ask !== courtAsk) return;
+    await courtMain.play(url, voiceShapeOf(main.layer), {
+      voices: [mainAt],
+      times: set.voiceRepeats,
+      tag: mainTag,
+    });
+  } catch {
+    if (ask === courtAsk) stopCourtVoices();
+  }
+}
+
+/**
+ * A tap that completes a pass in the Court: with Rehearse's Sound on and Nonstop
+ * off, the phrase's sound plays once through (its length, as set), as a tap does there.
+ */
+export function courtTapSound(text: string) {
+  const set = rehearseState().settings;
+  if (open || !text || !set.sound || set.nonstop || set.paused) return;
+  const ms = Math.min(3000, Math.max(120, set.signalMs));
+  playNonstop(text, set);
+  courtTapUntil = Date.now() + ms;
+  window.clearTimeout(courtTapTimer);
+  courtTapTimer = window.setTimeout(() => {
+    courtTapUntil = 0;
+    // Unless Nonstop has been turned on meanwhile, the burst is over.
+    const now = rehearseState().settings;
+    if (!(courtHas && now.sound && now.nonstop && !now.paused)) playNonstop(null);
+  }, ms);
+}
+
+/**
+ * A queen's line said aloud, once, in Rehearse's robot voice: the layer of its
+ * main voice, with its shape and its voices (at most `most` of them, the
+ * nearest first, so her words stay words), at her own pitch and pace (each
+ * multiplies Rehearse's). Nothing when Rehearse's Robot voice is off or every
+ * sound is paused there.
+ */
+export async function courtSay(
+  text: string,
+  her: { pitch: number; rate: number },
+  most = 12,
+): Promise<void> {
+  const set = rehearseState().settings;
+  const ask = ++sayAsk;
+  if (open || !text || !set.voice || set.paused) return;
+  const heard = heardVoices(set);
+  const main = heard[0];
+  if (!main) return;
+  const layer = main.layer;
+  const where = await voiceHere();
+  if (ask !== sayAsk || !where) return;
+  const says = {
+    ...set,
+    voiceName: layer.voiceName,
+    voiceRate: clampVoiceRate(layer.voiceRate * her.rate),
+    voicePitch: clampVoicePitch(layer.voicePitch * her.pitch),
+  };
+  if (where === "browser") {
+    sayBrowser?.();
+    sayBrowser = browserSay(text, {
+      ...says,
+      voiceLoop: false,
+      voiceGapMs: 0,
+      voiceVolume: layer.voiceVolume,
+    });
+    return;
+  }
+  try {
+    const url = await voiceFile(text, says);
+    if (ask !== sayAsk) return;
+    sayPlayer ??= voicePlayer();
+    const voices = main.voices.slice(0, Math.max(1, Math.floor(most)));
+    await sayPlayer.play(url, voiceShapeOf(layer), {
+      voices,
+      times: 1,
+      // Her own voice as she says it; its copies reversed, if the layer is.
+      reverse: layer.voiceReverse,
+      mainForward: true,
+      tag: String(ask),
+    });
+  } catch {
+    /* no voice for this line */
+  }
+}
+
+/** A queen's line stops being said (she is cut short: the talk is left, or a session starts). */
+export function courtHush() {
+  sayAsk += 1;
+  sayPlayer?.stop();
+  sayBrowser?.();
+  sayBrowser = null;
 }
 
 // ---- A whole text pre-rendered (Texts, Pre-render on, the phone app): it runs by itself ----

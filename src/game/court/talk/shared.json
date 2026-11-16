@@ -126,6 +126,162 @@
         "Give me a hundred of “{phrase}” and I'll be full for a week.",
         "Food? I'd rather have {gift}. And you, reciting."
       ]
+    },
+    "music": {
+      "ask": [
+        "Do you ever sing?",
+        "What music do you like?",
+        "Is there a song you keep to yourself?"
+      ],
+      "answer": [
+        "Only when no one can hear. So never, at {place}.",
+        "I hum when I think of {thing}. Don't tell.",
+        "There's a tune for you, {pet}. You'll hear it when you've earned it.",
+        "Recite well enough and it sounds like music to me."
+      ]
+    },
+    "fear": {
+      "ask": [
+        "What are you afraid of?",
+        "Does anything frighten you?",
+        "What keeps you up at night?"
+      ],
+      "answer": [
+        "Being forgotten. Don't you dare.",
+        "Losing {thing}. And lately, losing you.",
+        "Nothing, {pet}. Almost nothing.",
+        "Quiet halls. That's why I like you loud."
+      ]
+    },
+    "duty": {
+      "ask": [
+        "Is it hard, being who you are?",
+        "Do you ever want a day off?",
+        "What's the worst part of your duties?"
+      ],
+      "answer": [
+        "Hard? Yes. Worth it? Ask me when you're here.",
+        "A day off sounds lovely. Spend it with me.",
+        "The waiting. Everyone wants something, {pet}. You, at least, bring something.",
+        "It gets lonely at {place}. Less so today."
+      ]
+    },
+    "wonder": {
+      "ask": [
+        "Show me something wonderful.",
+        "What's the most beautiful thing you've seen?",
+        "Do you believe in luck?"
+      ],
+      "answer": [
+        "Watch closely, {pet}. No, closer.",
+        "The most beautiful thing? {thing}, by moonlight.",
+        "Luck is for those who don't practise. You practise.",
+        "Something wonderful walked in {time}. I'm looking at it."
+      ]
+    },
+    "love": {
+      "ask": [
+        "Have you ever been in love?",
+        "What do you look for in someone?",
+        "How does one win a queen's heart?"
+      ],
+      "answer": [
+        "Once or twice. Ask me again in a year.",
+        "Someone who keeps showing up. Sound like anyone?",
+        "Slowly, {pet}. With patience, and a great many passes.",
+        "Persistence. A little courage. And {gift} doesn't hurt."
+      ]
+    },
+    "past": {
+      "ask": [
+        "Tell me about when you were young.",
+        "What were you like before all this?",
+        "Where did you grow up?"
+      ],
+      "answer": [
+        "Smaller, and just as stubborn.",
+        "I chased {thing} even then.",
+        "Right here, more or less. {place} has always had me.",
+        "I was trouble, {pet}. I've only improved at hiding it."
+      ]
+    },
+    "future": {
+      "ask": [
+        "Where do you see us in a year?",
+        "What do you want next?",
+        "Do you make plans?"
+      ],
+      "answer": [
+        "Us? Bold. I like it.",
+        "More of {thing}. And you, levels higher.",
+        "I plan for everything, {pet}. You were not in the plans. You are now.",
+        "A year from now you'll be reciting to me still. I've decided."
+      ]
+    },
+    "advice": {
+      "ask": [
+        "Any advice for me?",
+        "How do I get better?",
+        "What would you do in my place?"
+      ],
+      "answer": [
+        "Slow down. Every word, not every other.",
+        "Come back tomorrow. That's the whole secret.",
+        "Work on your {skill}. Then come and show me.",
+        "Read it as if I were listening. I usually am."
+      ]
+    },
+    "rest": {
+      "ask": [
+        "How do you rest?",
+        "Do you ever just do nothing?",
+        "What's a perfect quiet evening for you?"
+      ],
+      "answer": [
+        "With {thing} and no visitors. Present company excepted.",
+        "Rest? I'll rest when you've reached level ninety-nine.",
+        "A quiet evening, a warm light, someone reciting softly. Hint.",
+        "I rest better when I know where you are."
+      ]
+    },
+    "town": {
+      "ask": [
+        "What's the gossip today?",
+        "What do they say about me in town?",
+        "Heard any good rumors?"
+      ],
+      "answer": [
+        "That you were seen in {region}. Twice.",
+        "They say your {skill} is level {level}. I say: show me.",
+        "Gossip is beneath me. Tell me everything.",
+        "Only that someone keeps visiting a certain queen. Scandalous."
+      ]
+    },
+    "stars": {
+      "ask": [
+        "Do you ever watch the sky?",
+        "Which is better, sun or moon?",
+        "Do you make wishes?"
+      ],
+      "answer": [
+        "Every night, from {place}.",
+        "The moon. It keeps secrets.",
+        "I made one {time}. Then you arrived. Coincidence?",
+        "Wishes are for those who won't work. I prefer you working."
+      ]
+    },
+    "progress": {
+      "ask": [
+        "Am I getting stronger?",
+        "What's my best quality?",
+        "Be honest: how am I doing?"
+      ],
+      "answer": [
+        "Total level {total}. Not nothing.",
+        "Your best quality? You come back.",
+        "Stronger than last week. Weaker than next week, I hope.",
+        "{skill} {level}. I noticed before you said a word."
+      ]
     }
   },
   "pickupLines": [
@@ -498,5 +654,324 @@
     "alexstrasza+ysera": {
       "notice": ["Alexstrasza and Ysera share a glance over your head. The Aspects are watching."]
     }
+  },
+  "tones": {
+    "_about": "What you can say in the talk screen, by tone: sweet (kind, tender), bold (daring, flirty), witty (playful, teasing), humble (respectful, deferring), honest (earnest, plain). Each queen loves one tone, likes one and dislikes one (court.talk.tastes in config.json). {queen} is her name. Add lines to any list.",
+    "sweet": [
+      "I thought of you all the way here.",
+      "You make this place feel like home.",
+      "I hope someone told you today how wonderful you are.",
+      "Your smile is the best part of my day.",
+      "I'd walk every road again just to end up here.",
+      "You look tired, {queen}. Let me carry something for you.",
+      "I saved the best news to tell you first.",
+      "Whatever today brought, I'm glad it brought me to you.",
+      "I like who I am when I'm near you.",
+      "You deserve every kind word in the Realm."
+    ],
+    "bold": [
+      "Admit it. You were hoping I'd come.",
+      "I didn't come for the scenery, {queen}. I came for you.",
+      "One day you'll ask me to stay. I'm just early.",
+      "Name a challenge. I'll win it, and then dinner.",
+      "I've faced a thousand phrases. You're the only thing that makes me nervous, and I like it.",
+      "Look at me like that again and I'll forget my own name.",
+      "I intend to be your favourite. Consider this fair warning.",
+      "You could have anyone. Lucky for you, I'm here.",
+      "Kiss me or dismiss me. Either way, I'm coming back tomorrow.",
+      "I don't wait for luck. I walked here on purpose."
+    ],
+    "witty": [
+      "I'd bow, but last time I couldn't get back up.",
+      "Nice crown. Does it come with a sense of humour, or is that extra?",
+      "I practised a clever line all morning. Then you looked at me and it ran away.",
+      "They say you're impossible to impress. Good. I hate easy games.",
+      "From one to ninety-nine, what level is your patience with me?",
+      "I've recited a thousand phrases. None of them warned me about you.",
+      "Careful. If you smile, people will think I'm funny.",
+      "Don't tell the others, but you're my favourite. I tell them all that. With you I mean it.",
+      "I brought you my best joke. It's me. I'm the joke. You're welcome.",
+      "You, me, and a very long text. I've had worse evenings."
+    ],
+    "humble": [
+      "I'm still learning, {queen}. Thank you for your patience.",
+      "It's an honour just to stand here.",
+      "Tell me how to be better, and I'll do it.",
+      "I know I'm not there yet. I'd like to earn it properly.",
+      "Whatever you ask of me, I'll try with my whole heart.",
+      "I don't deserve your time. I mean to, one day.",
+      "You've seen greater than me. I only hope to be worth a glance.",
+      "I'd rather listen to you than hear myself talk.",
+      "May I sit with you a while? I won't be any trouble.",
+      "Every level I gain, I owe a little to you."
+    ],
+    "honest": [
+      "I'll be honest: I came because I missed you.",
+      "Some days the words don't come. I show up anyway.",
+      "I don't always know what to say to you. I just know I want to be here.",
+      "I'm not as brave as I act. You make me want to be.",
+      "I'd rather tell you a plain truth than a pretty lie.",
+      "I was afraid you'd forgotten me.",
+      "I don't want anything from you today. Only your company.",
+      "The reciting is hard. You're the reason I keep at it.",
+      "I get things wrong. I'd like to get this right.",
+      "You matter to me, {queen}. That's all. That's the whole speech."
+    ]
+  },
+  "reacts": {
+    "_about": "Her answer to a tone, by how she takes it: loved, liked, plain (neither) or disliked. Said in her own voice (an opener before, an ending after). The usual placeholders.",
+    "loved": [
+      "Say that again. Slowly.",
+      "Now that is how you speak to me, {pet}.",
+      "Oh, you do know me.",
+      "Keep that up and I'll never let you leave.",
+      "That one I'll keep. Right next to {thing}.",
+      "You found the way straight to my heart. Don't lose it.",
+      "I was hoping you'd say exactly that.",
+      "Come closer and say it once more.",
+      "You'll have me smiling all day, and you know it.",
+      "There. That's the voice I've been waiting to hear.",
+      "Careful, {pet}. A queen could get used to this.",
+      "Yes. More of that, always."
+    ],
+    "liked": [
+      "Not bad, {pet}. Not bad at all.",
+      "I'll allow it.",
+      "That was almost charming.",
+      "You're getting better at this.",
+      "Hm. I liked that more than I expected.",
+      "A good try. It landed.",
+      "You may say things like that more often.",
+      "That earned you a smile. A small one.",
+      "Warm. Keep going in that direction.",
+      "I heard that. I'm pretending I didn't blush."
+    ],
+    "plain": [
+      "Is that so.",
+      "Mm. If you say so, {pet}.",
+      "I've heard worse.",
+      "Noted.",
+      "That neither helped nor hurt.",
+      "You'll have to do better than that to move me.",
+      "Words. I'm waiting for the ones that matter.",
+      "Hm. Try me again another way."
+    ],
+    "disliked": [
+      "No. Not like that.",
+      "That is not the way to my heart, {pet}.",
+      "Try that on someone else.",
+      "I'll forget you said that. Once.",
+      "Wrong door. Knock on another.",
+      "Do I look like someone who enjoys that?",
+      "You were doing so well, too.",
+      "Hm. Let us never speak of it again."
+    ]
+  },
+  "sorry": {
+    "_about": "Your apologies when she is jealous, by tone ({rival}: who she is jealous of; {queen}: her name). She takes an apology as she takes its tone: one she loves or likes eases her jealousy.",
+    "sweet": [
+      "I never meant to hurt you. You're the one I think of.",
+      "Let me stay and make it up to you, however long it takes."
+    ],
+    "bold": [
+      "Be angry. I'm not leaving until you smile.",
+      "{rival} was an afternoon. You are the plan."
+    ],
+    "witty": [
+      "I'd grovel, but you'd enjoy it too much.",
+      "In my defence, I have terrible judgement. Except about you."
+    ],
+    "humble": [
+      "I was thoughtless. Forgive me?",
+      "I'm sorry. I should have come to you first."
+    ],
+    "honest": [
+      "I spent time with {rival}. I should have told you myself.",
+      "I'd rather have your anger than your silence."
+    ]
+  },
+  "ask": {
+    "_about": "Other things you can say in the talk screen. more: a follow-up on the topic just talked about. bond: about a sister, friend or rival of hers ({other}). wish: asking for today's wish. memory: what you have recited for her. feeling: how she is. bye: your goodbye. {queen} is her name.",
+    "more": [
+      "Tell me more.",
+      "Go on.",
+      "And then?",
+      "Why is that?",
+      "I want to hear the rest.",
+      "What else?"
+    ],
+    "bond": [
+      "What do you make of {other}?",
+      "Tell me about {other}.",
+      "How are things between you and {other}?",
+      "Does {other} ever speak of me?",
+      "You and {other}: what's the story there?",
+      "Should I be careful around {other}?"
+    ],
+    "wish": [
+      "Is there something you wish for today?",
+      "What can I do for you today?",
+      "Give me a task, {queen}.",
+      "What would make today a good one for you?",
+      "Ask me for something."
+    ],
+    "memory": [
+      "Do you remember what I've recited for you?",
+      "Have you kept count of my passes?",
+      "Does my reciting stay with you?",
+      "Do you think of the phrases I've read to you?",
+      "What do you remember of us?"
+    ],
+    "feeling": [
+      "How are you feeling?",
+      "Are you all right?",
+      "What's in your heart right now?",
+      "You seem different today. Tell me.",
+      "How are you, truly?"
+    ],
+    "bye": [
+      "I should go. Until next time.",
+      "Goodbye for now.",
+      "I'll come back soon.",
+      "Rest well. I'll be back.",
+      "Until tomorrow.",
+      "I have phrases to recite. For you, of course.",
+      "Don't miss me too much.",
+      "Duty calls. I'd rather stay."
+    ]
+  },
+  "answers": {
+    "_about": "Her answers to those. more: a lead-in before she says more on the topic. feeling: by how she feels (calm: nothing special; lonely, seeking, present, satisfied, distant, confront, softened: her feelings; jealous). sorry: by how she takes the tone of your apology (loved, liked, plain, disliked; {rival}). bye: her goodbye, byeWarm when she is fond of you. The usual placeholders.",
+    "more": [
+      "Since you ask.",
+      "If you must know.",
+      "There is more, yes.",
+      "You really want the rest? Very well.",
+      "I don't tell everyone this.",
+      "Listen, then.",
+      "A little more, for you.",
+      "Come closer, and I'll go on."
+    ],
+    "feeling": {
+      "calm": [
+        "Steady. Better for seeing you.",
+        "Well enough, {pet}. Ask me again when you've recited for me.",
+        "Calm as {thing}. It suits me.",
+        "Content. Don't ruin it.",
+        "Honestly? Glad you asked.",
+        "At peace, mostly. You're the mostly."
+      ],
+      "lonely": [
+        "Lonely, if you want the truth. {place} is too quiet without you.",
+        "I missed you. There, I said it.",
+        "The hours were long, {pet}.",
+        "Better now. Don't stay away so long."
+      ],
+      "seeking": [
+        "I came looking for you. What does that tell you?",
+        "Restless. I couldn't sit still at home.",
+        "Like someone who walked a long way for a short hello.",
+        "Found, at last. That's how I feel."
+      ],
+      "present": [
+        "Happy to be walking with you.",
+        "Close. I like close.",
+        "Right where I want to be, {pet}.",
+        "Let me stay near a little longer."
+      ],
+      "satisfied": [
+        "Warm all through. You were good to me.",
+        "Spoiled, and glad of it.",
+        "Like a queen who was remembered.",
+        "Happy. Truly."
+      ],
+      "distant": [
+        "Hurt. You walked past me as if I were scenery.",
+        "I came all that way, {pet}. You know what you did.",
+        "Cold. Warm me up, if you can.",
+        "I'd rather not say. Recite for me and perhaps I will."
+      ],
+      "confront": [
+        "Angry. Shall I say her name, or will you?",
+        "How do you think I feel?",
+        "Like a queen kept waiting behind another.",
+        "Furious. And I look good furious, which is your only luck."
+      ],
+      "softened": [
+        "Softer than I was. You did that.",
+        "Forgiving. Don't make me regret it.",
+        "Better. Stay close.",
+        "The storm has passed, {pet}."
+      ],
+      "jealous": [
+        "Jealous. There, are you pleased?",
+        "You know exactly how I feel, and why.",
+        "Second best. I do not do second best.",
+        "Like I'm sharing something I never agreed to share."
+      ]
+    },
+    "sorry": {
+      "loved": [
+        "Come here. You're forgiven. Mostly.",
+        "That is how one apologises to me. I'm listening.",
+        "You always know the way back to me.",
+        "Fine. I can't stay angry when you speak like that."
+      ],
+      "liked": [
+        "A decent start. Keep going.",
+        "I heard you. I'm thinking about it.",
+        "Better. Not enough yet, but better.",
+        "You may be forgiven. In time."
+      ],
+      "plain": [
+        "Words are cheap, {pet}. Recite for me.",
+        "Is that all?",
+        "I'll believe it when I see you choose me.",
+        "Hm. Bring me something better than sorry."
+      ],
+      "disliked": [
+        "That made it worse.",
+        "Do not take that tone while I'm angry.",
+        "You think that helps? It does not.",
+        "Leave it. And leave {rival} out of your mouth."
+      ]
+    },
+    "bye": [
+      "Go on, then.",
+      "Until next time, {pet}.",
+      "Don't be long.",
+      "Off you go. Recite well.",
+      "I'll be here.",
+      "Mind the road.",
+      "Come back with a better level.",
+      "Farewell for now."
+    ],
+    "byeWarm": [
+      "Go, before I ask you to stay.",
+      "Come back soon, {pet}. I mean soon.",
+      "I'll count the hours. Don't tell anyone.",
+      "Take my smile with you.",
+      "Hurry back to me.",
+      "The door stays open for you.",
+      "Until tomorrow. I'll hold you to it.",
+      "Leave if you must. Think of me if you can."
+    ]
+  },
+  "herAsks": {
+    "_about": "Things she asks you in the middle of a talk (the usual placeholders), each with your possible answers, one per tone (two to five of sweet, bold, witty, humble, honest; no placeholders). She takes your answer as she takes that tone.",
+    "list": [
+      { "ask": "Tell me, {pet}: do you think of me when you recite?", "replies": { "sweet": "With every line.", "witty": "Only on the good passes. So, all of them.", "honest": "Not always. Often enough that it shows." } },
+      { "ask": "What would you do if I asked you to stay?", "replies": { "bold": "Stay. And make you glad you asked.", "humble": "Whatever you wished, for as long as you wished.", "honest": "I'd be afraid, and I'd stay anyway." } },
+      { "ask": "Why do you keep coming back to me?", "replies": { "sweet": "Because leaving feels wrong.", "bold": "Because I mean to win you.", "witty": "The food is terrible everywhere else." } },
+      { "ask": "Be truthful. Am I your favourite?", "replies": { "bold": "By a mile.", "witty": "Today? Absolutely. Ask me tomorrow and I'll say it again.", "honest": "You're the one I think about on the road." } },
+      { "ask": "What do you see when you look at me?", "replies": { "sweet": "Someone I'd like to make smile.", "humble": "More than I have words for.", "honest": "A queen. And someone who gets lonely, like me." } },
+      { "ask": "If I gave you a task with no reward, would you do it?", "replies": { "humble": "Gladly. Serving you is the reward.", "bold": "Yes, and then I'd claim a reward anyway.", "honest": "Yes. Though I'd hope for a smile." } },
+      { "ask": "Do I frighten you?", "replies": { "bold": "No. You thrill me.", "witty": "Terribly. Do it again.", "honest": "A little. It doesn't stop me." } },
+      { "ask": "What have you learned since we last spoke?", "replies": { "humble": "That I still have far to go.", "witty": "That reciting is harder than it looks, and I look good trying.", "honest": "That showing up matters more than talent." } },
+      { "ask": "Would you recite for me in front of the whole Court?", "replies": { "bold": "Louder than they've ever heard.", "sweet": "For you, in front of anyone.", "humble": "If you thought me worthy of it." } },
+      { "ask": "What do you want from me, really?", "replies": { "sweet": "Your happiness, mostly.", "bold": "Everything. Slowly.", "honest": "To be someone you're glad to see." } },
+      { "ask": "Have the other queens been kind to you?", "replies": { "witty": "Kind enough. None of them are you, which they find annoying.", "honest": "Some. I still walked here.", "sweet": "They have. You're still the one I wanted to tell." } },
+      { "ask": "Do you ever tire of all this reciting?", "replies": { "honest": "Some days. Then I remember who's listening.", "humble": "It's the least I can do.", "witty": "Tired? I've only said the same phrase three hundred times." } }
+    ]
   }
 }

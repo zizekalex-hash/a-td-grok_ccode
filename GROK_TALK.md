@@ -75,6 +75,17 @@ I will give you one JSON file of the game's words. Make it much richer:
   "talk" is her own small talk. "feed" lines ask to be fed and must contain both
   {count} and "{phrase}" (in quotes, like “{phrase}”). "fed" thanks you;
   "hungry" is her goodbye when you did not feed her.
+- shared.json also holds the talk screen's words (you face a queen and pick
+  what to say from a list). Targets, at least: "tones" 20 lines for each of
+  sweet, bold, witty, humble, honest (what YOU say, in that tone); "reacts"
+  20 for each of loved, liked, plain, disliked (her answer to a tone, by how
+  she takes it; any queen must be able to say it); "sorry" 6 per tone (your
+  apology when she is jealous); "ask" 8 for each of more, bond, wish,
+  memory, feeling, bye; "answers": more 12, bye 12, byeWarm 12, each
+  "feeling" (calm, lonely, seeking, present, satisfied, distant, confront,
+  softened, jealous) 8, each "sorry" (loved, liked, plain, disliked) 8;
+  "herAsks.list" 30 questions she asks you, each with two to five "replies"
+  keyed by tone (your answer in that tone).
 - Answer with the complete file only, as valid JSON (double quotes, no
   comments, no trailing commas) in one json code block.
 
@@ -113,6 +124,13 @@ Placeholders allowed:
 - shared.json "bondTalk" (a queen about a sister, friend or rival): {other}.
 - shared.json "duo" and "duoReply" (two queens with you, talking to each
   other): {other} the other queen, {pet} what the speaker calls you.
+- shared.json "tones" (what you say) and "ask" (your questions): {queen} her
+  name; "ask.bond" also {other} (the queen you ask about) and must use it.
+  "sorry" (your apologies): {queen} and {rival} (who she is jealous of).
+- shared.json "reacts", "answers" and the "ask" of each "herAsks.list" entry
+  (what she says): the same placeholders as her own lines ({pet}, {thing},
+  {place} and so on); "answers.sorry" also {rival}. The "replies" of a
+  "herAsks.list" entry (what you answer): none.
 - shared.json "pairs" (two particular queens both with you; keys are the two
   queens' file names in alphabetical order joined by +, like
   "azshara+xalatath"): "notice" (what the Court notices, no placeholders),

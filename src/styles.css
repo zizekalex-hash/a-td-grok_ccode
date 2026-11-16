@@ -494,6 +494,41 @@
   animation: court-notice ease-out forwards;
 }
 
+/* The talk screen: a line of the conversation coming in, and a thing you can say. */
+@keyframes court-say {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.court-say {
+  animation: court-say 200ms ease-out;
+}
+
+.btn.court-choice {
+  min-height: 2.25rem;
+  padding: 0.3rem 0.6rem;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .court-say {
+    animation-name: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .court-notice {
     animation-name: none;

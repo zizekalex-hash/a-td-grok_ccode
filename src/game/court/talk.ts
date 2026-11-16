@@ -77,6 +77,24 @@ export interface SharedTalk {
    * Court notices (notice), and what each says to the other (under her key).
    */
   pairs?: Record<string, Record<string, string[]>>;
+  /** The talk screen: what you can say, by tone (sweet, bold, witty, humble, honest). */
+  tones?: Record<string, string[]>;
+  /** Her answer to a tone, by how she takes it (loved, liked, plain, disliked). */
+  reacts?: Record<string, string[]>;
+  /** Your apologies when she is jealous, by tone. */
+  sorry?: Record<string, string[]>;
+  /** Other things you can say there (more, bond, wish, memory, feeling, bye). */
+  ask?: Record<string, string[]>;
+  /** Her answers to those: lists (more, bye, byeWarm), or lists by feeling or by how she takes it (feeling, sorry). */
+  answers?: Record<string, string[] | Record<string, string[]>>;
+  /** Things she asks you, each with your answers, one per tone. */
+  herAsks?: { list: HerAsk[] };
+}
+
+/** A question of hers, and what you can answer, by tone. */
+export interface HerAsk {
+  ask: string;
+  replies: Record<string, string>;
 }
 
 export const QUEEN_TALK = {
@@ -199,6 +217,37 @@ export const BOND_TALK_FILLS: Record<string, string[]> = {
   rival: ["other"],
 };
 
+// ---- The talk screen ----
+
+/** The tones you can speak in, and how a queen can take one. */
+export const TONE_KEYS = ["sweet", "bold", "witty", "humble", "honest"] as const;
+export const TASTE_KEYS = ["loved", "liked", "plain", "disliked"] as const;
+/** How she can feel when you ask: nothing special, one of her feelings (court.hearts.arcs), or jealous. */
+export const FEELING_KEYS = [
+  "calm",
+  "lonely",
+  "seeking",
+  "present",
+  "satisfied",
+  "distant",
+  "confront",
+  "softened",
+  "jealous",
+] as const;
+
+/** What you say knows only her name; a question about a bond also the other queen. */
+export const ASK_FILLS: Record<string, string[]> = {
+  more: ["queen"],
+  bond: ["queen", "other"],
+  wish: ["queen"],
+  memory: ["queen"],
+  feeling: ["queen"],
+  bye: ["queen"],
+};
+export const TONE_FILLS = ["queen"];
+/** An apology (and her answer to it) also knows who she is jealous of. */
+export const SORRY_FILLS = ["queen", "rival"];
+
 // ---- The lists the game uses ----
 
 function or(
@@ -248,4 +297,37 @@ export function pairTalk(
     notice: [...(p.notice ?? [])],
     says: { [a]: [...(p[a] ?? [])], [b]: [...(p[b] ?? [])] },
   };
+}
+
+/** What you can say in a tone (empty when the pack has none). */
+export function toneLines(tone: string): string[] {
+  return [...(SHARED.tones?.[tone] ?? [])];
+}
+
+/** Her answers to a tone she loved, liked, took plainly or disliked. */
+export function reactLines(taste: string): string[] {
+  return [...(SHARED.reacts?.[taste] ?? [])];
+}
+
+/** Your apologies in a tone, for when she is jealous. */
+export function sorryLines(tone: string): string[] {
+  return [...(SHARED.sorry?.[tone] ?? [])];
+}
+
+/** Other things you can say in the talk screen (more, bond, wish, memory, feeling, bye). */
+export function askLines(kind: string): string[] {
+  return [...(SHARED.ask?.[kind] ?? [])];
+}
+
+/** Her answers there: a plain list (more, bye, byeWarm), or one of a kind's lists (feeling by how she feels, sorry by how she takes it). */
+export function answerLines(kind: string, sub?: string): string[] {
+  const a = SHARED.answers?.[kind];
+  if (Array.isArray(a)) return [...a];
+  if (!a || sub === undefined) return [];
+  return [...(a[sub] ?? [])];
+}
+
+/** The things she may ask you. */
+export function herAsks(): HerAsk[] {
+  return [...(SHARED.herAsks?.list ?? [])];
 }

@@ -1714,6 +1714,45 @@
       "_about": "How the queens' portraits are drawn. style: \"dark\" for the dark fantasy look (a night scene lit from behind in her colour, a glowing rune circle, wild flowing hair, rim-lit skin, glowing eyes, a spiked crown and golden chains) or \"classic\" for the earlier, brighter look.",
       "style": "dark"
     },
+    "talk": {
+      "_about": "Talking with a queen face to face (Talk to her, on her sheet). Each turn offers things to say: topics, lines in a tone (sweet, bold, witty, humble, honest), and now and then her wish, her feelings, your story together, or a sister, friend or rival of hers. tastes: the tone each queen loves, likes and dislikes; every other tone she takes plainly. Once you have tried a tone on her, the choices show how she takes it. affection: what an exchange is worth by how she takes it (topic: any plain question), for the first perDay exchanges a day with her; after that talking is free and adds nothing. A tone she dislikes costs affection, never below the tier she is at. topics and tones: how many of each are offered at once. moreChance: how often she adds a second line of her own to an answer. askChance: how often she asks you something back (you answer in a tone). When she is jealous, the tones are apologies: one she loves or likes eases her jealousy a step, once a talk.",
+      "perDay": 10,
+      "affection": { "loved": 6, "liked": 3, "plain": 1, "disliked": -2, "topic": 1 },
+      "topics": 2,
+      "tones": 2,
+      "moreChance": 0.3,
+      "askChance": 0.3,
+      "tastes": {
+        "eltharia": { "loved": "sweet", "liked": "honest", "disliked": "bold" },
+        "alexstrasza": { "loved": "honest", "liked": "witty", "disliked": "humble" },
+        "ysera": { "loved": "sweet", "liked": "humble", "disliked": "witty" },
+        "onyxia": { "loved": "bold", "liked": "witty", "disliked": "humble" },
+        "azshara": { "loved": "humble", "liked": "bold", "disliked": "witty" },
+        "xalatath": { "loved": "witty", "liked": "honest", "disliked": "sweet" },
+        "jaina": { "loved": "witty", "liked": "sweet", "disliked": "humble" },
+        "tyrande": { "loved": "honest", "liked": "sweet", "disliked": "bold" },
+        "sylvanas": { "loved": "witty", "liked": "honest", "disliked": "sweet" },
+        "sinestra": { "loved": "bold", "liked": "humble", "disliked": "witty" },
+        "valeera": { "loved": "bold", "liked": "witty", "disliked": "humble" }
+      }
+    },
+    "sound": {
+      "_about": "Rehearse's sound in the Court (the speaker buttons on the recite and talk screens turn each part on and off; everything else is set in the Recitation drill's Rehearse tab, and a change there is followed here at once: Pause all sound quiets the Court too). While you recite, the phrase on screen sounds as Rehearse is set, at Rehearse's sample rate: its bytes sound (Rehearse's Sound: all the time with Nonstop on, else once on each tap that completes a pass) and the robot voice says it as it says a single phrase there (Rehearse's Robot voice: every layer heard, with its voices and shape, a layer stacked on the one before multiplied, as many voices live as the sample rate allows). The main voice says the phrase Repeats times (The main voice says it, there) and then waits: in the Court a pass is the tap, so each pass has it say it again; 0 is over and over. A layer not said over and over is said once each pass. Queens say their lines aloud in the same voice (the main voice's layer, its shape and its voices), once, each at her own pitch and pace: queens.<name>.pitch and rate multiply Rehearse's (1 leaves it as set). lineVoices is the most voices a queen's line is said with (the nearest copies first), so that her words stay words when the layer has dozens of copies; the phrase you recite always has them all.",
+      "lineVoices": 12,
+      "queens": {
+        "eltharia": { "pitch": 1.12, "rate": 1 },
+        "alexstrasza": { "pitch": 1.05, "rate": 0.98 },
+        "ysera": { "pitch": 1, "rate": 0.88 },
+        "onyxia": { "pitch": 0.9, "rate": 1.05 },
+        "azshara": { "pitch": 0.94, "rate": 0.94 },
+        "xalatath": { "pitch": 0.82, "rate": 0.9 },
+        "jaina": { "pitch": 1.08, "rate": 1.06 },
+        "tyrande": { "pitch": 1, "rate": 0.95 },
+        "sylvanas": { "pitch": 0.86, "rate": 0.98 },
+        "sinestra": { "pitch": 0.8, "rate": 0.9 },
+        "valeera": { "pitch": 1.15, "rate": 1.15 }
+      }
+    },
     "presence": {
       "_about": "Queens come out to find you while you walk the map. Every tickSeconds (after firstSeconds), each queen in your region who knows you (tier minTier or more) may come out: chancePerMinute, times (0.5 + 0.25 per tier), times buzzBoost for the talk of the town and arcBoost when she is lonely or upset; at most maxOut at once. She walks at speed times your pace, stays near you for lingerMinutes, then goes home: happy (satisfied) if you talked to her, gave her a gift or recited for her, hurt (distant) if you ignored her. Two queens who meet on the way react if they are sisters, friends or rivals (once per pair every encounterMinutes). lines: what she says when she finds you or leaves; notices: what the Court notices.",
       "enabled": true,

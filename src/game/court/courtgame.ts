@@ -6,7 +6,7 @@ import { speakAs } from "@/game/narrator";
 import { DISPLAY, FONT, PAL } from "@/game/palette";
 import { loadPieceFont, PIECE_FONT, TEXT_VS } from "@/game/pieceFont";
 import { getGame, setActiveGame, type GameBase } from "@/game/registry";
-import { useGame, type CourtPanel, type CourtView } from "@/game/store";
+import { useGame, type CourtPanel, type CourtTalkEntry, type CourtView } from "@/game/store";
 import {
   advance,
   affectionGain,
@@ -107,7 +107,6 @@ import {
 } from "./news.ts";
 import { comeOutChance, encounterOf, foundKind, pairKey, presenceLine } from "./presence.ts";
 import {
-  chat,
   dress,
   feedLine,
   giftSay,
@@ -118,11 +117,25 @@ import {
 } from "./speech.ts";
 import { drawPhrase, hashOf, phraseUnits } from "./bag.ts";
 import { duoLines, duoReplyLines, pairTalk } from "./talk.ts";
+import {
+  choicesFor,
+  countTalk,
+  knownTaste,
+  loadTalk,
+  markTried,
+  newTalk,
+  replyTo,
+  talksLeft,
+  type Choice,
+  type Talk,
+  type TalkContext,
+} from "./converse.ts";
 import { VOICES } from "./voices.ts";
-import { pickupLines, queenLines } from "./talk.ts";
+import { queenLines } from "./talk.ts";
 import { pickBonus, readReps } from "@/game/reps";
 import type { CourtArcKey } from "@/game/config";
 import { cancelSleep, restedTotal, resting, sleepFrames } from "@/game/rest";
+import { courtHush, courtSay, courtSound, courtTapSound } from "@/game/rehearseRun";
 
 const C = CONFIG.court;
 const H = C.hearts;
@@ -135,12 +148,12 @@ const NOTICES_SHOWN = 3;
 const NOTICE_QUEUE = 24;
 /** Lines that may wait their turn. */
 const LINE_QUEUE = 8;
+/** Lines of a talk kept on screen to read back. */
+const TALK_LOG = 60;
 /** Long enough to read a line before the next one takes its place (ms). */
 function readMs(line: { text: string }): number {
   return Math.min(6000, Math.max(2500, 1500 + line.text.length * 45));
 }
-/** Talking to her again within this long carries the conversation on. */
-const CHAT_MS = 5 * 60_000;
 
 /** A queen out on the map looking for you. */
 interface Outing {
@@ -174,7 +187,6 @@ interface Outing {
   homeAt: Spot;
 }
 const SAVE_KEY = "azshara-court-v1";
-const PLAYER = "Alien X";
 export const STANCE_COLOR: Record<Element, string> = { fire: "#ff8a3d", water: "#5cc8ff" };
 
 function readSave(): CourtSave {
@@ -214,6 +226,7 @@ function readSave(): CourtSave {
       save.pos = [pos[0], pos[1]];
     loadHearts(save, d);
     loadNews(save, d);
+    loadTalk(save, d);
   } catch {
     /* private mode / broken save */
   }
@@ -349,8 +362,22 @@ export class CourtGame implements GameBase {
   private bag = loadBag();
   private lastPhrase = "";
   private deckDone = { done: 0, total: 0 };
-  private chatted = new Map<QueenKey, { at: number; topics: string[] }>();
   private line: CourtView["line"] = null;
+  /**
+   * The talk screen: the conversation, what has been said, her lines still to
+   * come (each shows on a tap), what you can say now, and whether a line of
+   * hers is up that has not been tapped past yet.
+   */
+  private talk: {
+    t: Talk;
+    log: CourtTalkEntry[];
+    waiting: CourtTalkEntry[];
+    choices: Choice[];
+    ended: boolean;
+    fresh: boolean;
+    locked: boolean;
+  } | null = null;
+  private talkSeq = 1;
   private message = "Tap anywhere to walk there. Tap a place to train, a queen to talk.";
   private raf = 0;
   private running = false;
@@ -414,6 +441,10 @@ export class CourtGame implements GameBase {
   stop() {
     cancelSleep(this.wake);
     this.persist();
+    // The Court's sound ends with it (Rehearse's own comes back, if it plays on in the background).
+    this.soundKey = "";
+    void courtSound(null);
+    courtHush();
     this.running = false;
     cancelAnimationFrame(this.raf);
     this.ro?.disconnect();
@@ -496,11 +527,16 @@ export class CourtGame implements GameBase {
       this.said.get(q),
     );
     this.remember(q, text);
-    this.speakLine({ speaker: spec.name, text, color: spec.color, queen: q });
+    const entry = this.speakLine({ speaker: spec.name, text, color: spec.color, queen: q });
     this.see(q);
     if (situation) {
       speakAs(`${spec.name}, ${spec.title}: ${spec.persona}`, situation, (text) => {
         if (!this.running) return;
+        // In the talk screen: her line there, shown or still to come.
+        if (entry) {
+          entry.text = text;
+          return this.pushView(true);
+        }
         const better = { speaker: spec.name, text, color: spec.color, queen: q };
         // The model's words take the place of hers, on screen or still waiting.
         if (this.line?.queen === q) this.line = better;
@@ -573,19 +609,45 @@ export class CourtGame implements GameBase {
    * A line to show: at once when the one on screen has been up long enough to
    * read, else after it, in turn. Several queens speaking at once all get heard.
    */
-  private speakLine(line: NonNullable<CourtView["line"]>) {
+  private speakLine(line: NonNullable<CourtView["line"]>): CourtTalkEntry | null {
+    // Face to face, every line is part of the conversation.
+    const talk = this.panel?.kind === "talk" ? this.talk : null;
+    if (talk && !this.session) {
+      if (line.queen === talk.t.queen) return this.talkHer(line.text);
+      return this.talkAdd({
+        who: line.queen ? "note" : "you",
+        text: line.queen ? `${line.speaker}: ${line.text}` : line.text,
+      });
+    }
     const last = this.lineQueue[this.lineQueue.length - 1] ?? this.line;
-    if (last && last.text === line.text && last.speaker === line.speaker) return;
+    if (last && last.text === line.text && last.speaker === line.speaker) return null;
+    // Her sheet is open: what she says there comes first. A line it takes the place of, if
+    // not up long enough to have been read, comes back straight after it.
+    if (
+      this.line &&
+      line.queen &&
+      this.panel?.kind === "queen" &&
+      this.panel.queen === line.queen &&
+      this.line.queen !== line.queen
+    ) {
+      if (performance.now() - this.lineAt < readMs(this.line)) this.lineQueue.unshift(this.line);
+      this.line = line;
+      this.lineAt = performance.now();
+      this.voiceLine(line);
+      return null;
+    }
     if (
       !this.line ||
       (!this.lineQueue.length && performance.now() - this.lineAt >= readMs(this.line))
     ) {
       this.line = line;
       this.lineAt = performance.now();
+      this.voiceLine(line);
     } else {
       this.lineQueue.push(line);
       if (this.lineQueue.length > LINE_QUEUE) this.lineQueue.shift();
     }
+    return null;
   }
 
   /** The next waiting line, once the one on screen has been read. */
@@ -594,7 +656,244 @@ export class CourtGame implements GameBase {
     if (performance.now() - this.lineAt < readMs(this.line)) return false;
     this.line = this.lineQueue.shift()!;
     this.lineAt = performance.now();
+    this.voiceLine(this.line);
     return true;
+  }
+
+  /**
+   * A tap on the line: it has been read. The next one waiting shows at once
+   * (no waiting out its time); with none waiting, the line goes.
+   */
+  courtLineDone() {
+    const next = this.lineQueue.shift();
+    this.line = next ?? null;
+    this.lineAt = performance.now();
+    if (next) this.voiceLine(next);
+    this.pushView(true);
+  }
+
+  /**
+   * A queen's line said aloud, in Rehearse's robot voice at her own pitch and
+   * pace, when the Court's switch for it is on. Not while the phrase you recite
+   * is sounding: two voices at once would drown each other.
+   */
+  private voiceLine(line: { text: string; queen?: QueenKey }) {
+    if (!line.queen || !this.save.sound.lines) return;
+    if (this.session && this.save.sound.phrase) return;
+    const her = C.sound.queens[line.queen] ?? { pitch: 1, rate: 1 };
+    void courtSay(line.text, her, C.sound.lineVoices);
+  }
+
+  /** What the Court last asked Rehearse's players for: the phrase and its pass ("" for nothing). */
+  private soundKey = "";
+
+  /**
+   * The phrase being recited sounds as Rehearse is set (rehearseRun.ts
+   * courtSound), pass by pass; nothing while the game is held, on a round's
+   * summary, or once the session is over.
+   */
+  private syncSound(held: boolean) {
+    const s = this.session;
+    const on = !!s && !s.over && !s.roundDone && !held && this.save.sound.phrase;
+    const key = on && s ? `${s.phrase}|${s.phrases}|${s.pass}` : "";
+    if (key === this.soundKey) return;
+    this.soundKey = key;
+    void courtSound(on && s ? s.phrase : null, key);
+  }
+
+  /** Turns a part of Rehearse's sound in the Court on or off: the phrase you recite, or the queens' lines. */
+  courtSoundToggle(part: "phrase" | "lines") {
+    this.save.sound = { ...this.save.sound, [part]: !this.save.sound[part] };
+    if (part === "lines" && !this.save.sound.lines) courtHush();
+    this.message =
+      part === "phrase"
+        ? this.save.sound.phrase
+          ? "The phrase you recite sounds as Rehearse is set."
+          : "The phrase you recite is silent."
+        : this.save.sound.lines
+          ? "Queens say their lines aloud, in Rehearse's voice."
+          : "Queens speak in writing only.";
+    this.persist();
+    this.pushView(true);
+  }
+
+  // ---- The talk screen ----
+
+  /** A line into the conversation, shown at once. */
+  private talkAdd(e: Omit<CourtTalkEntry, "id">): CourtTalkEntry | null {
+    const talk = this.talk;
+    if (!talk) return null;
+    const entry = { id: this.talkSeq++, ...e };
+    talk.log.push(entry);
+    if (talk.log.length > TALK_LOG) talk.log.splice(0, talk.log.length - TALK_LOG);
+    return entry;
+  }
+
+  /**
+   * A line of hers: the first shows at once; while one is up that you have not
+   * tapped past, the next ones wait their turn behind it.
+   */
+  private talkHer(text: string): CourtTalkEntry | null {
+    const talk = this.talk;
+    if (!talk) return null;
+    if (talk.fresh || talk.waiting.length) {
+      const entry: CourtTalkEntry = { id: this.talkSeq++, who: "her", text };
+      talk.waiting.push(entry);
+      return entry;
+    }
+    talk.fresh = true;
+    const entry = this.talkAdd({ who: "her", text });
+    if (entry) this.voiceLine({ text, queen: talk.t.queen });
+    return entry;
+  }
+
+  /** What a talk with her knows of the moment: her tier, her feeling, her wish, what you recited for her. */
+  private talkContext(q: QueenKey): TalkContext {
+    const now = Date.now();
+    const day = dayOf(now);
+    rollDay(this.save, day);
+    const w = wishOf(q, day);
+    const jealous = this.save.jealous[q] > 0;
+    return {
+      tier: this.tierOf(q),
+      fill: this.voiceFill(q),
+      feeling: jealous ? "jealous" : (arcOf(this.save, q, now)?.id ?? "calm"),
+      jealous,
+      rival: jealous ? this.rivalName(q) : "",
+      wish: this.save.wishes.done[q] ? null : { count: w.passes, skill: skillName(w.skill) },
+      passes: this.save.devotion[q],
+    };
+  }
+
+  /**
+   * Opens the talk screen with a queen: she says hello (or how she missed you,
+   * or that she is jealous), and you choose what to say, line after line.
+   */
+  courtTalk(q: QueenKey) {
+    if (this.session) return;
+    sfx.unlock();
+    this.touch(q);
+    const hello = this.line?.queen === q ? this.line.text : "";
+    this.line = null;
+    this.lineQueue = [];
+    const locked = !meetsNeed(q, this.save.skills);
+    this.talk = { t: newTalk(q), log: [], waiting: [], choices: [], ended: false, fresh: false, locked };
+    this.panel = { kind: "talk", queen: q };
+    if (locked) {
+      this.say0(q, "locked");
+      this.talk.choices = [{ id: "bye", kind: "bye", text: "I'll come back when I'm ready." }];
+      return this.pushView(true);
+    }
+    // What she just said when you walked up carries over; else a reunion or jealousy comes before hello.
+    if (hello) this.talkHer(hello);
+    else if (this.meet(q)) {
+      /* She said how she missed you. */
+    } else if (this.save.jealous[q] > 0) {
+      this.queenSays(
+        q,
+        "jealous",
+        { rival: this.rivalName(q) },
+        `You are jealous: the player has been spoiling ${this.rivalName(q)}. Pout, tease, make them win you back.`,
+      );
+    } else {
+      this.queenSays(
+        q,
+        "greet",
+        {},
+        `The player has come to talk with you. You are at tier ${tierOf(this.save.affection[q]).name}.`,
+      );
+    }
+    this.save.lastSeen[q] = Date.now();
+    this.talk.choices = choicesFor(this.talk.t, this.talkContext(q), Math.random);
+    this.pushView(true);
+  }
+
+  /** You say one of the lines on offer: she answers, and it does what it does. */
+  courtSay(id: string) {
+    const talk = this.talk;
+    if (!talk || talk.ended || talk.waiting.length) return;
+    const c = talk.choices.find((x) => x.id === id);
+    if (!c) return;
+    const q = talk.t.queen;
+    const spec = C.queens[q];
+    const day = dayOf(Date.now());
+    this.touch(q);
+    talk.fresh = false;
+    this.talkAdd({ who: "you", text: c.text, tone: c.tone });
+    if (talk.locked) {
+      talk.ended = true;
+      this.courtTalkEnd();
+      return;
+    }
+    const r = replyTo(talk.t, c, this.talkContext(q), Math.random);
+    if (c.tone) markTried(this.save, q, c.tone);
+    if (r.mood) this.feel(q, r.mood);
+    const first = this.talkHer(r.lines[0] ?? "...");
+    if (first) first.taste = r.taste;
+    for (const text of r.lines.slice(1)) this.talkHer(text);
+    for (const text of r.lines) this.remember(q, text);
+    // With a model connected, her first words give way to ones of her own.
+    if (first && !r.ended)
+      speakAs(
+        `${spec.name}, ${spec.title}: ${spec.persona}`,
+        `The player says to you${c.tone ? `, in a ${c.tone} tone` : ""}: "${c.text}".${r.taste ? ` You ${r.taste === "plain" ? "are unmoved by" : r.taste === "disliked" ? "dislike" : r.taste === "loved" ? "love" : "like"} that kind of talk.` : ""} Answer in one or two short sentences.`,
+        (text) => {
+          if (!this.running) return;
+          first.text = text;
+          this.pushView(true);
+        },
+      );
+    // What the exchange is worth: the first few a day add affection; a tone she dislikes costs a little, never a tier.
+    if (r.affection > 0 && countTalk(this.save, q, day)) {
+      const gained = this.addAffection(q, r.affection, true);
+      if (first) first.gain = gained;
+    } else if (r.affection < 0) {
+      const floor = C.affectionTiers[this.tierOf(q)]?.at ?? 0;
+      const before = this.save.affection[q];
+      this.save.affection[q] = Math.max(floor, before + r.affection);
+      if (first) first.gain = Math.round((this.save.affection[q] - before) * 10) / 10;
+    }
+    if (r.toldWish) {
+      this.wishTold.add(`${day}|${q}`);
+      const w = wishOf(q, day);
+      const pair = allianceOf(day);
+      const partner = pair?.includes(q) ? pair.find((p) => p !== q) : undefined;
+      if (partner)
+        this.notice(
+          `${spec.name} and ${C.queens[partner].name} share one wish today: ${w.passes} passes of ${skillName(w.skill)} grants it to both`,
+          q,
+        );
+    }
+    // An apology she took well eases her jealousy a step (and ends it, when that was the last of it).
+    if (r.soothed && !this.makeUp(q, false)) this.notice(`${spec.name} softens a little`, q);
+    this.save.lastSeen[q] = Date.now();
+    this.see(q);
+    if (r.ended) talk.ended = true;
+    else talk.choices = choicesFor(talk.t, this.talkContext(q), Math.random);
+    this.persist();
+    this.pushView(true);
+  }
+
+  /** A tap on her line: read. Her next line shows; after her goodbye, the talk closes. */
+  courtTalkNext() {
+    const talk = this.talk;
+    if (!talk) return;
+    const next = talk.waiting.shift();
+    if (next) {
+      talk.log.push(next);
+      talk.fresh = true;
+      this.voiceLine({ text: next.text, queen: talk.t.queen });
+    } else if (talk.ended) return this.courtTalkEnd();
+    this.pushView(true);
+  }
+
+  /** Leaves the talk: back to her sheet. */
+  courtTalkEnd() {
+    const q = this.talk?.t.queen;
+    courtHush();
+    this.talk = null;
+    this.panel = q ? { kind: "queen", queen: q } : null;
+    this.pushView(true);
   }
 
   /** Waiting notices take any free room on screen. */
@@ -630,6 +929,12 @@ export class CourtGame implements GameBase {
   /** A notice about a queen (or the town): on screen for court.news.noticeSeconds, and kept in the News. */
   private notice(text: string, queen: QueenKey | null, kind = "notice") {
     const color = queen ? C.queens[queen].color : PAL.gold;
+    // Face to face, it is a note in the conversation (and in the News), not a card over her portrait.
+    if (this.panel?.kind === "talk" && this.talk && !this.session) {
+      this.talkAdd({ who: "note", text });
+      addNews(this.save, { at: Date.now(), text, queen, kind });
+      return;
+    }
     // It waits for room on screen rather than pushing another off unread.
     this.noticeQueue.push({ id: this.dropId++, text, queen, color });
     if (this.noticeQueue.length > NOTICE_QUEUE) this.noticeQueue.shift();
@@ -1436,6 +1741,7 @@ export class CourtGame implements GameBase {
     // Opening the News, or closing it, reads everything in it; the sheet marks what was new.
     if (panel?.kind === "news") panel = { kind: "news", since: this.save.newsRead };
     if (panel?.kind === "news" || this.panel?.kind === "news") this.save.newsRead = Date.now();
+    if (panel?.kind !== "talk") this.talk = null;
     this.panel = panel;
     if (panel?.kind === "queen" && meetsNeed(panel.queen, this.save.skills)) this.see(panel.queen);
     this.pushView(true);
@@ -1499,19 +1805,17 @@ export class CourtGame implements GameBase {
     this.pushView(true);
   }
 
+/**
+   * Her hello when you walk up to her (shown on her sheet): how she missed you,
+   * that she is jealous, today's wish, a word about a sister, friend or rival,
+   * or a plain greeting. The conversation itself is the talk screen (courtTalk).
+   */
   courtGreet(q: QueenKey) {
     this.touch(q);
-    const lines = pickupLines();
-    const pickup = lines[Math.floor(Math.random() * lines.length)] ?? "";
     if (!meetsNeed(q, this.save.skills)) {
       this.say0(q, "locked");
       return;
     }
-    // Talking again soon after: a conversation, one topic after another.
-    const chatting = this.chatted.get(q);
-    if (chatting && Date.now() - chatting.at < CHAT_MS && this.save.jealous[q] <= 0)
-      return this.converse(q, chatting);
-    this.chatted.set(q, { at: Date.now(), topics: [] });
     // A reunion, jealousy or today's wish comes before small talk.
     if (this.meet(q)) return;
     if (this.save.jealous[q] > 0) {
@@ -1524,54 +1828,32 @@ export class CourtGame implements GameBase {
       return;
     }
     if (this.tellWish(q)) return;
-    this.speakLine({ speaker: PLAYER, text: pickup, color: STANCE_COLOR[this.save.stance] });
-    this.pushView(true);
-    window.setTimeout(() => {
-      if (!this.running) return;
-      // Sometimes she talks about a sister, a friend or a rival instead.
-      const talk =
-        tierOf(this.save.affection[q]).index >= 1 && Math.random() < N.talkChance
-          ? bondTalk(q, Math.random)
-          : null;
-      if (talk) {
-        const spec = C.queens[q];
-        this.speakLine({
-          speaker: spec.name,
-          text: this.voiced(q, talk.text),
-          color: spec.color,
-          queen: q,
-        });
-        this.see(q);
-        this.pushView(true);
-        return;
-      }
-      this.queenSays(
-        q,
-        "greet",
-        {},
-        `The player greets you with this line: "${pickup}". You are at tier ${tierOf(this.save.affection[q]).name}.`,
-      );
-    }, 1400);
-  }
-
-  /** A turn of conversation: you ask about something, and she answers in her own words. */
-  private converse(q: QueenKey, talk: { at: number; topics: string[] }) {
-    const c = chat(q, Math.random, this.voiceFill(q), this.tierOf(q), talk.topics);
-    talk.at = Date.now();
-    talk.topics = [...talk.topics, c.topic].slice(-6);
-    this.speakLine({ speaker: PLAYER, text: c.ask, color: STANCE_COLOR[this.save.stance] });
-    this.pushView(true);
-    window.setTimeout(() => {
-      if (!this.running) return;
+    // Sometimes she talks about a sister, a friend or a rival instead.
+    const talk =
+      tierOf(this.save.affection[q]).index >= 1 && Math.random() < N.talkChance
+        ? bondTalk(q, Math.random)
+        : null;
+    if (talk) {
       const spec = C.queens[q];
-      this.remember(q, c.answer);
-      this.speakLine({ speaker: spec.name, text: c.answer, color: spec.color, queen: q });
+      this.speakLine({
+        speaker: spec.name,
+        text: this.voiced(q, talk.text),
+        color: spec.color,
+        queen: q,
+      });
       this.see(q);
       this.pushView(true);
-    }, 1200);
+      return;
+    }
+    this.queenSays(
+      q,
+      "greet",
+      {},
+      `The player walks up to you. You are at tier ${tierOf(this.save.affection[q]).name}.`,
+    );
   }
 
-  courtBuy(item: GiftKey | "elixir") {
+    courtBuy(item: GiftKey | "elixir") {
     const cost = item === "elixir" ? C.elixir.cost : C.gifts[item].cost;
     if (this.save.gold < cost) {
       this.message = `Not enough gold: ${cost} needed. Recite at the Forest or the Mine for more.`;
@@ -1653,6 +1935,9 @@ export class CourtGame implements GameBase {
     const skill = date && watching ? this.dateSkill(watching) : skillAt(place, this.save.stance);
     if (!skill) return;
     this.panel = null;
+    this.talk = null;
+    // A line being said aloud gives way to the phrase.
+    if (this.save.sound.phrase) courtHush();
     this.session = startSession(
       {
         place,
@@ -1708,6 +1993,7 @@ export class CourtGame implements GameBase {
       return this.pushView(true);
     }
     const elixir = this.save.elixirReps > 0;
+    if (this.save.sound.phrase) courtTapSound(s.phrase);
     for (const r of tapComplete(s, now, () => this.nextPhrase(), elixir)) {
       if (r.type === "pass") this.onPass(s, r, elixir);
       else if (r.type === "phrase") {
@@ -2075,6 +2361,7 @@ export class CourtGame implements GameBase {
     const c = Math.floor((e.clientX - rect.left - this.ox) / this.cell);
     const r = Math.floor((e.clientY - rect.top - this.oy) / this.cell);
     this.panel = null;
+    this.talk = null;
     this.visiting = null;
     const queen = this.onMap().find((q) => {
       const [qc, qr] = this.queenCell(q);
@@ -2100,6 +2387,7 @@ export class CourtGame implements GameBase {
       // Closing the session or sheet uses up the key; the next Esc opens the menu.
       e.preventDefault();
       if (this.session) this.endSession();
+      else if (this.talk) return this.courtTalkEnd();
       else this.panel = null;
       this.pushView(true);
     } else if (!this.session && e.key.toLowerCase() === "x") this.courtStance();
@@ -2185,6 +2473,7 @@ export class CourtGame implements GameBase {
         this.presence(dt);
       }
     }
+    this.syncSound(held || phase !== "battle");
     // Her face while she watches you recite goes into the gallery.
     if (this.session?.queen) this.see(this.session.queen);
     const nowMs = performance.now();
@@ -2245,7 +2534,11 @@ export class CourtGame implements GameBase {
     const looking = [...this.out].filter(([, o]) => !o.home).map(([q]) => q);
     const out = looking.join();
     const hungry = this.hungryView();
-    const sig = `${this.drops.length}|${this.drops[0]?.id ?? 0}|${this.notices.length}|${this.notices[0]?.id ?? 0}|${moods}|${feelings}|${out}|${this.message}|${this.line?.text ?? ""}|${reading}|${hungry?.queens.join() ?? ""}`;
+    const talk = this.panel?.kind === "talk" ? this.talk : null;
+    const talking = talk
+      ? `${talk.t.queen}|${talk.log.length}|${talk.log[talk.log.length - 1]?.id ?? 0}|${talk.waiting.length}|${talk.choices.map((c) => c.id).join()}|${talk.ended}`
+      : "";
+    const sig = `${this.drops.length}|${this.drops[0]?.id ?? 0}|${this.notices.length}|${this.notices[0]?.id ?? 0}|${moods}|${feelings}|${out}|${this.message}|${this.line?.text ?? ""}|${this.lineQueue.length}|${talking}|${reading}|${hungry?.queens.join() ?? ""}`;
     if (!force && sig === this.viewSig && now - this.viewAt < 1000) return;
     this.viewSig = sig;
     this.viewAt = now;
@@ -2304,6 +2597,25 @@ export class CourtGame implements GameBase {
         hungry,
         deck: { ...this.deckDone },
         line: this.line,
+        lineMore: this.lineQueue.length,
+        talk: talk
+          ? {
+              queen: talk.t.queen,
+              log: talk.log.map((e) => ({ ...e })),
+              waiting: talk.waiting.length,
+              choices: talk.choices.map((c) => ({
+                id: c.id,
+                kind: c.kind,
+                text: c.text,
+                tone: c.tone,
+                taste: c.tone ? knownTaste(this.save, talk.t.queen, c.tone) : null,
+              })),
+              ended: talk.ended,
+              left: talksLeft(this.save, talk.t.queen, day),
+              perDay: Math.floor(C.talk.perDay),
+              locked: talk.locked,
+            }
+          : null,
         at: this.at,
         region: this.save.region,
         message: this.message,

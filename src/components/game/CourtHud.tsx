@@ -8,6 +8,7 @@ import {
   Gift,
   Heart,
   LogOut,
+  MessageCircle,
   Minus,
   Newspaper,
   Plus,
@@ -17,6 +18,8 @@ import {
   Sparkles,
   Store,
   Trophy,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 import { MenuButton } from "@/components/game/BattleButtons";
@@ -69,7 +72,9 @@ import {
   type RepsState,
 } from "@/game/reps";
 import { getGame } from "@/game/registry";
-import { useGame, type CourtView } from "@/game/store";
+import { useGame, type CourtTalkEntry, type CourtView } from "@/game/store";
+import { TONE_NAME, type Tone } from "@/game/court/converse";
+import { courtSoundNote } from "@/game/rehearseRun";
 
 const C = CONFIG.court;
 
@@ -819,6 +824,8 @@ function QueenSheet({ q, v }: { q: QueenKey; v: CourtView }) {
           </div>
         </div>
       </div>
+      {/* What she says when you walk up, give a gift or feed her shows here, where you are looking. */}
+      {v.line && <LineBox v={v} className="mt-3" avatar={40} />}
       {v.out.includes(q) && (
         <p
           className="mt-3 rounded-md border p-2 text-xs"
@@ -851,9 +858,9 @@ function QueenSheet({ q, v }: { q: QueenKey; v: CourtView }) {
           <ScrollText className="size-4" aria-hidden />
           Recite for her
         </button>
-        <button type="button" className="btn" onClick={() => game()?.courtGreet(q)}>
-          <Sparkles className="size-4" aria-hidden />
-          Charm her
+        <button type="button" className="btn" onClick={() => game()?.courtTalk(q)}>
+          <MessageCircle className="size-4" aria-hidden />
+          Talk to her
         </button>
         <button
           type="button"
@@ -1472,6 +1479,254 @@ function BonusRound({ v, color }: { v: CourtView; color: string }) {
   );
 }
 
+/**
+ * A speaker button: Rehearse's sound in the Court, on or off. One for the phrase
+ * you recite (it sounds as Rehearse is set), one for the queens' lines (said
+ * aloud in Rehearse's robot voice).
+ */
+function SoundSwitch({ v, part }: { v: CourtView; part: "phrase" | "lines" }) {
+  const on = v.save.sound[part];
+  const what = part === "phrase" ? "The phrase's sound, as Rehearse is set" : "Queens speak aloud, in Rehearse's voice";
+  return (
+    <button
+      type="button"
+      className="btn px-2!"
+      data-on={on}
+      aria-pressed={on}
+      onClick={() => game()?.courtSoundToggle(part)}
+      aria-label={`${what}: ${on ? "on" : "off"}`}
+      title={`${what}: ${on ? "on" : "off"}`}
+    >
+      {on ? <Volume2 className="size-4" aria-hidden /> : <VolumeX className="size-4" aria-hidden />}
+    </button>
+  );
+}
+
+/**
+ * The line being said (a queen's, or yours). A tap on it means read: the next
+ * one waiting shows at once, and with none waiting the line goes.
+ */
+function LineBox({
+  v,
+  className = "",
+  avatar = 52,
+  empty,
+}: {
+  v: CourtView;
+  className?: string;
+  avatar?: number;
+  /** What shows when nothing is being said (nothing at all when left out). */
+  empty?: React.ReactNode;
+}) {
+  const line = v.line;
+  if (!line) return empty ? <div className={`glass px-3 py-2 ${className}`}>{empty}</div> : null;
+  return (
+    <button
+      type="button"
+      className={`glass flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left ${className}`}
+      style={{
+        background: `linear-gradient(90deg, ${line.color}33, rgba(12, 6, 26, 0.9) 60%)`,
+        borderColor: `${line.color}88`,
+      }}
+      onClick={() => game()?.courtLineDone()}
+      aria-label={`${line.speaker}: ${line.text}. ${v.lineMore > 0 ? `Tap for the next of ${v.lineMore} more.` : "Tap when read."}`}
+    >
+      {line.queen && <QueenAvatar q={line.queen} size={avatar} />}
+      <span className="min-w-0 flex-1 text-sm leading-snug" aria-live="polite">
+        <span className="font-display text-[0.7rem] tracking-[0.14em]" style={{ color: line.color }}>
+          {line.speaker.toUpperCase()}
+        </span>
+        <br />
+        {line.text}
+      </span>
+      <span
+        className="shrink-0 self-end font-display text-[0.6rem] tracking-wider whitespace-nowrap"
+        style={{ color: line.color }}
+        aria-hidden
+      >
+        {v.lineMore > 0 ? `▸ ${v.lineMore} MORE` : "✓ READ"}
+      </span>
+    </button>
+  );
+}
+
+/** How she takes a tone, once you know: a mark on the choice and on her answer. */
+const TASTE_MARK: Record<string, { mark: string; say: string; color: string }> = {
+  loved: { mark: "♥♥", say: "she loves this", color: "#ff7ab6" },
+  liked: { mark: "♥", say: "she likes this", color: "#ffb3d1" },
+  plain: { mark: "–", say: "she takes this plainly", color: "#9aa3b8" },
+  disliked: { mark: "✕", say: "she dislikes this", color: "#ff4d6d" },
+};
+
+/** What a choice is, in a word, before it. */
+function choiceTag(c: { kind: string; tone?: string }): string {
+  if (c.tone) return TONE_NAME[c.tone as Tone] ?? "Say";
+  return c.kind === "bye" ? "Leave" : "Ask";
+}
+
+/** One line of a talk: yours on the right, hers on the left, a note in the middle. */
+function TalkLine({ e, color, big }: { e: CourtTalkEntry; color: string; big: boolean }) {
+  if (e.who === "note")
+    return <li className="court-say px-4 text-center text-xs text-muted italic">{e.text}</li>;
+  const mine = e.who === "you";
+  const mark = e.taste ? TASTE_MARK[e.taste] : undefined;
+  return (
+    <li className={`court-say flex ${mine ? "justify-end" : "justify-start"}`}>
+      <p
+        className={`max-w-[88%] rounded-lg border px-3 py-1.5 leading-snug ${big ? "text-base" : "text-sm"}`}
+        style={
+          mine
+            ? { borderColor: "rgba(92, 200, 255, 0.45)", background: "rgba(92, 200, 255, 0.1)" }
+            : { borderColor: `${color}88`, background: `${color}1f` }
+        }
+      >
+        {mine && e.tone && (
+          <span className="mr-1.5 font-display text-[0.6rem] tracking-wider text-muted">
+            {(TONE_NAME[e.tone as Tone] ?? "").toUpperCase()}
+          </span>
+        )}
+        {e.text}
+        {(mark || e.gain) && (
+          <span className="ml-2 text-xs whitespace-nowrap" style={{ color: mark?.color ?? color }}>
+            {mark ? <span title={mark.say}>{mark.mark}</span> : null}
+            {e.gain ? ` ${e.gain > 0 ? "+" : ""}${e.gain} ♥` : ""}
+          </span>
+        )}
+      </p>
+    </li>
+  );
+}
+
+/**
+ * Face to face with a queen: her portrait in her mood now, the conversation,
+ * and the things you can say. A tap on her line means read (her next line
+ * shows); a tap on a choice says it.
+ */
+function TalkScreen({ v }: { v: CourtView }) {
+  const t = v.talk;
+  const logRef = useRef<HTMLUListElement>(null);
+  const lastId = t?.log[t.log.length - 1]?.id ?? 0;
+  // The newest line stays in sight.
+  useEffect(() => {
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lastId, t?.waiting, t?.choices.length]);
+  if (!t) return null;
+  const q = t.queen;
+  const spec = C.queens[q];
+  const affection = v.save.affection[q];
+  const tier = tierOf(affection);
+  const mood = v.moods[q];
+  const more = t.waiting > 0;
+  const herLast = [...t.log].reverse().find((e) => e.who === "her")?.id;
+  const next = () => game()?.courtTalkNext();
+  return (
+    <div
+      className="pointer-events-auto absolute inset-0 z-30 flex flex-col p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+      style={{
+        background: `radial-gradient(ellipse at 50% 24%, ${spec.color}47, ${spec.color}00 64%), rgba(4, 1, 10, 0.95)`,
+      }}
+      role="dialog"
+      aria-label={`Talking with ${spec.name}`}
+    >
+      <header className="glass flex items-center justify-between gap-2 px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-display text-xs tracking-[0.14em]" style={{ color: spec.color }}>
+            {spec.name.toUpperCase()} · {MOOD_INFO[mood].name.toUpperCase()}
+          </p>
+          <div className="mt-1">
+            <Hearts q={q} affection={affection} />
+          </div>
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <SoundSwitch v={v} part="lines" />
+          <button
+            type="button"
+            className="btn px-2!"
+            disabled={t.locked}
+            onClick={() => game()?.courtRecite(spec.place as PlaceKey, { queen: q })}
+            aria-label={`Recite for ${spec.name}`}
+            title="Recite for her"
+          >
+            <ScrollText className="size-4" aria-hidden />
+          </button>
+          <button type="button" className="btn px-2!" onClick={() => game()?.courtTalkEnd()}>
+            <LogOut className="size-4" aria-hidden />
+            <span className="max-[380px]:sr-only">Leave</span>
+          </button>
+        </div>
+      </header>
+
+      <div className="mt-2 flex shrink-0 justify-center">
+        <LivePortrait
+          q={q}
+          mood={mood}
+          tier={tier.index}
+          alt={`${spec.name}, ${spec.title}: ${MOOD_INFO[mood].name.toLowerCase()}`}
+          className="aspect-square w-[min(21dvh,46vw,210px)] rounded-full"
+          style={{ boxShadow: `0 0 36px ${spec.color}99` }}
+        />
+      </div>
+
+      {/* The conversation, newest at the bottom. While she has more to say, a tap anywhere on it goes on. */}
+      <ul
+        ref={logRef}
+        className={`mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5 ${more || t.ended ? "cursor-pointer" : ""}`}
+        aria-live="polite"
+        aria-label="The conversation"
+        onClick={more || t.ended ? next : undefined}
+      >
+        {t.log.map((e) => (
+          <TalkLine key={e.id} e={e} color={spec.color} big={e.id === herLast} />
+        ))}
+      </ul>
+
+      <div className="mt-2 shrink-0">
+        {more || t.ended ? (
+          <button type="button" className="btn btn-gold min-h-12 w-full" onClick={next}>
+            {more ? `Go on ▸ (${t.waiting} more)` : "Leave ▸"}
+          </button>
+        ) : (
+          <div className="space-y-1.5" role="group" aria-label="What you can say">
+            {t.choices.map((c) => {
+              const mark = c.taste ? TASTE_MARK[c.taste] : undefined;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="btn court-choice w-full"
+                  onClick={() => game()?.courtSay(c.id)}
+                  aria-label={`${choiceTag(c)}: ${c.text}${mark ? ` (${mark.say})` : ""}`}
+                >
+                  <span
+                    className="w-14 shrink-0 font-display text-[0.6rem] tracking-wider"
+                    style={{ color: c.kind === "bye" ? "#9aa3b8" : c.tone ? "#e8c872" : "#5cc8ff" }}
+                  >
+                    {choiceTag(c).toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1 text-fg">{c.text}</span>
+                  {mark && (
+                    <span className="shrink-0 text-xs" style={{ color: mark.color }} aria-hidden>
+                      {mark.mark}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <p className="mt-1.5 text-center text-[0.65rem] text-muted">
+          {t.locked
+            ? `She wants ${needText(q)} before more than hello.`
+            : t.left > 0
+              ? `${t.left} of ${t.perDay} exchanges today still win her heart. Each queen loves one tone, likes one, dislikes one.`
+              : "Talk as long as you like: today's exchanges have given all the ♥ they can."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ReciteScreen({ v }: { v: CourtView }) {
   const s = v.session;
   if (!s) return null;
@@ -1508,6 +1763,7 @@ function ReciteScreen({ v }: { v: CourtView }) {
           </div>
         </div>
         <div className="flex shrink-0 gap-1.5">
+          <SoundSwitch v={v} part="phrase" />
           <button
             type="button"
             className="btn px-2"
@@ -1518,9 +1774,14 @@ function ReciteScreen({ v }: { v: CourtView }) {
             <SkipForward className="size-4" aria-hidden />
             <span className="max-[480px]:sr-only">Skip</span>
           </button>
-          <button type="button" className="btn px-2" onClick={() => game()?.courtEndSession()}>
+          <button
+            type="button"
+            className="btn px-2"
+            onClick={() => game()?.courtEndSession()}
+            aria-label="Leave"
+          >
             <LogOut className="size-4" aria-hidden />
-            Leave
+            <span className="max-[400px]:sr-only">Leave</span>
           </button>
         </div>
       </header>
@@ -1539,7 +1800,13 @@ function ReciteScreen({ v }: { v: CourtView }) {
               <QueenAvatar q={s.also} size={36} />
             </span>
           )}
-          <p className="text-sm leading-snug" aria-live="polite">
+          <button
+            type="button"
+            className="min-w-0 flex-1 text-left text-sm leading-snug"
+            aria-live="polite"
+            onClick={() => game()?.courtLineDone()}
+            aria-label={v.line ? `${v.line.speaker}: ${v.line.text}. Tap when read.` : undefined}
+          >
             <span
               className="font-display text-[0.7rem] tracking-[0.14em]"
               style={{ color: q.color }}
@@ -1551,7 +1818,12 @@ function ReciteScreen({ v }: { v: CourtView }) {
               (s.also
                 ? `${q.name} and ${C.queens[s.also].name} are watching you.`
                 : `${q.name} is watching you.`)}
-          </p>
+            {v.line && (
+              <span className="ml-2 font-display text-[0.6rem] tracking-wider whitespace-nowrap opacity-70">
+                {v.lineMore > 0 ? `▸ ${v.lineMore} MORE` : "✓"}
+              </span>
+            )}
+          </button>
         </div>
       )}
 
@@ -1763,6 +2035,11 @@ function ReciteScreen({ v }: { v: CourtView }) {
           This session: +{Math.round(s.totals.xp).toLocaleString()} XP · +{s.totals.gold} gold ·{" "}
           {s.totals.reps} reps
         </p>
+        <p className="mt-1 text-center text-[0.65rem] text-muted [@media(max-height:640px)]:hidden">
+          {v.save.sound.phrase
+            ? `Sound as set in Rehearse: ${courtSoundNote()}.`
+            : "The phrase's sound is off (the speaker button, top right)."}
+        </p>
       </div>
       <Drops v={v} />
     </div>
@@ -1888,45 +2165,21 @@ export function CourtHud() {
 
       <footer ref={footerRef} className={`pointer-events-auto mx-auto w-full max-w-xl ${hide}`}>
         <FeedCard v={v} />
-        <div
-          className="glass flex min-h-14 items-center gap-3 px-3 py-2"
-          style={
-            v.line
-              ? {
-                  background: `linear-gradient(90deg, ${v.line.color}33, rgba(12, 6, 26, 0.9) 60%)`,
-                  borderColor: `${v.line.color}88`,
-                }
-              : undefined
-          }
-        >
-          {v.line?.queen && <QueenAvatar q={v.line.queen} size={52} />}
-          {v.line ? (
-            <p className="text-sm leading-snug" aria-live="polite">
-              <span
-                className="font-display text-[0.7rem] tracking-[0.14em]"
-                style={{ color: v.line.color }}
-              >
-                {v.line.speaker.toUpperCase()}
-              </span>
-              <br />
-              {v.line.text}
-            </p>
-          ) : (
-            <p className="text-sm text-muted">{v.message}</p>
-          )}
-        </div>
+        <LineBox v={v} empty={<p className="flex min-h-10 items-center text-sm text-muted">{v.message}</p>} />
         {v.line && <p className="mt-1 text-center text-xs text-gold">{v.message}</p>}
       </footer>
 
       {panel?.kind === "place" && <PlaceSheet place={panel.place} v={v} />}
       {panel?.kind === "queen" && <QueenSheet q={panel.queen} v={v} />}
+      {panel?.kind === "talk" && <TalkScreen v={v} />}
       {panel?.kind === "shop" && <ShopSheet v={v} />}
       {panel?.kind === "skills" && <SkillsSheet v={v} />}
       {panel?.kind === "queens" && <QueensSheet v={v} />}
       {panel?.kind === "gallery" && <GallerySheet v={v} />}
       {panel?.kind === "news" && <NewsSheet v={v} since={panel.since ?? 0} />}
       <ReciteScreen v={v} />
-      {!v.session && (
+      {/* Face to face, what the Court notices is a note in the conversation instead. */}
+      {!v.session && panel?.kind !== "talk" && (
         <Notices
           v={v}
           className="absolute inset-x-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-40 px-3"

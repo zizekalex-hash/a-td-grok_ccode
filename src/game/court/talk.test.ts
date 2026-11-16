@@ -10,6 +10,7 @@ import { CONFIG } from "../config.ts";
 import { QUEEN_KEYS, type LineKey } from "./rules.ts";
 import { RUMOR_KINDS } from "./news.ts";
 import {
+  ASK_FILLS,
   BASE_FILLS,
   BOND_TALK_FILLS,
   DUO_FILLS,
@@ -23,6 +24,11 @@ import {
   QUEEN_TALK,
   RUMOR_FILLS,
   SHARED,
+  FEELING_KEYS,
+  SORRY_FILLS,
+  TASTE_KEYS,
+  TONE_FILLS,
+  TONE_KEYS,
 } from "./talk.ts";
 
 const C = CONFIG.court;
@@ -133,7 +139,22 @@ describe("talk pack", () => {
     extra(
       "shared.json",
       s,
-      ["topics", "pickupLines", "presence", "rumors", "bondTalk", "duo", "duoReply", "pairs"],
+      [
+        "topics",
+        "pickupLines",
+        "presence",
+        "rumors",
+        "bondTalk",
+        "duo",
+        "duoReply",
+        "pairs",
+        "tones",
+        "reacts",
+        "sorry",
+        "ask",
+        "answers",
+        "herAsks",
+      ],
       problems,
     );
     for (const part of ["duo", "duoReply"] as const) {
@@ -185,6 +206,49 @@ describe("talk pack", () => {
     for (const [kind, list] of Object.entries(s.bondTalk ?? {}))
       if (!kind.startsWith("_"))
         check(`shared.json bondTalk.${kind}`, list, BOND_TALK_FILLS[kind] ?? [], problems);
+    report(problems);
+  });
+
+  it("has the talk screen's words in shape: tones, reactions, asks, answers and her questions", () => {
+    const problems: string[] = [];
+    const s = SHARED;
+    // What you say, by tone: every tone has lines.
+    extra("shared.json tones", s.tones ?? {}, TONE_KEYS, problems);
+    for (const tone of TONE_KEYS) check(`shared.json tones.${tone}`, s.tones?.[tone], TONE_FILLS, problems);
+    // Her answer to each way of taking a tone.
+    extra("shared.json reacts", s.reacts ?? {}, TASTE_KEYS, problems);
+    for (const taste of TASTE_KEYS) check(`shared.json reacts.${taste}`, s.reacts?.[taste], BASE_FILLS, problems);
+    // Your apologies, in every tone.
+    extra("shared.json sorry", s.sorry ?? {}, TONE_KEYS, problems);
+    for (const tone of TONE_KEYS) check(`shared.json sorry.${tone}`, s.sorry?.[tone], SORRY_FILLS, problems);
+    // The other things you can say.
+    extra("shared.json ask", s.ask ?? {}, Object.keys(ASK_FILLS), problems);
+    for (const [kind, fills] of Object.entries(ASK_FILLS))
+      check(`shared.json ask.${kind}`, s.ask?.[kind], fills, problems);
+    for (const line of s.ask?.bond ?? [])
+      if (!line.includes("{other}")) problems.push(`shared.json ask.bond: needs {other}: "${line}"`);
+    // And her answers to them.
+    extra("shared.json answers", s.answers ?? {}, ["more", "feeling", "sorry", "bye", "byeWarm"], problems);
+    for (const kind of ["more", "bye", "byeWarm"]) check(`shared.json answers.${kind}`, s.answers?.[kind], BASE_FILLS, problems);
+    const feeling = (s.answers?.feeling ?? {}) as Record<string, string[]>;
+    extra("shared.json answers.feeling", feeling, FEELING_KEYS, problems);
+    for (const k of FEELING_KEYS) check(`shared.json answers.feeling.${k}`, feeling[k], BASE_FILLS, problems);
+    const sorry = (s.answers?.sorry ?? {}) as Record<string, string[]>;
+    extra("shared.json answers.sorry", sorry, TASTE_KEYS, problems);
+    for (const k of TASTE_KEYS) check(`shared.json answers.sorry.${k}`, sorry[k], [...BASE_FILLS, "rival"], problems);
+    // Her questions: an ask, and two to five answers of yours, each in a tone.
+    const list = s.herAsks?.list ?? [];
+    if (!list.length) problems.push("shared.json herAsks.list: should have at least one question");
+    check("shared.json herAsks asks", list.map((h) => h.ask), BASE_FILLS, problems);
+    list.forEach((h, i) => {
+      const tones = Object.keys(h.replies ?? {});
+      if (tones.length < 2 || tones.length > TONE_KEYS.length)
+        problems.push(`shared.json herAsks.list.${i}: needs two to five replies`);
+      for (const t of tones)
+        if (!(TONE_KEYS as readonly string[]).includes(t))
+          problems.push(`shared.json herAsks.list.${i}: "${t}" is not a tone`);
+      check(`shared.json herAsks.list.${i}.replies`, Object.values(h.replies ?? {}), [], problems);
+    });
     report(problems);
   });
 

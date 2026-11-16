@@ -19,6 +19,18 @@ left or needed.
 
 ## Notes
 
+### 2026-11-16 · Claude
+
+The Court, asked for by the owner: conversations you choose, lines you tap, and Rehearse's sound.
+
+- **Talk screen** (`src/game/court/converse.ts`, new and pure; `TalkScreen` in `CourtHud.tsx`; `courtTalk`, `courtSay`, `courtTalkNext`, `courtTalkEnd` in `courtgame.ts`). Each turn offers topics, a follow-up, lines in a tone (sweet, bold, witty, humble, honest), a rarer question and goodbye. Each queen loves, likes and dislikes a tone (`court.talk.tastes`); tried tones are kept in `CourtSave.tried`, the day's exchanges in `CourtSave.talked`. Its words are new parts of `talk/shared.json`: `tones`, `reacts`, `sorry`, `ask`, `answers`, `herAsks`, and 12 more `topics`. `talk.test.ts` checks them; GROK_TALK.md tells Grok how to fill them.
+- **Lines tapped as read**: `courtLineDone` and `LineBox`. A queen's sheet shows the line (her hello used to appear under the sheet, unseen), and her sheet's lines come first (`speakLine`).
+- **Rehearse's sound**: `courtSound`, `courtTapSound`, `courtSay`, `courtHush` in `rehearseRun.ts`; the Court calls them from `syncSound` (each frame, by phrase and pass) and `voiceLine`. Switches in `CourtSave.sound`; each queen's pitch and pace in `court.sound.queens`.
+- **On build 1.0.110's voice model** (the other session's `heardVoices` / `liveVoices` / `voiceRepeats` / `ttsRate`): `courtSound` plays as `playVoice` does on a single phrase: one player a heard layer with its voices (stacks multiplied, capped by `liveCap`), the main voice apart with `times: voiceRepeats`. A pass stands for the tap: the pass key is the play's `tag`, so the main voice says it again each pass. `rehearseUpdate` calls `courtAgain()` on any settings change (Pause all sound, Repeats, a layer), and `applyRate` stops the Court's players so they start again at the new rate. A queen's line: the main layer's voices, at most `court.sound.lineVoices`. **If `playVoice`'s single-phrase path changes again, change `courtSound` with it.**
+- `courtGreet` is now only her hello when you walk up; the old Charm her exchange (timers, a five-minute memory) is gone.
+
+Checked: `converse.test.ts` (new, 15 tests), the talk pack check, all 569 tests, type check, lint; browser runs at 390×844 and 360×640 of a whole talk, tapped lines on the map, a sheet and the recite screen, and of the sound calls (what plays when a session starts, on each pass, held, resumed, switched off and left; what is said in a talk, at whose pitch). The sound was also run through the phone's path with a pretend Android bridge (its text-to-speech handing back a short tone): two layers, the second stacked (3 + 9 voices), gave 12 looping voices at 5 speeds; a new pass started nothing again; Repeats 2 had the main voice alone say it again each pass; Pause stopped all 13 sounds and Play brought them back; 96 kHz started all of them again at 96 kHz; a queen's line was 3 voices, once, at her pitch and pace. A real phone's voice engine cannot be run here.
+
 ### 2026-11-11 (later) · Claude
 
 Rehearse, asked for by the owner: every text and phrase shown, a refresh, and a clearer reset button.

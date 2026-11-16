@@ -83,6 +83,15 @@ export interface CourtSave {
   /** What the Court has said, newest first, and when you last read it. */
   news: NewsItem[];
   newsRead: number;
+  /** Tones you have tried on each queen in the talk screen, so the choices can show how she takes them. */
+  tried: Record<QueenKey, string[]>;
+  /** Exchanges with each queen that counted towards affection on a day (court.talk.perDay), and the day. */
+  talked: { day: number; count: Record<QueenKey, number> };
+  /**
+   * Rehearse's sound in the Court: the phrase you recite sounds as Rehearse is
+   * set (phrase), and the queens say their lines aloud in its voice (lines).
+   */
+  sound: { phrase: boolean; lines: boolean };
 }
 
 /** A notice or rumor kept in the News list. */
@@ -127,6 +136,9 @@ export function newSave(): CourtSave {
     given: zero(QUEEN_KEYS),
     news: [],
     newsRead: 0,
+    tried: Object.fromEntries(QUEEN_KEYS.map((k) => [k, []])) as unknown as Record<QueenKey, string[]>,
+    talked: { day: 0, count: zero(QUEEN_KEYS) },
+    sound: { phrase: true, lines: true },
   };
 }
 

@@ -822,6 +822,18 @@ export interface GameConfig {
     };
     /** How the queens' portraits are drawn (see court.portraits._about). */
     portraits: { style: string };
+    /** Talking with a queen face to face: tones, tastes and what an exchange is worth (see court.talk._about). */
+    talk: {
+      perDay: number;
+      affection: { loved: number; liked: number; plain: number; disliked: number; topic: number };
+      topics: number;
+      tones: number;
+      moreChance: number;
+      askChance: number;
+      tastes: Record<CourtQueenKey, { loved: string; liked: string; disliked: string }>;
+    };
+    /** Rehearse's sound in the Court, and each queen's pitch and pace when she speaks aloud (see court.sound._about). */
+    sound: { lineVoices: number; queens: Record<CourtQueenKey, { pitch: number; rate: number }> };
     /** Queens coming out to find you on the map (see court.presence._about). */
     presence: {
       enabled: boolean;

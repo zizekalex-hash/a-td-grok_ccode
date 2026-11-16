@@ -265,6 +265,8 @@ export type ChessView = {
 export type CourtPanel =
   | { kind: "place"; place: PlaceKey }
   | { kind: "queen"; queen: QueenKey }
+  /** Face to face with a queen: the talk screen. */
+  | { kind: "talk"; queen: QueenKey }
   | { kind: "shop" }
   | { kind: "skills" }
   | { kind: "queens" }
@@ -272,6 +274,33 @@ export type CourtPanel =
   /** since: when the News was last read before this, to mark what is new. */
   | { kind: "news"; since?: number }
   | null;
+
+/** A line of a talk: yours, hers, or a note (another queen, the Court). */
+export type CourtTalkEntry = {
+  id: number;
+  who: "you" | "her" | "note";
+  text: string;
+  /** The tone of your line; how she took it; affection it won (or cost). */
+  tone?: string;
+  taste?: string | null;
+  gain?: number;
+};
+
+/** The talk screen as it shows. */
+export type CourtTalkView = {
+  queen: QueenKey;
+  log: CourtTalkEntry[];
+  /** Lines of hers still to come: a tap on her line shows the next. */
+  waiting: number;
+  /** What you can say now; a tone's taste is known once you have tried the tone on her. */
+  choices: { id: string; kind: string; text: string; tone?: string; taste?: string | null }[];
+  ended: boolean;
+  /** Exchanges with her that still add affection today, of how many a day. */
+  left: number;
+  perDay: number;
+  /** She will not talk yet (her need is not met). */
+  locked: boolean;
+};
 
 /** A recite session as the screen shows it. */
 export type CourtSessionView = {
@@ -335,8 +364,11 @@ export type CourtView = {
     size: number;
     until: number;
   } | null;
-  /** The latest line: a queen's, or yours. */
+  /** The latest line: a queen's, or yours; and how many more wait behind it (a tap on it shows the next). */
   line: { speaker: string; text: string; color: string; queen?: QueenKey } | null;
+  lineMore: number;
+  /** The talk screen: what has been said, her lines still to come, and what you can say now. */
+  talk: CourtTalkView | null;
   /** Where you stand, if at a place, and the region you are in. */
   at: PlaceKey | null;
   region: string;
