@@ -192,7 +192,11 @@ async function sayAll(
   const all = heard.map((h) => h.layer);
   if (!all.length) throw new Error("Every voice layer is off: turn one on");
   const n = job.phrases.length;
-  const layers: TtsLayer[] = heard.map((h) => ({ shape: voiceShapeOf(h.layer), voices: h.voices }));
+  const layers: TtsLayer[] = heard.map((h) => ({
+    shape: voiceShapeOf(h.layer),
+    voices: h.voices,
+    main: h.index === 0,
+  }));
   const sayKey = (l: (typeof all)[number]) =>
     JSON.stringify([l.voiceName, l.voiceRate, l.voicePitch]);
   const keys = [...new Set(all.map(sayKey))];
@@ -646,6 +650,8 @@ export async function renderText(
   step: (note: string, part: number) => void,
   stopped: () => boolean,
 ): Promise<RenderMade> {
+  if (heardVoices(set)[0]?.index !== 0)
+    throw new Error("Layer 1, the main voice, is off: turn it on to pre-render");
   const wMain = await renderWriter(names.main);
   if (!wMain) throw new Error("Rendering a whole text is in the Android app");
   const job: TtsJob = { kind: "text", phrases, path: names.main, rate: RENDER_MAIN_RATE };

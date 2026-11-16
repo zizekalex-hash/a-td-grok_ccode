@@ -21,6 +21,7 @@ import { RehearseTab } from "@/components/game/RehearseTab";
 import { LegionTab } from "@/components/game/LegionTab";
 import { PostureChip, PosturesTab } from "@/components/game/PosturesTab";
 import { ThemeButton } from "@/components/game/ThemePicker";
+import { MonitorButton, SoundMonitor } from "@/components/game/SoundMonitor";
 import { rehearseState, rehearseUpdate, subscribeRehearse } from "@/game/rehearseRun";
 
 type DrillTab = "rehearse" | "recall" | "read" | "reps" | "history" | "legion" | "postures";
@@ -154,10 +155,12 @@ export function DrillPanel() {
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-bg/90 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <SoundMonitor />
       <div className="glass flex min-h-0 flex-1 flex-col" data-cinema-host={cinema}>
         <header className="flex items-center justify-between gap-2 border-b border-cyan/30 px-3 py-1.5">
           <h2 className="cinema-dim font-display text-sm tracking-[0.16em] text-cyan">RECITATION</h2>
           <div className="flex items-center gap-1.5">
+            <MonitorButton />
             {tab === "rehearse" && (
               <button
                 type="button"

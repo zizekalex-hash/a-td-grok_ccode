@@ -22,6 +22,7 @@ import {
   type VoiceShape,
   type WavStyle,
 } from "./rehearse.ts";
+import { soundLog } from "./soundLog.ts";
 
 export type LoopSound = Pick<
   RehearseSettings,
@@ -65,6 +66,66 @@ export function setLiveRate(rate: number): boolean {
   return true;
 }
 
+/** Each player's way out: one bus a context, so the monitor can measure all of it. */
+const buses = new WeakMap<BaseAudioContext, GainNode>();
+
+export function audioOut(c: BaseAudioContext): AudioNode {
+  let b = buses.get(c);
+  if (!b) {
+    b = c.createGain();
+    b.connect(c.destination);
+    buses.set(c, b);
+  }
+  return b;
+}
+
+let analyser: AnalyserNode | null = null;
+let meterWanted = false;
+
+/** The monitor on or off: its meter listens on the live sound's way out (off: nothing measured). */
+export function meterOn(on: boolean) {
+  meterWanted = on;
+  attachMeter();
+}
+
+function attachMeter() {
+  const c = audio;
+  if (analyser && (!meterWanted || analyser.context !== c)) {
+    try {
+      analyser.disconnect();
+    } catch {
+      /* gone */
+    }
+    analyser = null;
+  }
+  if (!meterWanted || !c || analyser) return;
+  analyser = c.createAnalyser();
+  analyser.fftSize = 2048;
+  // Through a silent gain to the speakers: measured, not heard twice.
+  const hush = c.createGain();
+  hush.gain.value = 0;
+  audioOut(c).connect(analyser);
+  analyser.connect(hush).connect(c.destination);
+}
+
+/** The live sound going out now (its last samples) into buf; gives back its peak (0: off, or none). */
+export function meterRead(buf: Float32Array<ArrayBuffer>): number {
+  if (!analyser || analyser.context !== audio) attachMeter();
+  if (!analyser) return 0;
+  analyser.getFloatTimeDomainData(buf);
+  let p = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const v = Math.abs(buf[i]!);
+    if (v > p) p = v;
+  }
+  return p;
+}
+
+/** The live player (the background mix plays into it too); null where there is none. */
+export function liveContext(): AudioContext | null {
+  return context();
+}
+
 /** The rate the live sound is made at now (the phone may play it out at its own). */
 export function liveSampleRate(): number {
   return audio?.sampleRate ?? liveRate;
@@ -75,6 +136,11 @@ let holding = false;
 
 function watch(c: AudioContext) {
   c.onstatechange = () => {
+    if (c === audio && c.state !== "running")
+      soundLog(
+        `The phone ${c.state === "suspended" ? "paused" : "closed"} the app's sound player${holding ? ": woken again" : ""}`,
+        "warn",
+      );
     if (holding && c.state !== "running" && c.state !== "closed") void c.resume().catch(() => {});
   };
 }
@@ -106,6 +172,7 @@ function context(): AudioContext | null {
         audio = new AC();
       }
       watch(audio);
+      attachMeter();
     }
     if (audio.state === "suspended") void audio.resume();
     return audio;
@@ -198,7 +265,7 @@ export function phraseLoop(): PhraseLoop {
         const t = ctx.currentTime;
         gain.gain.setValueAtTime(0, t);
         gain.gain.linearRampToValueAtTime(1, t + FADE);
-        src.connect(gain).connect(ctx.destination);
+        src.connect(gain).connect(audioOut(ctx));
         src.start(t);
         fadeOut(now);
         now = { src, gain, key };
@@ -343,7 +410,7 @@ export function fileLoop(): FileLoop {
     const t = ctx.currentTime;
     vol.gain.setValueAtTime(0, t);
     vol.gain.linearRampToValueAtTime(Math.max(0, Math.min(1, gain)), t + FADE);
-    src.connect(shape).connect(vol).connect(ctx.destination);
+    src.connect(shape).connect(vol).connect(audioOut(ctx));
     src.start(t);
     const n: Playing = {
       src,
@@ -582,7 +649,7 @@ export function voicePlayer(): VoicePlayer {
         const fade = ctx.createGain();
         fade.gain.setValueAtTime(0, t);
         fade.gain.linearRampToValueAtTime(1, t + FADE);
-        fade.connect(ctx.destination);
+        fade.connect(audioOut(ctx));
         let nodes: AudioScheduledSourceNode[];
         if (recordSec && recordSec > 0 && shape.voiceLoop && times === 0) {
           // Recorded once (all its copies), then that one sound looped.
@@ -711,251 +778,4 @@ function voiceGraph(
     nodes.push(src);
   });
   return { nodes, out };
-}
-
-// ---- A whole text read by voices, each by itself ----
-
-/** A layer of voices reading a whole text: its shape (robot, turning, loop, silence) and whether reversed. */
-export interface ReadLayer {
-  shape: VoiceShape;
-  reverse: boolean;
-}
-
-/** Voices reading a whole text, each by itself. */
-export interface TextRead {
-  /** What is read and how (the same again: it goes on as it is, never jumping). */
-  key: string;
-  /** How many phrases the text has. */
-  phrases: number;
-  layers: ReadLayer[];
-  /** Each voice: its layer, when it starts (s), its speed and loudness. */
-  voices: (VoiceAt & { layer: number })[];
-  /** A phrase as a layer's voice says it: its file. */
-  say(layer: number, phrase: number): Promise<string>;
-}
-
-export interface TextVoices {
-  /** Every voice reads the text from its first phrase at its own speed, round and round (if its layer loops). */
-  play(r: TextRead): boolean;
-  stop(): void;
-  /** How many voices are reading now. */
-  reading(): number;
-}
-
-/** The phrases kept said and decoded (the voices on one text share them). */
-const READ_KEEP = 48;
-/** Sayings asked of the phone at once (so the main voice's next phrase never waits behind them). */
-const READ_ASKS = 2;
-
-/**
- * Voices reading a whole text, each by itself from the first phrase, at its
- * own speed, never waiting for another or for the main voice: each phrase
- * played as its layer's voice says it, its silence after it, then the next;
- * after the last, the first again (its layer looping). Each phrase is said by
- * the phone once per voice and shared; what is near is made ahead.
- */
-export function textVoices(): TextVoices {
-  interface Reader {
-    v: VoiceAt & { layer: number };
-    g: GainNode;
-    i: number;
-    next: number;
-    done: boolean;
-    miss: number;
-  }
-  interface Run {
-    r: TextRead;
-    ctx: AudioContext;
-    out: GainNode;
-    chains: { into: AudioNode; nodes: AudioScheduledSourceNode[] }[];
-    readers: Reader[];
-    srcs: Set<AudioBufferSourceNode>;
-    timer: number;
-    ready: Map<string, AudioBuffer | null>;
-    making: Set<string>;
-    /** Sayings wanted, by when they are needed (the soonest asked first). */
-    wanted: Map<string, { layer: number; phrase: number; need: number }>;
-    asking: number;
-  }
-  let run: Run | null = null;
-  const decoded = new Map<string, AudioBuffer>();
-  let decodedAt = gen;
-  const reversedOf = new WeakMap<AudioBuffer, AudioBuffer>();
-
-  const reversed = (c: AudioContext, b: AudioBuffer) => {
-    let r = reversedOf.get(b);
-    if (!r) {
-      r = c.createBuffer(b.numberOfChannels, b.length, b.sampleRate);
-      for (let ch = 0; ch < b.numberOfChannels; ch++) {
-        const d = b.getChannelData(ch);
-        const o = r.getChannelData(ch);
-        const n = d.length;
-        for (let k = 0; k < n; k++) o[k] = 0.5 * d[k]! + 0.5 * d[n - 1 - k]!;
-      }
-      reversedOf.set(b, r);
-    }
-    return r;
-  };
-
-  /** The sayings needed soonest asked of the phone, a few at a time. */
-  const ask = (x: Run) => {
-    while (x.asking < READ_ASKS && x.wanted.size) {
-      let best: string | null = null;
-      for (const [k, w] of x.wanted)
-        if (best === null || w.need < x.wanted.get(best)!.need) best = k;
-      const w = x.wanted.get(best!)!;
-      x.wanted.delete(best!);
-      x.making.add(best!);
-      x.asking += 1;
-      void make(x, best!, w.layer, w.phrase);
-    }
-  };
-
-  const make = async (x: Run, k: string, layer: number, phrase: number) => {
-    let buf: AudioBuffer | null = null;
-    try {
-      const url = await x.r.say(layer, phrase);
-      buf = decoded.get(url) ?? null;
-      if (!buf) {
-        buf = await x.ctx.decodeAudioData(await (await fetch(url)).arrayBuffer());
-        decoded.set(url, buf);
-        while (decoded.size > READ_KEEP) decoded.delete(decoded.keys().next().value!);
-      }
-    } catch {
-      buf = null;
-    }
-    x.asking -= 1;
-    x.making.delete(k);
-    if (run !== x) return;
-    x.ready.set(k, buf);
-    while (x.ready.size > READ_KEEP * 2) x.ready.delete(x.ready.keys().next().value!);
-    pump(x);
-  };
-
-  const request = (x: Run, layer: number, phrase: number, need: number) => {
-    const k = `${layer}|${phrase}`;
-    if (x.ready.has(k) || x.making.has(k)) return;
-    const w = x.wanted.get(k);
-    if (!w || need < w.need) x.wanted.set(k, { layer, phrase, need });
-  };
-
-  const pump = (x: Run) => {
-    if (run !== x) return;
-    const n = x.r.phrases;
-    const now = x.ctx.currentTime;
-    // Hidden (the screen off, another app): further ahead, as the page wakes less often.
-    const ahead = typeof document !== "undefined" && document.hidden ? 30 : 4;
-    // What is wanted is asked again below, by when it is needed now.
-    x.wanted.clear();
-    for (const rd of x.readers) {
-      const L = x.r.layers[rd.v.layer]!;
-      const advance = () => {
-        rd.i += 1;
-        if (rd.i >= n) {
-          if (L.shape.voiceLoop) rd.i = 0;
-          else rd.done = true;
-        }
-      };
-      let steps = 0;
-      while (!rd.done && rd.next < now + ahead && steps++ < 64) {
-        const k = `${rd.v.layer}|${rd.i}`;
-        const b = x.ready.get(k);
-        if (b === undefined) {
-          request(x, rd.v.layer, rd.i, rd.next);
-          break;
-        }
-        // Used: kept longest.
-        x.ready.delete(k);
-        x.ready.set(k, b);
-        if (!b || b.duration <= 0) {
-          // Not said (the voice could not): on to the next; none at all, it stops.
-          if (++rd.miss > n) rd.done = true;
-          else advance();
-          continue;
-        }
-        rd.miss = 0;
-        const src = x.ctx.createBufferSource();
-        src.buffer = L.reverse ? reversed(x.ctx, b) : b;
-        src.playbackRate.value = rd.v.speed;
-        src.connect(rd.g);
-        const at = Math.max(rd.next, now + 0.03);
-        src.start(at);
-        x.srcs.add(src);
-        src.onended = () => {
-          x.srcs.delete(src);
-        };
-        rd.next = at + (b.duration + L.shape.voiceGapMs / 1000) / rd.v.speed;
-        advance();
-      }
-      // Its next phrase made ahead, so it never waits.
-      if (!rd.done) request(x, rd.v.layer, rd.i, rd.next);
-    }
-    ask(x);
-  };
-
-  const stop = () => {
-    const x = run;
-    run = null;
-    if (!x) return;
-    window.clearInterval(x.timer);
-    try {
-      const t = x.ctx.currentTime;
-      x.out.gain.cancelScheduledValues(t);
-      x.out.gain.setValueAtTime(x.out.gain.value, t);
-      x.out.gain.linearRampToValueAtTime(0, t + FADE);
-      for (const src of x.srcs) src.stop(t + FADE + 0.01);
-      for (const c of x.chains) for (const nd of c.nodes) nd.stop(t + FADE + 0.01);
-    } catch {
-      /* over already */
-    }
-  };
-
-  return {
-    play(r) {
-      // Another rate: started afresh, what was made at the one before made again.
-      if (decodedAt !== gen) {
-        decodedAt = gen;
-        decoded.clear();
-        stop();
-      }
-      if (run?.r.key === r.key) return true;
-      stop();
-      if (!r.voices.length || r.phrases <= 0) return true;
-      const ctx = context();
-      if (!ctx) return false;
-      const t = ctx.currentTime + 0.05;
-      const out = ctx.createGain();
-      out.gain.setValueAtTime(0, t);
-      out.gain.linearRampToValueAtTime(1, t + FADE);
-      out.connect(ctx.destination);
-      const chains = r.layers.map((L) => voiceChain(ctx, out, L.shape, t));
-      const readers = r.voices.map((v) => {
-        const g = ctx.createGain();
-        g.gain.value = Math.max(0, v.gain);
-        g.connect(chains[v.layer]!.into);
-        return { v, g, i: 0, next: t + v.at, done: false, miss: 0 };
-      });
-      const x: Run = {
-        r,
-        ctx,
-        out,
-        chains,
-        readers,
-        srcs: new Set(),
-        timer: 0,
-        ready: new Map(),
-        making: new Set(),
-        wanted: new Map(),
-        asking: 0,
-      };
-      run = x;
-      x.timer = window.setInterval(() => pump(x), 250);
-      pump(x);
-      return true;
-    },
-    stop,
-    reading() {
-      return run ? run.readers.filter((rd) => !rd.done).length : 0;
-    },
-  };
 }

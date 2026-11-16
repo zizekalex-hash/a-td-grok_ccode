@@ -15,16 +15,15 @@ import { levelForXp, repXp } from "@/game/recite";
 import { logRehearse, readReps, writeReps, wordsOf } from "@/game/reps";
 import { useGame } from "@/game/store";
 import { browserSay, voiceFile, voiceHere } from "@/game/voice";
-import { wholeCopies } from "@/game/ttsRender";
+import { swarmPlay, swarmStats, type SwarmPlay } from "@/game/swarm";
+import { soundLog } from "@/game/soundLog";
 import {
   fileLoop,
   holdAudio,
   setLiveRate,
   phraseLoop,
-  textVoices,
   voicePlayer,
   wakeAudio,
-  type TextVoices,
   type VoicePlayer,
   type FileLoop,
   type LoopSound,
@@ -76,10 +75,9 @@ import {
   newRehearse,
   REHEARSE_KEY,
   heardVoices,
-  liveCap,
-  liveVoices,
+  mainVoiceOf,
   voiceShapeOf,
-  type LayerVoice,
+  type HeardLayer,
   wavStyleOf,
   type LibText,
   type RehearseState,
@@ -357,6 +355,7 @@ function applyRate(rate: number) {
   const first = rateNow === 0;
   rateNow = rate;
   const changed = setLiveRate(rate);
+  if (!first) soundLog(`Sample rate: ${rate / 1000} kHz, every sound started again at it`);
   void outputRate(rate).then((r) => {
     rateInfo = r;
     for (const f of rateSubs) f();
@@ -546,26 +545,42 @@ async function closedTts(a: { dir: string; name: string }, on: boolean, volume: 
 
 // ---- The robot voice ----
 
-/** A player for each layer saying the phrase (its voices; the main voice apart). */
-const voices: VoicePlayer[] = [];
-/** The main voice (the first heard layer's first voice): it says the phrase, or reads a whole text a phrase at a time. */
+/** The main voice (layer 1's first voice): it says the phrase, or reads a whole text a phrase at a time. */
 let mainVoice: VoicePlayer | null = null;
-/** Every voice of the layers reading the whole text, each reading it by itself (whole texts). */
-let wholeVoices: TextVoices | null = null;
 /** The place the main voice last read through (said: not again there, till it moves). */
 let readerSaid = "";
 let voiceText = "";
 let voiceAsk = 0;
 let browserStop: (() => void) | null = null;
+/** The background voices' mix, started again a moment after the last change (not at every step). */
+let swarmTimer = 0;
+let swarmNext: SwarmPlay | null = null;
 
-/** Every live voice stops (the main voice, the ones reading the whole text, the browser's). */
+/** Every live voice stops (the main voice, the background mix, the browser's). */
 function stopVoices() {
-  for (const v of voices) v.stop();
   mainVoice?.stop();
-  wholeVoices?.stop();
+  queueSwarm(null);
   readerSaid = "";
   browserStop?.();
   browserStop = null;
+}
+
+/**
+ * The background mix plays this: at once if it only moved on (a new phrase) or
+ * stops; otherwise (layers or voices changed) after a short pause, so a number
+ * stepped up and down is mixed again once, not at every step.
+ */
+function queueSwarm(p: SwarmPlay | null) {
+  if (typeof window === "undefined") return;
+  window.clearTimeout(swarmTimer);
+  const st = swarmStats();
+  const same = !!p && !!swarmNext && swarmNext.key === p.key && swarmNext.list === p.list;
+  swarmNext = p;
+  if (!p || same || !st.running) {
+    swarmPlay(p);
+    return;
+  }
+  swarmTimer = window.setTimeout(() => swarmPlay(swarmNext), 600);
 }
 
 /** Where the text being repped is: its key, the phrase, its passes, and the next phrase's words. */
@@ -603,47 +618,66 @@ const sayOf = (set: RehearseSettings, l: VoiceLayer) => ({
 });
 
 /**
- * Whole texts: every voice of the layers reading the whole text reads it by
- * itself, from its first phrase, at its own speed, round and round, never
- * waiting for the main voice (the main voice itself apart). The same text and
- * voices: they go on as they are.
+ * What the background mix plays: every heard voice but the main one, each
+ * layer saying the phrase or (whole texts) reading the whole text by itself.
  */
-function playWhole(
-  st: RehearseState,
-  heard: { layer: VoiceLayer; voices: LayerVoice[] }[],
-  live: LayerVoice[][],
-) {
-  const t = st.view === "texts" ? currentText(st, rehearseLibrary()) : undefined;
-  const reading = wholeCopies(heard.map((h, i) => ({ layer: h.layer, voices: live[i]! })));
-  if (!t || !reading.length) {
-    wholeVoices?.stop();
-    return;
-  }
-  const units = readUnits(t.lines);
+function swarmOf(st: RehearseState, text: string, heard: HeardLayer[]): SwarmPlay | null {
   const set = st.settings;
-  wholeVoices ??= textVoices();
-  wholeVoices.play({
-    key: `${t.key}:${renderKeyOf(set, t.lines)}`,
-    phrases: units.length,
-    layers: heard.map((h) => ({ shape: voiceShapeOf(h.layer), reverse: h.layer.voiceReverse })),
-    voices: reading,
-    say: (layer, phrase) => voiceFile(units[phrase]!.text, sayOf(set, heard[layer]!.layer)),
-  });
-}
-
-/** How many voices read the whole text by themselves now (for a check). */
-export function wholeReading(): number {
-  return wholeVoices?.reading() ?? 0;
+  const texts = st.view === "texts";
+  const t = texts ? currentText(st, rehearseLibrary()) : undefined;
+  const units = t ? readUnits(t.lines).map((u) => u.text) : [];
+  const phrases = texts && units.length ? units : [text];
+  const phrase = texts && t ? textAt(st, t.key, units.length) : 0;
+  // Layers with the same voice share their sayings.
+  const voiceKeys: string[] = [];
+  const voiceOf = (l: VoiceLayer) => {
+    const k = JSON.stringify([l.voiceName, l.voiceRate, l.voicePitch]);
+    let i = voiceKeys.indexOf(k);
+    if (i < 0) i = voiceKeys.push(k) - 1;
+    return i;
+  };
+  const says: VoiceLayer[] = [];
+  const layers: SwarmPlay["layers"] = { phrase: [], text: [] };
+  for (const h of heard) {
+    // Layer 1's first voice is the main voice: played by itself, live.
+    const vs = h.index === 0 ? h.voices.slice(1) : h.voices;
+    if (!vs.some((v) => v.gain > 0)) continue;
+    const voice = voiceOf(h.layer);
+    says[voice] = h.layer;
+    const mode = texts && h.layer.voiceWhole && units.length ? "text" : "phrase";
+    layers[mode].push({
+      voices: vs.map((v) => ({ at: v.at, speed: v.speed, gain: v.gain })),
+      mode,
+      loop: h.layer.voiceLoop,
+      gapSec: h.layer.voiceGapMs / 1000,
+      reverse: h.layer.voiceReverse,
+      robot: h.layer.voiceRobot,
+      robotHz: h.layer.voiceRobotHz,
+      panHz: h.layer.voicePanHz,
+      voice,
+    });
+  }
+  if (!layers.phrase.length && !layers.text.length) return null;
+  const list = texts && t ? `text:${t.key}:${hash(t.lines.join("\n"))}` : `phrase:${text}`;
+  return {
+    key: JSON.stringify([layers, voiceKeys, set.voiceEngine, set.ttsRate]),
+    list,
+    phrases,
+    phrase,
+    layers,
+    say: (voice: number, words: string) => voiceFile(words, sayOf(set, says[voice]!)),
+  };
 }
 
 /**
  * The robot voice, shaped by Rehearse's settings; null (or the voice off) stops
- * it. The main voice (the first heard layer's first voice) says the phrase
- * (Repeats times, then waits for the tap; 0: over and over) or, on a whole
- * text with its layer reading the whole text, reads it a phrase at a time (on
- * by itself, or waiting for the tap). Every other voice of a layer saying the
- * phrase says it over and over; every voice of a layer reading the whole text
- * reads it by itself from its first phrase. Gives back why it could not ("" when it plays).
+ * it. The main voice (layer 1's first voice) says the phrase (Repeats times,
+ * then waits for the tap; 0: over and over) or, on a whole text with layer 1
+ * reading the whole text, reads it a phrase at a time (on by itself, or
+ * waiting for the tap). Every other voice is background, mixed into one sound
+ * (the swarm): a layer saying the phrase says it over and over; a layer reading
+ * the whole text has each voice read it by itself from its first phrase. Gives
+ * back why it could not ("" when it plays).
  */
 export async function playVoice(text: string | null): Promise<string> {
   const st = rehearseState();
@@ -679,9 +713,10 @@ export async function playVoice(text: string | null): Promise<string> {
     keep();
     return "";
   }
-  const main = heard[0]!;
-  // Whole texts, the main voice's layer reading the whole text: the main voice reads it, a phrase at a time.
-  const place = texts && main.layer.voiceWhole ? readerPlace(st) : null;
+  const main = heard[0]!.index === 0 ? heard[0]! : null;
+  const mainAt = mainVoiceOf(heard);
+  // Whole texts, layer 1 reading the whole text: the main voice reads it, a phrase at a time.
+  const place = texts && main?.layer.voiceWhole && mainAt ? readerPlace(st) : null;
   // Read here already, and waiting for the tap (or, on by itself now: on to the next).
   const sayAgain = !place || place.tag !== readerSaid;
   const readerDone = place
@@ -695,9 +730,10 @@ export async function playVoice(text: string | null): Promise<string> {
     // The browser's own voice: the main voice only (it says one thing at a time).
     browserStop?.();
     browserStop = null;
+    const l = (main ?? heard[0]!).layer;
     if (place) {
-      if (sayAgain) browserStop = browserSay(text, { ...set, ...main.layer }, readerDone);
-    } else browserStop = browserSay(text, { ...set, ...main.layer });
+      if (sayAgain) browserStop = browserSay(text, { ...set, ...l }, readerDone);
+    } else browserStop = browserSay(text, { ...set, ...l });
     voiceText = text;
     keep();
     return "";
@@ -706,73 +742,46 @@ export async function playVoice(text: string | null): Promise<string> {
   voiceText = text;
   keep();
   try {
-    const live = liveVoices(heard, liveCap(set.ttsRate));
-    // The layers saying the phrase (on single phrases, every one).
-    const saying = heard.map((h, i) => ({ h, i })).filter(({ h }) => !texts || !h.layer.voiceWhole);
-    const files = new Map<number, Promise<string>>();
-    const fileOf = (i: number) => {
-      let f = files.get(i);
-      if (!f) {
-        f = voiceFile(text, sayOf(set, heard[i]!.layer));
-        files.set(i, f);
-      }
-      return f;
-    };
-    const mainUrl = await fileOf(0);
-    const urls = await Promise.all(saying.map(({ i }) => fileOf(i)));
-    if (ask !== voiceAsk) return "";
-    while (voices.length < saying.length) voices.push(voicePlayer());
-    for (let k = saying.length; k < voices.length; k++) voices[k]!.stop();
-    const plays = saying.map(({ h, i }, k) =>
-      voices[k]!.play(urls[k]!, voiceShapeOf(h.layer), {
-        // The main voice is played apart (its own repeats; never reversed).
-        voices: i === 0 ? live[0]!.slice(1) : live[i]!,
-        // Pre-record is single phrases' (on whole texts the switch pre-renders the text).
-        recordSec: set.voiceRecord && !texts ? set.voiceRecordSec : 0,
-        reverse: h.layer.voiceReverse,
-      }),
-    );
-    const mainAt = live[0]![0];
+    // The background: every other voice, mixed into one.
+    queueSwarm(swarmOf(st, text, heard));
     mainVoice ??= voicePlayer();
-    if (!mainAt) {
+    if (!main || !mainAt) {
       mainVoice.stop();
       readerSaid = "";
-    } else if (place) {
+      return "";
+    }
+    const mainUrl = await voiceFile(text, sayOf(set, main.layer));
+    if (ask !== voiceAsk) return "";
+    let ok = true;
+    if (place) {
       // Read a phrase at a time: said (Repeats times, at least once) with its silence, then the next (or the tap).
       if (sayAgain)
-        plays.push(
-          mainVoice.play(mainUrl, voiceShapeOf(main.layer), {
-            voices: [mainAt],
-            times: Math.max(1, set.voiceRepeats),
-            once: readerDone,
-            tag: place.tag,
-          }),
-        );
+        ok = await mainVoice.play(mainUrl, voiceShapeOf(main.layer), {
+          voices: [mainAt],
+          times: Math.max(1, set.voiceRepeats),
+          once: readerDone,
+          tag: place.tag,
+        });
       // The next phrase said ahead (kept by the phone): no wait between the two.
       if (place.next) void voiceFile(place.next, sayOf(set, main.layer)).catch(() => {});
     } else {
       // Said Repeats times, then quiet till the tap (a tap: again); 0: over and over.
-      plays.push(
-        mainVoice.play(mainUrl, voiceShapeOf(main.layer), {
-          voices: [mainAt],
-          times: set.voiceRepeats,
-          tag: set.voiceRepeats > 0 ? `${st.lastTap}` : "",
-        }),
-      );
+      ok = await mainVoice.play(mainUrl, voiceShapeOf(main.layer), {
+        voices: [mainAt],
+        times: set.voiceRepeats,
+        tag: set.voiceRepeats > 0 ? `${st.lastTap}` : "",
+      });
       readerSaid = "";
     }
-    // Whole texts: the voices reading the whole text, each by itself.
-    if (texts) playWhole(st, heard, live);
-    else wholeVoices?.stop();
-    const oks = await Promise.all(plays);
-    return oks.every(Boolean) || ask !== voiceAsk ? "" : "The voice's sound could not be played.";
+    if (!ok && ask === voiceAsk) soundLog("The main voice's sound could not be played", "error");
+    return ok || ask !== voiceAsk ? "" : "The voice's sound could not be played.";
   } catch (e) {
+    const m = String((e as Error)?.message ?? e);
     if (ask === voiceAsk) {
-      stopVoices();
-      voiceText = "";
-      keep();
+      soundLog(`The main voice could not say it: ${m}`, "error");
+      mainVoice?.stop();
     }
-    return String((e as Error)?.message ?? e);
+    return m;
   }
 }
 

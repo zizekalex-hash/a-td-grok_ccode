@@ -79,9 +79,9 @@ import {
   BUBBLE_PAUSE,
   heardVoices,
   layerVoices,
-  LIVE_VOICES,
-  liveCap,
-  liveVoices,
+  mainVoiceOf,
+  newVoiceLayer,
+  voiceSums,
   textTapOn,
 } from "./rehearse.ts";
 
@@ -960,7 +960,7 @@ describe("rehearse: a text read through", () => {
   });
 });
 
-describe("rehearse: voices multiplied, and how many play live", () => {
+describe("rehearse: one main voice, background layers, voices multiplied", () => {
   it("a stacked layer: its copies of every voice of the one before, speeds multiplied, starts added", () => {
     let s = { ...defaultSettings(), voiceCopies: 3, voiceSpreadMs: 100, voiceSpeedUp: 2 };
     s = { ...s, ...copyVoiceLayer(s, 0) };
@@ -970,7 +970,7 @@ describe("rehearse: voices multiplied, and how many play live", () => {
       [1, 2, 4],
     );
     assert.equal(b!.length, 9);
-    // The layer's own voice as it is said comes first.
+    // Its own voice as said comes first; a background layer's voices all at its volume.
     assert.deepEqual(b![0], { at: 0, speed: 1, gain: 1, rank: 0 });
     assert.deepEqual(
       [...new Set(b!.map((v) => v.speed))].sort((x, y) => x - y),
@@ -981,30 +981,52 @@ describe("rehearse: voices multiplied, and how many play live", () => {
     s = { ...s, voiceOn: false };
     assert.equal(heardVoices(s).length, 1);
     assert.equal(voiceCount(s), 9);
-    // Past 256× faster: no sound, left out.
+    // No voice left out for its speed (past 256×: counted as clicks, kept).
     const f = { ...defaultSettings(), voiceCopies: 10, voiceSpeedUp: 4 };
-    assert.equal(layerVoices(voiceLayersOf(f))[0]!.length, 5);
+    assert.equal(layerVoices(voiceLayersOf(f))[0]!.length, 10);
+    assert.equal(voiceSums(f).layers[0]!.extreme, 5);
   });
-  it("live: at most 256 voices, the nearest copies of each layer first, the main voice always", () => {
-    let s = { ...defaultSettings(), voiceCopies: 20 };
+  it("layer 1's first voice is the main voice; every other voice is background (copying adds no loud voice)", () => {
+    let s = {
+      ...defaultSettings(),
+      voiceCopies: 3,
+      voiceVolume: 1.89,
+      voiceCopiesVolume: 0.09,
+    };
     s = { ...s, ...copyVoiceLayer(s, 0) };
+    const [a, b] = layerVoices(voiceLayersOf(s));
+    assert.deepEqual(
+      a!.map((v) => v.gain),
+      [1.89, 0.09, 0.09],
+    );
+    assert.ok(b!.every((v) => v.gain === 0.09));
+    assert.equal(b!.length, 9);
     const heard = heardVoices(s);
-    assert.equal(voiceCount(s), 420);
-    const live = liveVoices(heard);
-    assert.equal(live.flat().length, LIVE_VOICES);
-    assert.deepEqual(live[0]![0], heard[0]!.voices[0]);
-    assert.equal(live[0]!.length, 20);
-    // Few enough: all of them.
-    assert.equal(liveVoices(heardVoices(defaultSettings())).flat().length, 1);
+    assert.equal(mainVoiceOf(heard)?.gain, 1.89);
+    const sums = voiceSums(s);
+    assert.equal(sums.main, 1.89);
+    assert.ok(Math.abs(sums.background - 0.09 * 11) < 1e-9);
+    // Layer 1 off: no main voice; the rest are background still.
+    const off = { ...s, voiceOn: false };
+    assert.equal(mainVoiceOf(heardVoices(off)), null);
+    assert.equal(voiceSums(off).main, 0);
   });
-  it("live at a higher sample rate: fewer voices, the same work for the phone", () => {
-    assert.equal(liveCap(48_000), 256);
-    assert.equal(liveCap(96_000), 256);
-    assert.equal(liveCap(192_000), 128);
-    assert.equal(liveCap(384_000), 64);
-    let s = { ...defaultSettings(), voiceCopies: 20 };
-    s = { ...s, ...copyVoiceLayer(s, 0) };
-    assert.equal(liveVoices(heardVoices(s), liveCap(384_000)).flat().length, 64);
+  it("a new layer: background, independent, no copies yet, at 0.09", () => {
+    let s = { ...defaultSettings(), voiceCopies: 3 };
+    s = { ...s, ...newVoiceLayer(s) };
+    const l = voiceLayersOf(s)[1]!;
+    assert.equal(l.voiceCopies, 0);
+    assert.equal(l.voiceCopiesVolume, 0.09);
+    assert.equal(l.voiceStack, false);
+    assert.equal(voiceCount(s), 3);
+    s = { ...s, ...setVoiceLayer(s, 1, { voiceCopies: 2 }) };
+    assert.equal(voiceCount(s), 5);
+    // 0 copies loads as 0 (a background layer's).
+    assert.equal(
+      loadRehearse({ settings: { voiceLayers: [{ voiceCopies: 0 }] } }).settings.voiceLayers[0]!
+        .voiceCopies,
+      0,
+    );
   });
   it("the main voice's repeats load checked (0: over and over)", () => {
     assert.equal(defaultSettings().voiceRepeats, 0);

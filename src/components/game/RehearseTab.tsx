@@ -156,10 +156,11 @@ import {
   voicePresetOf,
   voiceShapeOf,
   clampPanHz,
-  clampRecordSec,
   clampVoiceRepeats,
   layerVoices,
-  liveCap,
+  newVoiceLayer,
+  voiceSums,
+  FAST_VOICE,
   copyVoiceLayer,
   deleteVoiceLayer,
   MAX_VOICE_LAYERS,
@@ -2889,8 +2890,9 @@ function VoicePanel({
   const setL = (patch: Partial<VoiceLayer>) => setOpt(setVoiceLayer(set, at, patch));
   const preset = voicePresetOf(L);
   const off = layers.filter((l) => !l.voiceOn).length;
-  // The layer with the main voice: the first heard (its first voice).
-  const mainAt = layers.findIndex((l) => l.voiceOn);
+  // The main voice: layer 1's first voice (layer 1 heard); every other voice is background.
+  const mainAt = layers[0]?.voiceOn && layers[0].voiceCopies > 0 ? 0 : -1;
+  const sums = voiceSums(set);
   // Whole texts: the main voice reads the text, a phrase at a time (its layer reading it, or rendered).
   const reads = texts && (set.voiceRecord || !!layers[mainAt]?.voiceWhole);
   // Each layer's voices (a stacked layer's multiplied), and all of them heard.
@@ -2953,6 +2955,17 @@ function VoicePanel({
               className="btn px-2 text-[0.65rem] tracking-normal normal-case"
               disabled={layers.length >= MAX_VOICE_LAYERS}
               onClick={() => {
+                setOpt(newVoiceLayer(set));
+                setLayer(layers.length);
+              }}
+            >
+              New layer
+            </button>
+            <button
+              type="button"
+              className="btn px-2 text-[0.65rem] tracking-normal normal-case"
+              disabled={layers.length >= MAX_VOICE_LAYERS}
+              onClick={() => {
                 setOpt(copyVoiceLayer(set, at));
                 setLayer(at + 1);
               }}
@@ -2978,28 +2991,36 @@ function VoicePanel({
                 away (up to 16 layers, all playing at once).
               </p>
               <p>
-                ★ marks the layer with the main voice: the first copy of the first layer that is
-                heard. It is the voice for listening to, so it is never reversed and, on whole
-                texts, it is the one that reads phrase after phrase. All the others are the
-                background.
+                ★ Layer 1 holds the one main voice: its first copy, at the main voice volume, the
+                conscious voice to listen to (never reversed; on whole texts it reads phrase after
+                phrase). Every other voice is background: layer 1's other copies at its copies
+                volume, and every voice of every other layer at that layer's volume.
+              </p>
+              <p>
+                New layer adds a background layer with no copies yet, at 0.09: raise its copies a
+                step at a time. Copy layer makes a background copy right after it, × it (each of its
+                voices copied again: 3 × 6 = 18), at the copies volume, never a second main voice.
+              </p>
+              <p>
+                All the background voices are mixed into one sound a little ahead, off to the side,
+                and played as one stream (as a mixdown), so many voices cost the phone one player. A
+                change is heard a moment later; the main voice is live.
               </p>
               <p>A layer that is off keeps all its settings and is simply not heard.</p>
             </Info>
           </div>
-          <Toggle
-            label={
-              texts
-                ? "Pre-render the whole text (light for the phone)"
-                : "Pre-record it, then loop that (light for the phone)"
-            }
-            on={set.voiceRecord}
-            flip={() => setOpt({ voiceRecord: !set.voiceRecord })}
-            info={
-              texts ? (
+          {texts && (
+            <Toggle
+              label="Pre-render the whole text (optional, light for the phone)"
+              on={set.voiceRecord}
+              flip={() => setOpt({ voiceRecord: !set.voiceRecord })}
+              info={
                 <>
                   <p>
-                    Makes the whole text into sound in the background, once (how far shows on the
-                    card and here), so the phone plays two streams instead of every copy live:
+                    Optional: live, every voice already plays (the background mixed into one). This
+                    makes the whole text into sound once, in the background (how far shows on the
+                    card and here), then the phone itself plays two streams, lightest for long
+                    listening with the screen off:
                   </p>
                   <p>
                     · the main voice alone, phrase after phrase (each saying and its silence);
@@ -3014,22 +3035,7 @@ function VoicePanel({
                     too. A long text takes a while the first time. The Android app only.
                   </p>
                 </>
-              ) : (
-                <p>
-                  Every copy of each layer (with its robot and turning) is recorded once, as long as
-                  Recorded length, then only that one sound plays, looped, however many copies there
-                  are: light for the phone. Anything that drifts slower than that length starts over
-                  at each loop.
-                </p>
-              )
-            }
-          />
-          {set.voiceRecord && !texts && (
-            <Num
-              label="Recorded length (s), looped"
-              value={set.voiceRecordSec}
-              step={5}
-              set={(v) => setOpt({ voiceRecordSec: clampRecordSec(v) })}
+              }
             />
           )}
           <Num
@@ -3141,8 +3147,10 @@ function VoicePanel({
             {layers.length} layer{layers.length === 1 ? "" : "s"}
             {off ? ` (${off} off: muted, kept)` : ""}, {heardN.toLocaleString()} voice
             {heardN === 1 ? "" : "s"} heard
-            {heardN > liveCap(set.ttsRate)
-              ? ` (live: the nearest ${liveCap(set.ttsRate)} of them at ${set.ttsRate / 1000} kHz; Pre-render plays them all)`
+            {` (1 main + ${(heardN - (mainAt >= 0 ? 1 : 0)).toLocaleString()} background, mixed into one)`}
+            {`; all at once at most ${sums.total.toFixed(2)}${sums.total > 1 ? ` (+${(sums.total - 1).toFixed(2)} over 1.0: clips where they meet)` : ""}`}
+            {sums.layers.some((l) => l.heard && l.extreme)
+              ? `; ${sums.layers.reduce((n, l) => n + (l.heard ? l.extreme : 0), 0).toLocaleString()} past ${FAST_VOICE}× (clicks, not words)`
               : ""}
             {mainAt >= 0 ? `; the main voice: layer ${mainAt + 1}'s first voice (★)` : ""}.
             {texts
@@ -3365,17 +3373,23 @@ function VoicePanel({
             set={(v) => setL({ voicePitch: clampVoicePitch(v) })}
           />
           <Num
-            label="Copies at once"
+            label={at === 0 ? "Copies at once (the first: the main voice)" : "Copies at once"}
             info={
-              <p>
-                How many copies of this layer's voice play together (up to 1,000). In the layer with
-                the main voice (★) the first copy is the main voice. Each copy starts a little after
-                the one before and is faster than it (below).
-              </p>
+              <>
+                <p>
+                  How many copies of this layer&apos;s voice play together (up to 1,000). In layer 1
+                  the first copy is the main voice, so it has at least 1. A background layer can
+                  have 0 (silent): a new layer starts there, to raise a step at a time.
+                </p>
+                <p>
+                  Each copy starts a little after the one before and is faster than it (below). A
+                  layer × the one before makes these copies of each of its voices.
+                </p>
+              </>
             }
             value={L.voiceCopies}
             step={1}
-            set={(v) => setL({ voiceCopies: clampVoiceCopies(v) })}
+            set={(v) => setL({ voiceCopies: Math.max(at === 0 ? 1 : 0, clampVoiceCopies(v)) })}
           />
           <Num
             label="Each copy starts after (ms)"
@@ -3456,29 +3470,38 @@ function VoicePanel({
             step={5}
             set={(v) => setL({ voiceRobotHz: clampRobotHz(v) })}
           />
+          {at === 0 && (
+            <Num
+              label="Main voice volume (the one conscious voice; 1 as it is)"
+              info={
+                <p>
+                  The main voice&apos;s volume: layer 1&apos;s first copy, the voice you listen to
+                  (1 as it is; above 1 louder, and it can clip). Only this one voice is at it.
+                </p>
+              }
+              value={L.voiceVolume}
+              step={0.1}
+              digits={2}
+              set={(v) => setL({ voiceVolume: clampAmp(v) })}
+            />
+          )}
           <Num
-            label="Main voice volume (the first; 1 as it is)"
-            info={
-              <p>
-                The first copy's volume (1 as it is; above 1 louder, and live it can clip). In the
-                layer with the main voice (★) this is the main voice.
-              </p>
+            label={
+              at === 0
+                ? "Copies volume (layer 1's other copies: background)"
+                : "Volume (every voice of this layer: background)"
             }
-            value={L.voiceVolume}
-            step={0.1}
-            digits={2}
-            set={(v) => setL({ voiceVolume: clampAmp(v) })}
-          />
-          <Num
-            label="Copies volume (the others; under the main to hear it)"
             info={
               <p>
-                The other copies' volume, so the main voice stands out above them (0.3 to 0.6 makes
-                a background).
+                {at === 0
+                  ? "Layer 1's other copies, background under the main voice (0.03 to 0.36 is a background)."
+                  : "Every voice of this background layer, all at this volume (a new layer: 0.09). A layer × another keeps its own volume for all its voices, so copying never adds a loud voice."}{" "}
+                All the background voices add up where they meet: the line under the layers shows
+                how loud all of them at once could get.
               </p>
             }
             value={L.voiceCopiesVolume}
-            step={0.05}
+            step={0.01}
             digits={2}
             set={(v) => setL({ voiceCopiesVolume: clampAmp(v) })}
           />
@@ -3588,7 +3611,7 @@ function SampleRate({
         ))}
       </div>
       <p className="text-[0.65rem] leading-snug text-muted">
-        Live at {rate / 1000} kHz, up to {liveCap(rate)} voices. {dacNote}
+        Live at {rate / 1000} kHz. {dacNote}
       </p>
     </>
   );

@@ -265,7 +265,8 @@ export const clampPhraseSize = (v: number) => clamp(Math.round(v), 4, 400);
 export const clampBubbleSp = (v: number) => clamp(Math.round(v), 6, 72);
 export const clampVoiceRate = (v: number) => clamp(Math.round(v * 100) / 100, 0.1, 10);
 export const clampVoicePitch = (v: number) => clamp(Math.round(v * 100) / 100, 0.1, 4);
-export const clampVoiceCopies = (v: number) => clamp(Math.round(v), 1, 1000);
+/** A layer's copies: 0 (a background layer, silent till raised) to 1,000. */
+export const clampVoiceCopies = (v: number) => clamp(Math.round(v), 0, 1000);
 export const clampRecordSec = (v: number) => clamp(Math.round(v), 1, 600);
 export const clampPanHz = (v: number) => clamp(Math.round(v * 100) / 100, 0, 100);
 /** The most layers of voices. */
@@ -1541,21 +1542,22 @@ export interface LayerVoice {
   rank: number;
 }
 
-/** The most voices one layer makes (a stack multiplies them). */
-export const MAX_LAYER_VOICES = 4096;
-/** A voice faster or slower than this many times is no sound at all: left out. */
-export const MAX_VOICE_SPEED = 256;
+/** The most voices one layer makes (a stack multiplies them): only so the phone's memory holds. */
+export const MAX_LAYER_VOICES = 65_536;
+/** Past this many times faster (or slower) a voice is a click (or a drone): said so, not left out. */
+export const FAST_VOICE = 256;
 
 let voicesMemo: { key: string; out: LayerVoice[][] } | null = null;
 
 /**
- * Each layer's voices: its copies (each spreadMs after the one before and
- * speedUp times faster; the first at its volume, the others at the copies').
- * A layer stacked on the one before (voiceStack) makes its copies of every
- * voice of that one (9 × 9 = 81): their starts added, their speeds multiplied;
- * the one before need not be heard. The layer's own voice as it is said first,
- * then the nearest copies; speeds past 256× either way left out; at most
- * MAX_LAYER_VOICES a layer.
+ * Each layer's voices: its copies, each spreadMs after the one before and
+ * speedUp times faster. Layer 1's first voice is the main voice (the one
+ * conscious voice, at its own volume); every other voice is background, at
+ * its layer's copies volume (layers 2 on: all of them). A layer stacked on the
+ * one before (voiceStack) makes its copies of every voice of that one (9 × 9
+ * = 81): their starts added, their speeds multiplied; the one before need not
+ * be heard. Its own voice as said first, then the nearest copies. No voice is
+ * left out for its speed; at most MAX_LAYER_VOICES a layer.
  */
 export function layerVoices(layers: VoiceLayer[]): LayerVoice[][] {
   const key = JSON.stringify(layers);
@@ -1565,7 +1567,8 @@ export function layerVoices(layers: VoiceLayer[]): LayerVoice[][] {
     const own = voiceSpeeds(l).map((speed, k) => ({
       at: (k * l.voiceSpreadMs) / 1000,
       speed,
-      gain: Math.max(0, k === 0 ? l.voiceVolume : l.voiceCopiesVolume),
+      // Layer 1's first: the main voice; every other voice: background.
+      gain: Math.max(0, i === 0 && k === 0 ? l.voiceVolume : l.voiceCopiesVolume),
       rank: k,
     }));
     const base: LayerVoice[] =
@@ -1586,7 +1589,7 @@ export function layerVoices(layers: VoiceLayer[]): LayerVoice[][] {
         if (!q) continue;
         for (const p of byRank.get(pr)!) {
           const speed = p.speed * q.speed;
-          if (!(speed >= 1 / MAX_VOICE_SPEED && speed <= MAX_VOICE_SPEED)) continue;
+          if (!(speed > 0 && Number.isFinite(speed))) continue;
           vs.push({ at: p.at + q.at, speed, gain: q.gain, rank: r });
           if (vs.length >= MAX_LAYER_VOICES) break;
         }
@@ -1599,44 +1602,101 @@ export function layerVoices(layers: VoiceLayer[]): LayerVoice[][] {
   return out;
 }
 
+/** A heard layer: its place among all of them (0: layer 1, the main voice's), and its voices. */
+export interface HeardLayer {
+  index: number;
+  layer: VoiceLayer;
+  voices: LayerVoice[];
+}
+
 /** The layers heard, each with its voices (a layer muted still counts for one stacked on it). */
-export function heardVoices(s: RehearseSettings): { layer: VoiceLayer; voices: LayerVoice[] }[] {
+export function heardVoices(s: RehearseSettings): HeardLayer[] {
   const all = voiceLayersOf(s);
   const vs = layerVoices(all);
-  return all.flatMap((layer, i) => (layer.voiceOn ? [{ layer, voices: vs[i]! }] : []));
+  return all.flatMap((layer, i) => (layer.voiceOn ? [{ index: i, layer, voices: vs[i]! }] : []));
 }
 
-/** The most voices played live at once (the nearest copies of each layer first); Pre-render plays them all. */
-export const LIVE_VOICES = 256;
-
-/**
- * The most voices live at a sample rate: as many as the phone can make, the
- * same work at each rate (256 at 48 and 96 kHz, 128 at 192, 64 at 384).
- */
-export function liveCap(rate: number): number {
-  return Math.max(
-    16,
-    Math.min(LIVE_VOICES, Math.floor((LIVE_VOICES * 2 * 48_000) / Math.max(1, rate))),
-  );
-}
-
-/**
- * The voices to play live: each heard layer's, at most `most` in all, the
- * nearest copies of each layer kept first (the main voice always).
- */
-export function liveVoices(heard: { voices: LayerVoice[] }[], most = LIVE_VOICES): LayerVoice[][] {
-  const total = heard.reduce((n, h) => n + h.voices.length, 0);
-  if (total <= most) return heard.map((h) => h.voices);
-  const all = heard.flatMap((h, i) => h.voices.map((v, k) => ({ i, k, rank: v.rank })));
-  all.sort((a, b) => a.rank - b.rank || a.i - b.i || a.k - b.k);
-  const keep = heard.map(() => new Set<number>());
-  for (const x of all.slice(0, most)) keep[x.i]!.add(x.k);
-  return heard.map((h, i) => h.voices.filter((_, k) => keep[i]!.has(k)));
+/** The main voice: layer 1's first voice, if layer 1 is heard and has one. */
+export function mainVoiceOf(heard: HeardLayer[]): LayerVoice | null {
+  return heard[0]?.index === 0 ? (heard[0].voices[0] ?? null) : null;
 }
 
 /** Voices in all: each heard layer's voices added up (a stacked layer's multiplied). */
 export function voiceCount(s: RehearseSettings): number {
   return heardVoices(s).reduce((n, h) => n + h.voices.length, 0);
+}
+
+/** A layer's numbers: its voices, their speeds, and its loudness if all of them sounded at once. */
+export interface LayerSum {
+  index: number;
+  heard: boolean;
+  voices: number;
+  slowest: number;
+  fastest: number;
+  /** Its voices' volumes added up: as loud as it gets when every one sounds at once. */
+  loud: number;
+  /** Voices past FAST_VOICE times faster or slower (clicks, or drones). */
+  extreme: number;
+}
+
+/** Every layer's numbers, the main voice's volume, and the whole if every voice sounded at once. */
+export function voiceSums(s: RehearseSettings): {
+  layers: LayerSum[];
+  main: number;
+  background: number;
+  total: number;
+} {
+  const all = voiceLayersOf(s);
+  const vs = layerVoices(all);
+  let main = 0;
+  let background = 0;
+  const layers = all.map((l, i) => {
+    const v = vs[i]!;
+    let loud = 0;
+    let slowest = Infinity;
+    let fastest = 0;
+    let extreme = 0;
+    v.forEach((x, k) => {
+      if (l.voiceOn) {
+        if (i === 0 && k === 0) main = x.gain;
+        else background += x.gain;
+      }
+      loud += x.gain;
+      slowest = Math.min(slowest, x.speed);
+      fastest = Math.max(fastest, x.speed);
+      if (x.speed > FAST_VOICE || x.speed < 1 / FAST_VOICE) extreme += 1;
+    });
+    return {
+      index: i,
+      heard: l.voiceOn,
+      voices: v.length,
+      slowest: v.length ? slowest : 0,
+      fastest,
+      loud,
+      extreme,
+    };
+  });
+  return { layers, main, background, total: main + background };
+}
+
+/**
+ * A new layer: background, independent (not × another), with no copies yet
+ * (raise them a step at a time) at a quiet 0.09; the engine's own voice.
+ */
+export function newVoiceLayer(s: RehearseSettings): Partial<RehearseSettings> {
+  if (voiceLayersOf(s).length >= MAX_VOICE_LAYERS) return {};
+  const fresh: VoiceLayer = {
+    ...VOICE_PRESETS[0]!.shape,
+    voiceCopies: 0,
+    voiceVolume: 0.09,
+    voiceCopiesVolume: 0.09,
+    voiceName: "",
+    voiceWhole: s.voiceWhole,
+    voiceOn: true,
+    voiceReverse: false,
+    voiceStack: false,
+  };
+  return { voiceLayers: [...s.voiceLayers, fresh] };
 }
 
 /** The layers heard (muted ones left out), in their order: the first of them leads. */

@@ -16,6 +16,8 @@ export type { StereoKind };
 export interface TtsLayer {
   shape: VoiceShape;
   voices?: { at: number; speed: number; gain: number }[];
+  /** Its first voice is the main voice (layer 1's; false: every voice of it is background). */
+  main?: boolean;
 }
 
 /** One saying of one phrase: a copy of a layer, from t0 (s) at its speed, cut off at tEnd. */
@@ -154,8 +156,8 @@ export function ttsPlan(
   };
   const gapOf = (s: VoiceShape) => s.voiceGapMs / 1000;
   const lenOf = (li: number, i: number) => Math.max(0, lens[li]?.[i] ?? 0);
-  // The main voice: the first layer's first copy (at its start, as it is said).
-  const main = each[0];
+  // The main voice: the first layer's first copy (at its start, as it is said), if it holds it.
+  const main = layers[0]?.main === false ? undefined : each[0];
   const isMain = (l: (typeof each)[number], k: number) => l === main && k === 0;
 
   if (!text) {
