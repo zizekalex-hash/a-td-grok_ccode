@@ -46,6 +46,29 @@ export function savedSound(): LoopSound {
 }
 
 let audio: AudioContext | null = null;
+/** The rate the live sound is made at: the app's sample rate. */
+let liveRate = 48_000;
+/** Changes with the rate: what was made at the rate before is made again. */
+let gen = 0;
+
+/**
+ * The live sound's rate (48 to 384 kHz): a new one starts the player afresh at
+ * it (what played stops; the app plays it again). Gives back whether it changed.
+ */
+export function setLiveRate(rate: number): boolean {
+  if (!(rate > 0) || rate === liveRate) return false;
+  liveRate = rate;
+  gen += 1;
+  const old = audio;
+  audio = null;
+  if (old) void old.close().catch(() => {});
+  return true;
+}
+
+/** The rate the live sound is made at now (the phone may play it out at its own). */
+export function liveSampleRate(): number {
+  return audio?.sampleRate ?? liveRate;
+}
 
 /** Sound meant to be playing (Rehearse, in the background too): a paused player is woken at once. */
 let holding = false;
@@ -76,7 +99,12 @@ function context(): AudioContext | null {
         globalThis.AudioContext ??
         (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AC) return null;
-      audio = new AC();
+      try {
+        audio = new AC({ sampleRate: liveRate });
+      } catch {
+        // Not at that rate here: the player's own.
+        audio = new AC();
+      }
       watch(audio);
     }
     if (audio.state === "suspended") void audio.resume();
@@ -466,6 +494,7 @@ export function voicePlayer(): VoicePlayer {
   } | null = null;
   const made = new Map<string, AudioBuffer>();
   let asked = "";
+  let madeAt = gen;
 
   const fadeOut = (n: typeof now) => {
     if (!n) return;
@@ -507,6 +536,12 @@ export function voicePlayer(): VoicePlayer {
       const me = {};
       asked = key;
       if (now?.key === key) return true;
+      // Another rate: what was made at the one before is made again, and nothing of it plays on.
+      if (madeAt !== gen) {
+        madeAt = gen;
+        made.clear();
+        now = null;
+      }
       const ctx = context();
       if (!ctx) return false;
       let buf = made.get(url);
@@ -744,6 +779,7 @@ export function textVoices(): TextVoices {
   }
   let run: Run | null = null;
   const decoded = new Map<string, AudioBuffer>();
+  let decodedAt = gen;
   const reversedOf = new WeakMap<AudioBuffer, AudioBuffer>();
 
   const reversed = (c: AudioContext, b: AudioBuffer) => {
@@ -876,6 +912,12 @@ export function textVoices(): TextVoices {
 
   return {
     play(r) {
+      // Another rate: started afresh, what was made at the one before made again.
+      if (decodedAt !== gen) {
+        decodedAt = gen;
+        decoded.clear();
+        stop();
+      }
       if (run?.r.key === r.key) return true;
       stop();
       if (!r.voices.length || r.phrases <= 0) return true;

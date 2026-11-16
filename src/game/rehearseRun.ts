@@ -19,6 +19,7 @@ import { wholeCopies } from "@/game/ttsRender";
 import {
   fileLoop,
   holdAudio,
+  setLiveRate,
   phraseLoop,
   textVoices,
   voicePlayer,
@@ -35,10 +36,12 @@ import {
   folderLoopVolume,
   folderName,
   onRenderTurn,
+  outputRate,
   renderBack,
   renderHas,
   renderPlay,
   renderStop,
+  type OutputRate,
 } from "@/game/azsFolder";
 import { readUnits } from "@/game/readtext";
 import {
@@ -73,6 +76,7 @@ import {
   newRehearse,
   REHEARSE_KEY,
   heardVoices,
+  liveCap,
   liveVoices,
   voiceShapeOf,
   type LayerVoice,
@@ -116,6 +120,8 @@ export function rehearseUpdate(fn: (s: RehearseState) => RehearseState) {
     /* private mode or full */
   }
   for (const f of subs) f();
+  // Another sample rate: every sound again, fresh, at it.
+  if (next.settings.ttsRate !== before.settings.ttsRate) applyRate(next.settings.ttsRate);
   // Background turned on or off while it plays: the app kept running, or let rest.
   keep();
   // Moved on elsewhere (the reader, the window) with the tab closed: the sound follows.
@@ -299,6 +305,8 @@ let started = false;
 export function startRehearseBackground() {
   if (started || typeof document === "undefined") return;
   started = true;
+  // The app's sample rate, from the start.
+  applyRate(rehearseState().settings.ttsRate);
   // A sitting long idle (the app away meanwhile, or closed): over, into the History; and again each minute.
   closeIdleSitting();
   window.setInterval(closeIdleSitting, 60_000);
@@ -317,6 +325,48 @@ export function startRehearseBackground() {
   window.addEventListener("azshara-tts-made", () => {
     if (!open && rehearseState().settings.background) void playClosed();
   });
+}
+
+// ---- The sample rate ----
+
+/** The rate applied, and what the phone said of it (a USB DAC, the rate it was set to). */
+let rateNow = 0;
+let rateInfo: OutputRate | null = null;
+const rateSubs = new Set<() => void>();
+
+export function outputInfo(): OutputRate | null {
+  return rateInfo;
+}
+
+export function subscribeOutput(fn: () => void): () => void {
+  rateSubs.add(fn);
+  return () => {
+    rateSubs.delete(fn);
+  };
+}
+
+/**
+ * The app's sample rate: the live sound made at it, files looped at it (or at
+ * their own, if lower), a USB DAC asked to run at it. Changed while it plays:
+ * every sound stops and starts again, fresh, at the new rate (the tab, open,
+ * plays its own; closed, the background's), and a whole text pre-rendered is
+ * made again at it.
+ */
+function applyRate(rate: number) {
+  if (rate === rateNow) return;
+  const first = rateNow === 0;
+  rateNow = rate;
+  const changed = setLiveRate(rate);
+  void outputRate(rate).then((r) => {
+    rateInfo = r;
+    for (const f of rateSubs) f();
+  });
+  if (first || !changed) return;
+  stopRehearseSound();
+  stopRender();
+  window.setTimeout(() => {
+    if (!open && rehearseState().settings.background) void playClosed();
+  }, 0);
 }
 
 // ---- The sound ----
@@ -656,7 +706,7 @@ export async function playVoice(text: string | null): Promise<string> {
   voiceText = text;
   keep();
   try {
-    const live = liveVoices(heard);
+    const live = liveVoices(heard, liveCap(set.ttsRate));
     // The layers saying the phrase (on single phrases, every one).
     const saying = heard.map((h, i) => ({ h, i })).filter(({ h }) => !texts || !h.layer.voiceWhole);
     const files = new Map<number, Promise<string>>();
@@ -861,7 +911,7 @@ function hash(text: string): string {
 
 /** What a render is made of: it is made again when any of it changes. */
 function renderKeyOf(set: RehearseSettings, lines: string[]): string {
-  return hash(JSON.stringify([lines, set.voiceEngine, voiceLayersOf(set)]));
+  return hash(JSON.stringify([lines, set.voiceEngine, voiceLayersOf(set), set.ttsRate]));
 }
 
 /** Renders made before (their turns), oldest first: as many as the phone keeps (this one and the one before). */

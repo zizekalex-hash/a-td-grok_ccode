@@ -576,7 +576,7 @@ export async function startStereo(ttsPath: string, set: RehearseSettings): Promi
 
 // ---- A whole text rendered for the app itself: then it runs by itself ----
 
-/** The other voices' track: at this rate (what the phone plays; the export has its own). */
+/** The other voices' track: at least this rate (the app's sample rate, if higher). */
 export const RENDER_RATE = 48_000;
 /** The main voice's track: one voice as it is said needs no more. */
 export const RENDER_MAIN_RATE = 24_000;
@@ -669,7 +669,8 @@ export async function renderText(
   );
   let back: RenderTrack | null = null;
   if (backPlan.plays.length) {
-    let rate = RENDER_RATE;
+    // At the app's sample rate (48 to 384 kHz), lower if that would be too big.
+    let rate = Math.max(RENDER_RATE, set.ttsRate);
     while (
       rate / 2 >= 24_000 &&
       floatWavBytes(Math.ceil(backPlan.total * rate), 1) > RENDER_FIT_BYTES

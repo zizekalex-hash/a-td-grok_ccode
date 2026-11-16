@@ -32,6 +32,7 @@ interface AzsFolderApi {
   }): Promise<void>;
   renderBack(o: { name: string; volume: number }): Promise<void>;
   renderStop(): Promise<void>;
+  outputRate(o: { rate: number }): Promise<OutputRate>;
   saveCached(o: {
     name: string;
     path: string;
@@ -310,6 +311,30 @@ export async function renderBack(name: string | null): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** What the phone said of the app's sample rate: a USB DAC (its name and rates) and the rate it was set to (0: none). */
+export interface OutputRate {
+  sdk: number;
+  set: number;
+  device?: string;
+  rates?: number[];
+  note?: string;
+}
+
+/**
+ * The app's sample rate on the phone: files loop at it (or at their own, if
+ * lower), and a USB DAC plugged in is asked to run at it (Android 14 or later).
+ * null: not the phone app.
+ */
+export async function outputRate(rate: number): Promise<OutputRate | null> {
+  const p = await folderPlugin();
+  if (!p) return null;
+  try {
+    return await p.api.outputRate({ rate });
+  } catch {
+    return null;
   }
 }
 

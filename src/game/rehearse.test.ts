@@ -80,6 +80,7 @@ import {
   heardVoices,
   layerVoices,
   LIVE_VOICES,
+  liveCap,
   liveVoices,
   textTapOn,
 } from "./rehearse.ts";
@@ -995,6 +996,15 @@ describe("rehearse: voices multiplied, and how many play live", () => {
     assert.equal(live[0]!.length, 20);
     // Few enough: all of them.
     assert.equal(liveVoices(heardVoices(defaultSettings())).flat().length, 1);
+  });
+  it("live at a higher sample rate: fewer voices, the same work for the phone", () => {
+    assert.equal(liveCap(48_000), 256);
+    assert.equal(liveCap(96_000), 256);
+    assert.equal(liveCap(192_000), 128);
+    assert.equal(liveCap(384_000), 64);
+    let s = { ...defaultSettings(), voiceCopies: 20 };
+    s = { ...s, ...copyVoiceLayer(s, 0) };
+    assert.equal(liveVoices(heardVoices(s), liveCap(384_000)).flat().length, 64);
   });
   it("the main voice's repeats load checked (0: over and over)", () => {
     assert.equal(defaultSettings().voiceRepeats, 0);

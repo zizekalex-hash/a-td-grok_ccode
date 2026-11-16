@@ -1610,6 +1610,17 @@ export function heardVoices(s: RehearseSettings): { layer: VoiceLayer; voices: L
 export const LIVE_VOICES = 256;
 
 /**
+ * The most voices live at a sample rate: as many as the phone can make, the
+ * same work at each rate (256 at 48 and 96 kHz, 128 at 192, 64 at 384).
+ */
+export function liveCap(rate: number): number {
+  return Math.max(
+    16,
+    Math.min(LIVE_VOICES, Math.floor((LIVE_VOICES * 2 * 48_000) / Math.max(1, rate))),
+  );
+}
+
+/**
  * The voices to play live: each heard layer's, at most `most` in all, the
  * nearest copies of each layer kept first (the main voice always).
  */

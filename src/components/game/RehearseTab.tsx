@@ -76,6 +76,8 @@ import {
 } from "@/game/ttsExport";
 import {
   bubbleShown,
+  outputInfo,
+  subscribeOutput,
   READER_CHANGED,
   hideBubble,
   pickedWavs,
@@ -157,7 +159,7 @@ import {
   clampRecordSec,
   clampVoiceRepeats,
   layerVoices,
-  LIVE_VOICES,
+  liveCap,
   copyVoiceLayer,
   deleteVoiceLayer,
   MAX_VOICE_LAYERS,
@@ -698,7 +700,20 @@ export function RehearseTab() {
     } else {
       playNonstop(null);
     }
-  }, [nonstop, sound, phraseText, signalMs, amp, rawRate, mode, plays, topSpeed, encoding, paused]);
+  }, [
+    nonstop,
+    sound,
+    phraseText,
+    signalMs,
+    amp,
+    rawRate,
+    mode,
+    plays,
+    topSpeed,
+    encoding,
+    paused,
+    set.ttsRate,
+  ]);
   // The robot voice: the current phrase said, over and over (on after the tab closes too, with Background on).
   const [voiceNote, setVoiceNote] = useState("");
   const voiceKey = JSON.stringify([
@@ -714,6 +729,8 @@ export function RehearseTab() {
     set.voiceRecord,
     set.voiceRecordSec,
     set.voiceRepeats,
+    // Another sample rate: every voice again, fresh, at it.
+    set.ttsRate,
     // Said a number of times: each tap says it again.
     set.voiceRepeats > 0 ? st.lastTap : 0,
     set.paused,
@@ -1133,7 +1150,7 @@ export function RehearseTab() {
     };
     // The gain alone changes without restarting it (below).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wavLoop, name, dir, picked, folder, tick, paused]);
+  }, [wavLoop, name, dir, picked, folder, tick, paused, set.ttsRate]);
   useEffect(() => wavGain(wavVolume), [wavVolume]);
   // A new style: from the next loop (or the file again from its start, if that is far off).
   useEffect(() => setWavStyle(styleNow.current), [styleKey]);
@@ -1162,7 +1179,7 @@ export function RehearseTab() {
     return () => {
       live = false;
     };
-  }, [ttsLoop, name, dir, ttsHere, picked, ttsMadeTick, paused]);
+  }, [ttsLoop, name, dir, ttsHere, picked, ttsMadeTick, paused, set.ttsRate]);
   useEffect(() => ttsGain(ttsVolume), [ttsVolume]);
   // A .tts.wav just made (even while away from the tab): found, and looped.
   useEffect(() => {
@@ -2098,6 +2115,11 @@ export function RehearseTab() {
         </>
       )}
 
+      {tune && (
+        <fieldset disabled={locked} className="glass mt-2 min-w-0 space-y-1.5 p-3">
+          <SampleRate set={set} setOpt={setOpt} />
+        </fieldset>
+      )}
       {tune && (
         <fieldset disabled={locked} className="glass mt-2 min-w-0 space-y-1.5 p-3">
           <p className="font-display text-[0.6rem] tracking-[0.14em] text-violet">
@@ -3119,8 +3141,8 @@ function VoicePanel({
             {layers.length} layer{layers.length === 1 ? "" : "s"}
             {off ? ` (${off} off: muted, kept)` : ""}, {heardN.toLocaleString()} voice
             {heardN === 1 ? "" : "s"} heard
-            {heardN > LIVE_VOICES
-              ? ` (live: the nearest ${LIVE_VOICES} of them; Pre-render plays them all)`
+            {heardN > liveCap(set.ttsRate)
+              ? ` (live: the nearest ${liveCap(set.ttsRate)} of them at ${set.ttsRate / 1000} kHz; Pre-render plays them all)`
               : ""}
             {mainAt >= 0 ? `; the main voice: layer ${mainAt + 1}'s first voice (★)` : ""}.
             {texts
@@ -3492,6 +3514,86 @@ function VoicePanel({
 
 export type TtsJobHere = Omit<TtsJob, "rate">;
 
+/**
+ * The app's sample rate, for all of its sound: the live sound (the phrase's,
+ * the voices, their copies) is made at it, files loop at it (or at their own,
+ * if lower), a whole text is pre-rendered and a .tts.wav made at it, and a USB
+ * DAC is asked to run at it (Android 14 or later). Changed, every sound starts
+ * again, fresh, at it.
+ */
+function SampleRate({
+  set,
+  setOpt,
+}: {
+  set: RehearseSettings;
+  setOpt: (next: Partial<RehearseSettings>) => void;
+}) {
+  const out = useSyncExternalStore(subscribeOutput, outputInfo, outputInfo);
+  const rate = set.ttsRate;
+  const usb = out?.device;
+  const dacNote = !out
+    ? "In a browser: the browser plays it out at its own rate."
+    : usb
+      ? out.set
+        ? `USB DAC “${usb}”: running at ${out.set / 1000} kHz while this app plays.`
+        : rate <= 48_000
+          ? `USB DAC “${usb}”: as the phone has it.`
+          : out.sdk >= 34
+            ? `USB DAC “${usb}”: it did not take ${rate / 1000} kHz${out.rates?.length ? ` (it lists ${out.rates.map((r) => r / 1000).join(", ")} kHz)` : ""}: the phone mixes it at its own rate.`
+            : `USB DAC “${usb}”: running it above the phone's own rate needs Android 14 or later (this is ${out.sdk}).`
+      : "No USB DAC plugged in: files loop at this rate where the phone takes it (else at half, and so on down to 48 kHz); the phone mixes the app's sound at its own rate.";
+  return (
+    <>
+      <p className="flex items-center gap-1.5 font-display text-[0.6rem] tracking-[0.14em] text-violet">
+        THE SAMPLE RATE: ALL OF THE SOUND
+        <Info title="The sample rate">
+          <p>
+            One rate for all of Rehearse's sound: the live sound (the phrase's own, the robot voice
+            and every copy) is made at it, a .wav or .tts.wav loops at it (or at its own, if lower),
+            a whole text is pre-rendered at it, and a .tts.wav is made at it.
+          </p>
+          <p>
+            Higher keeps more: a copy sped up ×4 at 48 kHz folds its highs back down (harsh); at 384
+            kHz up to about ×16 stays clean. It is more work for the phone: live, at most 256 voices
+            at 48 and 96 kHz, 128 at 192, 64 at 384 (the nearest copies first).
+          </p>
+          <p>
+            Changed, every sound stops and starts again, fresh, at the new rate (a pre-rendered text
+            is made again at it; a .tts.wav already made stays at its own rate till you make it
+            again).
+          </p>
+          <p>
+            What reaches your ears: the phone mixes every app at its own rate (mostly 48 kHz). A USB
+            DAC on Android 14 or later is asked to run at this rate while the app plays, so a file
+            looped at it goes through as it is. On a player like a HiBy or FiiO, its own setting
+            (bit-perfect, or SRC bypass) decides. When a USB DAC is plugged in and a player app (USB
+            Audio Player PRO) asks to take it, say Cancel: then every app, this one too, plays
+            through the DAC.
+          </p>
+        </Info>
+      </p>
+      <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label="The sample rate">
+        {TTS_RATES.map((r) => (
+          <button
+            key={r}
+            type="button"
+            role="radio"
+            aria-checked={rate === r}
+            data-on={rate === r}
+            className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+            onClick={() => setOpt({ ttsRate: r })}
+          >
+            {r / 1000} kHz
+          </button>
+        ))}
+      </div>
+      <p className="text-[0.65rem] leading-snug text-muted">
+        Live at {rate / 1000} kHz, up to {liveCap(rate)} voices. {dacNote}
+      </p>
+    </>
+  );
+}
+
 /** The robot voice made into a .tts.wav (float32, at the rate chosen), saved next to the .txt and looped. */
 export function TtsMake({
   set,
@@ -3515,22 +3617,9 @@ export function TtsMake({
       <p className="pt-1 font-display text-[0.6rem] tracking-[0.14em] text-violet">
         THE VOICE MADE INTO A FILE: .TTS.WAV, FLOAT32
       </p>
-      <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label="Its sample rate">
-        {TTS_RATES.map((r) => (
-          <button
-            key={r}
-            type="button"
-            role="radio"
-            aria-checked={set.ttsRate === r}
-            data-on={set.ttsRate === r}
-            className="btn px-1 text-[0.65rem] tracking-normal normal-case"
-            disabled={status.busy}
-            onClick={() => setOpt({ ttsRate: r })}
-          >
-            {r / 1000} kHz
-          </button>
-        ))}
-      </div>
+      <p className="text-[0.65rem] text-muted">
+        Made at {set.ttsRate / 1000} kHz (the sample rate, at the top of Sound and picture).
+      </p>
       <button
         type="button"
         className="btn w-full tracking-normal normal-case"
