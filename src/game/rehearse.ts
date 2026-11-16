@@ -138,6 +138,8 @@ export interface RehearseSettings {
    * many times, then waits for your tap (0: over and over). Its copies go on.
    */
   voiceRepeats: number;
+  /** The background mix made this far ahead of what plays (s): room for the phone to keep up. */
+  mixAheadSec: number;
   /** Whole texts: once a text is read through, the next text, a random one, or every sound stops. */
   textEnd: TextEnd;
   /**
@@ -280,6 +282,8 @@ export const clampRobotHz = (v: number) => clamp(Math.round(v * 10) / 10, 1, 500
 export type TextEnd = "next" | "random" | "stop";
 export const TEXT_ENDS: TextEnd[] = ["next", "random", "stop"];
 export const clampVoiceRepeats = (v: number) => clamp(Math.round(v), 0, 1000);
+/** The background mix's head start: 1 to 30 seconds, by halves. */
+export const clampMixAhead = (v: number) => clamp(Math.round(v * 2) / 2, 1, 30);
 
 export function defaultSettings(): RehearseSettings {
   return {
@@ -327,6 +331,7 @@ export function defaultSettings(): RehearseSettings {
     voiceReverse: false,
     voiceStack: false,
     voiceRepeats: 0,
+    mixAheadSec: 4,
     textEnd: "next",
     voiceAuto: true,
     ttsRate: 48_000,
@@ -487,6 +492,7 @@ export function loadRehearse(data: unknown): RehearseState {
   if (typeof t.voiceOn === "boolean") u.voiceOn = t.voiceOn;
   if (typeof t.voiceReverse === "boolean") u.voiceReverse = t.voiceReverse;
   u.voiceRepeats = clampVoiceRepeats(num(t.voiceRepeats, u.voiceRepeats));
+  u.mixAheadSec = clampMixAhead(num(t.mixAheadSec, u.mixAheadSec));
   if (TEXT_ENDS.includes(t.textEnd as TextEnd)) u.textEnd = t.textEnd as TextEnd;
   if (typeof t.voiceAuto === "boolean") u.voiceAuto = t.voiceAuto;
   if (TTS_RATES.includes(t.ttsRate as TtsRate)) u.ttsRate = t.ttsRate as TtsRate;

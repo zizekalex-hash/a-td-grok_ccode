@@ -1028,6 +1028,12 @@ describe("rehearse: one main voice, background layers, voices multiplied", () =>
       0,
     );
   });
+  it("the background mix's head start: 4 s to start, 1 to 30, by halves", () => {
+    assert.equal(defaultSettings().mixAheadSec, 4);
+    assert.equal(loadRehearse({ settings: { mixAheadSec: 9.3 } }).settings.mixAheadSec, 9.5);
+    assert.equal(loadRehearse({ settings: { mixAheadSec: 0 } }).settings.mixAheadSec, 1);
+    assert.equal(loadRehearse({ settings: { mixAheadSec: 99 } }).settings.mixAheadSec, 30);
+  });
   it("the main voice's repeats load checked (0: over and over)", () => {
     assert.equal(defaultSettings().voiceRepeats, 0);
     assert.equal(loadRehearse({ settings: { voiceRepeats: 3.4 } }).settings.voiceRepeats, 3);

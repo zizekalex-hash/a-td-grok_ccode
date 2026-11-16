@@ -157,6 +157,7 @@ import {
   voiceShapeOf,
   clampPanHz,
   clampVoiceRepeats,
+  clampMixAhead,
   layerVoices,
   newVoiceLayer,
   voiceSums,
@@ -730,6 +731,7 @@ export function RehearseTab() {
     set.voiceRecord,
     set.voiceRecordSec,
     set.voiceRepeats,
+    set.mixAheadSec,
     // Another sample rate: every voice again, fresh, at it.
     set.ttsRate,
     // Said a number of times: each tap says it again.
@@ -3158,6 +3160,32 @@ function VoicePanel({
               : ""}{" "}
             Below: layer {at + 1}.
           </p>
+          <Num
+            label="Mixed ahead (s): the background ready this far ahead"
+            info={
+              <>
+                <p>
+                  The background voices are mixed into one sound a little ahead of what plays. This
+                  is how far ahead: more is more room for the phone to keep up (no gaps when it is
+                  busy, or the screen is off), at the cost of a little memory.
+                </p>
+                <p>
+                  The voices reading the whole text are made this far ahead (10 s at least with the
+                  screen off). The voices saying the phrase start again at each tap, so they are
+                  made at most 1.5 s ahead (4 s with the screen off), or what was made would be
+                  thrown away at every tap.
+                </p>
+                <p>
+                  The sound monitor shows how far ahead it is now. A change here goes on at once
+                  (nothing starts again).
+                </p>
+              </>
+            }
+            value={set.mixAheadSec}
+            step={1}
+            digits={1}
+            set={(v) => setOpt({ mixAheadSec: clampMixAhead(v) })}
+          />
           {texts && (
             <Ask
               text={`What layer ${at + 1} says`}

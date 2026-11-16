@@ -672,6 +672,7 @@ function swarmOf(st: RehearseState, text: string, heard: HeardLayer[]): SwarmPla
     phrases,
     phrase,
     layers,
+    aheadSec: set.mixAheadSec,
     say: (voice: number, words: string) => voiceFile(words, sayOf(set, says[voice]!)),
   };
 }

@@ -25,6 +25,8 @@ export interface SwarmPlay {
   /** The phrase the phrase-saying voices say (an index into phrases). */
   phrase: number;
   layers: Record<Stream, SwarmLayer[]>;
+  /** How far ahead it is mixed (s): more is more room for the phone (changed, nothing starts again). */
+  aheadSec: number;
   /** A phrase as a voice says it: its file's address. */
   say(voice: number, text: string): Promise<string>;
 }
@@ -39,6 +41,8 @@ export interface SwarmStats {
   peak: number;
   /** Pieces that came too late to play whole. */
   late: number;
+  /** How far ahead of what plays the mix is now (s): the whole-text voices', else the phrase-saying ones'. */
+  ahead: number;
   rate: number;
 }
 
@@ -49,6 +53,7 @@ let stats: SwarmStats = {
   load: 0,
   peak: 0,
   late: 0,
+  ahead: 0,
   rate: 0,
 };
 const subs = new Set<() => void>();
@@ -107,9 +112,20 @@ let peakSince = 0;
 let warm = false;
 
 const hidden = () => typeof document !== "undefined" && document.hidden;
-/** How far ahead each stream is mixed (s): further with the screen off (the page wakes less). */
-const aheadOf = (s: Stream) => (s === "phrase" ? (hidden() ? 3 : 0.5) : hidden() ? 10 : 2);
-const pieceOf = (s: Stream) => (s === "phrase" ? (hidden() ? 1 : 0.25) : hidden() ? 2 : 0.5);
+/**
+ * How far ahead each stream is mixed (s): the whole-text voices as set (10 at
+ * least with the screen off: the page wakes less); the phrase-saying voices
+ * less (a tap starts them again, and what was mixed ahead is dropped), as set
+ * up to 1.5 (4 with the screen off).
+ */
+const aheadOf = (s: Stream) => {
+  const want = now?.aheadSec ?? 4;
+  if (s === "phrase") return Math.max(0.5, Math.min(want, hidden() ? 4 : 1.5));
+  return hidden() ? Math.max(want, 10) : want;
+};
+/** Its pieces: longer the further ahead (fewer messages), at most 2 s. */
+const pieceOf = (s: Stream) =>
+  s === "phrase" ? (hidden() ? 1 : 0.25) : Math.max(0.5, Math.min(2, aheadOf("text") / 6));
 
 function fadeOut(o: Out | undefined) {
   if (!o || !ctx) return;
@@ -237,6 +253,8 @@ function onMessage(d: {
   peakSince = Math.max(peakSince * 0.9, d.peak ?? 0);
   const all = STREAMS.map((s) => outs[s]).filter(Boolean) as Out[];
   setStats({
+    // The whole-text voices' head start (what the setting sets), else the phrase-saying ones'.
+    ahead: Math.max(0, ((outs.text ?? outs.phrase)?.next ?? c.currentTime) - c.currentTime),
     voices: all.reduce((x, y) => x + y.voices, 0),
     waiting: all.reduce((x, y) => x + y.waiting, 0),
     load: all.reduce((x, y) => x + y.load, 0),
