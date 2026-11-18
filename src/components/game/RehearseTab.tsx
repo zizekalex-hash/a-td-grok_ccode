@@ -83,6 +83,8 @@ import {
 } from "@/game/ttsExport";
 import {
   bubbleShown,
+  prepStatus,
+  subscribePrep,
   outputInfo,
   subscribeOutput,
   READER_CHANGED,
@@ -329,7 +331,8 @@ function useEmitter(text: string, settings: RehearseSettings) {
   };
 
   const signal = (ctx: AudioContext) => {
-    const voices = settings.voiceRaw !== "off" && settings.voice ? voiceBytesFor(text, settings) : null;
+    const voices =
+      settings.voiceRaw !== "off" && settings.voice ? voiceBytesFor(text, settings) : null;
     const key = JSON.stringify([
       ctx.sampleRate,
       settings.signalMs,
@@ -2195,7 +2198,8 @@ export function RehearseTab() {
             ))}
           </div>
           <p className="pt-1 text-[0.65rem] text-muted">
-            The robot voices as raw binary too (every layer and copy mixed as one, its bytes read as samples):
+            The robot voices as raw binary too (every layer and copy mixed as one, its bytes read as
+            samples):
           </p>
           <div
             className="grid grid-cols-4 gap-1"
@@ -3372,6 +3376,8 @@ function VoicePanel({
               </select>
             </label>
           )}
+          {where === "phone" && <EngineInstall installed={engines.map((e) => e.name)} />}
+          {texts && <PrepLine />}
           <label className="block text-xs">
             <span className="flex items-center gap-1.5 text-muted">
               Voice ({voices.length})
@@ -4042,5 +4048,75 @@ function RenderBadge({ auto }: { auto: boolean }) {
           ? "▶ Runs by itself: the main voice moves the phrases"
           : "▶ The main voice says each phrase, then waits for your tap"}
     </span>
+  );
+}
+
+/** Voice engines to install, a tap away (its store page opens; then choose it above). */
+const ENGINES: { id: string; name: string; what: string; fdroid?: string }[] = [
+  {
+    id: "com.reecedunn.espeak",
+    name: "eSpeak NG",
+    what: "robotic, very fast to say (many phrases a second), every language",
+    fdroid: "https://f-droid.org/packages/com.reecedunn.espeak/",
+  },
+  {
+    id: "com.github.olga_yakovleva.rhvoice.android",
+    name: "RHVoice",
+    what: "clear, fast, offline",
+    fdroid: "https://f-droid.org/packages/com.github.olga_yakovleva.rhvoice.android/",
+  },
+  { id: "com.google.android.tts", name: "Google Speech", what: "natural, slower to say" },
+];
+
+function EngineInstall({ installed }: { installed: string[] }) {
+  return (
+    <div className="space-y-1 text-[0.65rem]">
+      <p className="text-muted">
+        Install a voice engine (its store page opens; back here, choose it in Voice engine):
+      </p>
+      <div className="grid grid-cols-1 gap-1">
+        {ENGINES.map((e) => (
+          <div key={e.id} className="flex items-center gap-1">
+            <a
+              className="btn min-w-0 flex-1 justify-start px-2 tracking-normal normal-case"
+              href={`https://play.google.com/store/apps/details?id=${e.id}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {installed.includes(e.id) ? "✓ " : ""}
+              {e.name}: {e.what}
+            </a>
+            {e.fdroid && (
+              <a
+                className="btn px-2 tracking-normal normal-case"
+                href={e.fdroid}
+                target="_blank"
+                rel="noreferrer"
+              >
+                F-Droid
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** How much of the whole text the phone has said ahead (every voice), playing or paused. */
+function PrepLine() {
+  const p = useSyncExternalStore(subscribePrep, prepStatus, prepStatus);
+  if (!p.total) return null;
+  const pct = Math.floor((p.done / p.total) * 100);
+  return (
+    <div className="space-y-0.5" role="status" aria-label="Said ahead">
+      <p className="text-[0.65rem] text-muted">
+        “{p.name}” said ahead: {pct}% ({p.done.toLocaleString()} of {p.total.toLocaleString()}{" "}
+        sayings){pct >= 100 ? ": all there, every copy plays at once" : ", going on (paused too)"}
+      </p>
+      <div className="meter" role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <span style={{ width: `${pct}%` }} />
+      </div>
+    </div>
   );
 }

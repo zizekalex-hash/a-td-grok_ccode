@@ -727,6 +727,97 @@ function swarmOf(
   };
 }
 
+// ---- The whole text said ahead (each phrase once per voice), playing or paused ----
+
+export interface PrepStatus {
+  /** Phrases said so far, of all of them (each once per voice). */
+  done: number;
+  total: number;
+  /** What is said (a text's name), "" for none. */
+  name: string;
+}
+
+let prep: PrepStatus = { done: 0, total: 0, name: "" };
+let prepKey = "";
+let prepRun = 0;
+const prepSubs = new Set<() => void>();
+
+export function prepStatus(): PrepStatus {
+  return prep;
+}
+
+export function subscribePrep(fn: () => void): () => void {
+  prepSubs.add(fn);
+  return () => {
+    prepSubs.delete(fn);
+  };
+}
+
+function setPrep(p: PrepStatus) {
+  prep = p;
+  for (const f of prepSubs) f();
+}
+
+/**
+ * Whole texts with the robot voice on (the phone app): every phrase of the text
+ * is said by the phone ahead, once for each voice the layers use (its voice,
+ * rate and pitch), in order, whatever plays, paused too. The phone keeps each
+ * saying, so the copies find it made when they come to it, and the next time
+ * round (or another day) it is all there at once.
+ */
+function prepCheck(st: RehearseState, phone: boolean) {
+  const set = st.settings;
+  const t =
+    st.view === "texts" && set.voice && phone ? currentText(st, rehearseLibrary()) : undefined;
+  const layers = t ? heardVoices(set).map((h) => h.layer) : [];
+  if (!t || !layers.length) {
+    if (prepKey) {
+      prepKey = "";
+      prepRun += 1;
+      setPrep({ done: 0, total: 0, name: "" });
+    }
+    return;
+  }
+  const voices: VoiceLayer[] = [];
+  const seen = new Set<string>();
+  for (const l of layers) {
+    const k = JSON.stringify([l.voiceName, l.voiceRate, l.voicePitch]);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    voices.push(l);
+  }
+  const units = readUnits(t.lines).map((u) => u.text);
+  const key = JSON.stringify([t.key, hash(t.lines.join("\n")), set.voiceEngine, [...seen]]);
+  if (key === prepKey) return;
+  prepKey = key;
+  const run = ++prepRun;
+  // From where the text is (what is needed first), then round to its start.
+  const at = textAt(st, t.key, units.length);
+  const order = units.map((_, i) => (at + i) % units.length);
+  const total = units.length * voices.length;
+  let done = 0;
+  setPrep({ done, total, name: t.name });
+  void (async () => {
+    for (const i of order) {
+      for (const l of voices) {
+        if (run !== prepRun) return;
+        try {
+          await voiceFile(units[i]!, sayOf(set, l));
+        } catch (e) {
+          soundLog(
+            `Phrase ${i + 1} could not be said ahead: ${String((e as Error)?.message ?? e)}`,
+            "error",
+          );
+        }
+        done += 1;
+        if (run === prepRun && (done % 5 === 0 || done === total))
+          setPrep({ done, total, name: t.name });
+      }
+    }
+    if (run === prepRun) soundLog(`“${t.name}”: every phrase said ahead (${total} sayings)`);
+  })();
+}
+
 /**
  * The robot voice, shaped by Rehearse's settings; null (or the voice off) stops
  * it. The main voice (layer 1's first voice) says the phrase (Repeats times,
@@ -743,6 +834,8 @@ export async function playVoice(text: string | null): Promise<string> {
   const ask = ++voiceAsk;
   const where = text && set.voice ? await voiceHere() : null;
   if (ask !== voiceAsk) return "";
+  // The whole text said ahead, every voice, playing or paused (the phone app).
+  prepCheck(st, where === "phone");
   // Every sound paused: no voice (a whole text's render goes on being made, to be ready on play).
   if (set.paused) {
     stopVoices();
@@ -1245,7 +1338,9 @@ export async function courtSay(text: string, her: CourtVoice, most = 0): Promise
     ]);
     if (ask !== sayAsk) return;
     const shape = voiceShapeOf(layer);
-    const plays = [sayPlayer.play(url, shape, { voices: voices.slice(0, 1), times: 1, tag: String(ask) })];
+    const plays = [
+      sayPlayer.play(url, shape, { voices: voices.slice(0, 1), times: 1, tag: String(ask) }),
+    ];
     // The copies: Rehearse's own voice, reversed if the layer is.
     if (copies.length)
       plays.push(

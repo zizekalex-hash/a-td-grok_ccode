@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Activity, X } from "lucide-react";
 import { meterOn, meterRead } from "@/game/phraseSound";
-import { rehearseState, subscribeRehearse } from "@/game/rehearseRun";
+import { prepStatus, rehearseState, subscribePrep, subscribeRehearse } from "@/game/rehearseRun";
 import { FAST_VOICE, voiceSums } from "@/game/rehearse";
 import { clearLog, logLines, subscribeLog } from "@/game/soundLog";
 import { subscribeSwarm, swarmStats } from "@/game/swarm";
@@ -70,6 +70,7 @@ export function SoundMonitor() {
   const stats = useSyncExternalStore(subscribeSwarm, swarmStats, swarmStats);
   const log = useSyncExternalStore(subscribeLog, logLines, logLines);
   const rs = useSyncExternalStore(subscribeRehearse, rehearseState, rehearseState);
+  const prep = useSyncExternalStore(subscribePrep, prepStatus, prepStatus);
   const [open, setOpen] = useState(false);
   const [peak, setPeak] = useState(0);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -160,6 +161,9 @@ export function SoundMonitor() {
           {stats.running
             ? `${stats.voices.toLocaleString()} background voices · mixing ${Math.round(stats.load * 100)}% of real time · ${stats.ahead.toFixed(1)} s ahead · ${stats.rate / 1000} kHz${stats.waiting ? ` · ${stats.waiting} starting` : ""}${stats.late ? ` · ${stats.late} late` : ""}`
             : "No background mix playing."}
+          {prep.total
+            ? ` · said ahead ${Math.floor((prep.done / prep.total) * 100)}% (${prep.done}/${prep.total})`
+            : ""}
         </p>
       </button>
       {open && (
