@@ -16,6 +16,12 @@ import {
   CURRENCY_NAME,
   currencyOf,
   batchFlux,
+  deReward,
+  felPerkCost,
+  felPerkMaxed,
+  FEL_PERKS,
+  felTithe,
+  noFelPerks,
   noVoidPerks,
   repGold,
   summonCost,
@@ -34,6 +40,11 @@ import {
   perkCost,
   PERKS,
   sellValue,
+  sacrificeValue,
+  lifeValue,
+  tradePrice,
+  tradeYield,
+  type Tradable,
   START_LIVES,
   towerStats,
   upgradeCost,
@@ -42,6 +53,8 @@ import {
   type CoreStats,
   type CreepKind,
   type DifficultyKey,
+  type FelPerkKey,
+  type FelPerks,
   type PerkKey,
   type Perks,
   type SpellKey,
@@ -190,11 +203,13 @@ export interface Spawner {
 
 export type TdEvent =
   | { type: "waveSent"; wave: number; bonus: number; auto: boolean }
-  | { type: "waveCleared"; wave: number; bonus: number; income: number; interest: number; atp: number }
+  | { type: "waveCleared"; wave: number; bonus: number; income: number; interest: number; atp: number; de: number }
   | { type: "leak"; kind: CreepKind; lives: number }
   | { type: "bossSpawned"; kind: CreepKind; wave: number }
-  | { type: "bossKilled"; kind: CreepKind; gold: number; atp: number }
+  | { type: "bossKilled"; kind: CreepKind; gold: number; atp: number; de: number }
   | { type: "coreRaised"; level: number; stage: string }
+  /** Dark energy made at the altar: by trade, or by sacrificing a tower or lives. */
+  | { type: "altar"; what: "trade" | "tower" | "life"; de: number }
   | { type: "spell"; key: SpellKey; hit: number; text: string }
   | { type: "rep"; flux: number; gold: number; count: number }
   | { type: "riftSummoned"; cost: number }
@@ -236,6 +251,10 @@ export interface TdState {
   lastRepAt: number;
   /** ATP, the third currency: from dream creeps, bosses, the core and Dopamine towers. */
   atp: number;
+  /** Dark energy, the fourth currency: made by trade and sacrifice at the altar (td.de), and paid by fel super bosses. */
+  de: number;
+  /** What dark energy has bought of the endless fel upgrades (td.fel). */
+  felPerks: FelPerks;
   /** The wake core: its level, the clock of its pulse, what it has dealt, and a flash to draw. */
   core: TdCore;
   nextId: number;
@@ -305,6 +324,8 @@ export function createGame(map: TdMap = DEFAULT_MAP, level: DifficultyKey = "nor
     fluxBoost: 0,
     lastRepAt: 0,
     atp: Math.max(0, CONFIG.td.atp.start),
+    de: Math.max(0, CONFIG.td.de.start),
+    felPerks: noFelPerks(),
     core: { level: 1, pulse: 0, dealt: 0, kills: 0, flash: 0 },
     nextId: 1,
     events: [],
@@ -315,15 +336,15 @@ export function towerAt(s: TdState, col: number, row: number): TdTower | undefin
   return s.towers.find((t) => t.col === col && t.row === row);
 }
 
-/** A tower's stats now, with every perk (the void ones too). */
+/** A tower's stats now, with every perk (the void and fel ones too). */
 export function statsOf(s: TdState, t: TdTower): TowerStats {
-  return towerStats(t.key, t.level, s.perks, t.path, t.ascend, s.voidPerks);
+  return towerStats(t.key, t.level, s.perks, t.path, t.ascend, s.voidPerks, s.felPerks);
 }
 
-/** What the player has of a tower's currency: O/I, flux for a void tower, ATP for a wake tower. */
+/** What the player has of a tower's currency: O/I, flux for a void tower, ATP for a wake tower, dark energy for a fel one. */
 export function purse(s: TdState, key: TowerKey): number {
   const money = currencyOf(key);
-  return money === "flux" ? s.flux : money === "atp" ? s.atp : s.gold;
+  return money === "flux" ? s.flux : money === "atp" ? s.atp : money === "de" ? s.de : s.gold;
 }
 
 /** The currency's short name, for messages. */
@@ -335,7 +356,89 @@ function pay(s: TdState, key: TowerKey, amount: number) {
   const money = currencyOf(key);
   if (money === "flux") s.flux -= amount;
   else if (money === "atp") s.atp -= amount;
+  else if (money === "de") s.de -= amount;
   else s.gold -= amount;
+}
+
+// ---- The altar: dark energy, made by sacrifice ----
+
+/** What the player has of a currency dark energy is traded for. */
+function holding(s: TdState, from: Tradable): number {
+  return from === "flux" ? s.flux : from === "atp" ? s.atp : s.gold;
+}
+
+function spend(s: TdState, from: Tradable, amount: number) {
+  if (from === "flux") s.flux -= amount;
+  else if (from === "atp") s.atp -= amount;
+  else s.gold -= amount;
+}
+
+/** Trades `de` dark energy for O/I, flux or ATP (td.de.cost says how much each costs). */
+export function trade(s: TdState, from: Tradable, de: number): Result {
+  if (s.phase === "over") return fail("The rite is over");
+  const n = Math.floor(de);
+  if (!(n >= 1)) return fail("Nothing to trade");
+  const price = tradePrice(from, n, s.felPerks);
+  if (holding(s, from) + 1e-9 < price) return fail(`Needs ${Math.ceil(price)} ${CURRENCY_NAME[from]}`);
+  spend(s, from, price);
+  s.de += n;
+  s.events.push({ type: "altar", what: "trade", de: n });
+  return OK;
+}
+
+/** Trades as much of a currency as buys dark energy (whole DE). */
+export function tradeAll(s: TdState, from: Tradable): Result & { de?: number } {
+  const n = tradeYield(from, holding(s, from), s.felPerks);
+  if (n < 1) return fail(`Needs ${Math.ceil(tradePrice(from, 1, s.felPerks))} ${CURRENCY_NAME[from]} for one DE`);
+  const r = trade(s, from, n);
+  return r.ok ? { ok: true, de: n } : r;
+}
+
+/** The dark energy sacrificing a tower gives now (none for a fel tower). */
+export function sacrificeFor(s: TdState, t: TdTower): number {
+  return sacrificeValue(t.key, t.invested, s.felPerks);
+}
+
+/**
+ * Sacrifices a tower: it is taken away for the dark energy of what was put into it
+ * (td.de.offering). More than selling it, but a fel tower is sold, not sacrificed.
+ */
+export function sacrifice(s: TdState, col: number, row: number): Result & { de?: number } {
+  const t = towerAt(s, col, row);
+  if (!t) return fail("No tower here");
+  if (currencyOf(t.key) === "de") return fail("A fel tower is sold, not sacrificed");
+  const de = sacrificeFor(s, t);
+  if (de < 1) return fail("Too little was put into it to be worth a sacrifice: sell it");
+  const rec = s.retired[t.key] ?? { dealt: 0, kills: 0 };
+  s.retired[t.key] = { dealt: rec.dealt + t.dealt, kills: rec.kills + t.kills };
+  s.towers = s.towers.filter((x) => x.id !== t.id);
+  s.de += de;
+  s.events.push({ type: "altar", what: "tower", de });
+  return { ok: true, de };
+}
+
+/** The lives that can be sacrificed now: all but td.de.minLives. */
+export function sacrificeableLives(s: TdState): number {
+  return Math.max(0, s.lives - Math.max(1, CONFIG.td.de.minLives));
+}
+
+/** Sacrifices `n` lives (never the last ones) for dark energy, td.de.life each. */
+export function sacrificeLives(s: TdState, n: number): Result & { de?: number } {
+  if (s.phase === "over") return fail("The rite is over");
+  const k = Math.floor(n);
+  if (!(k >= 1)) return fail("Nothing to sacrifice");
+  if (k > sacrificeableLives(s)) {
+    return fail(
+      sacrificeableLives(s) > 0
+        ? `Only ${sacrificeableLives(s)} ${sacrificeableLives(s) === 1 ? "life" : "lives"} can go: never the last`
+        : "Never the last life",
+    );
+  }
+  s.lives -= k;
+  const de = lifeValue(k);
+  s.de += de;
+  s.events.push({ type: "altar", what: "life", de });
+  return { ok: true, de };
 }
 
 /** What the core does now. */
@@ -404,7 +507,7 @@ export function build(s: TdState, key: TowerKey, col: number, row: number): Resu
     invested: cost,
     cooldown: 0,
     targeting: "first",
-    stats: towerStats(key, 1, s.perks, -1, -1, s.voidPerks),
+    stats: towerStats(key, 1, s.perks, -1, -1, s.voidPerks, s.felPerks),
     focusId: -1,
     focusStacks: 0,
     phrase: "",
@@ -589,6 +692,20 @@ export function buyVoidPerk(s: TdState, key: VoidPerkKey): Result {
   if (s.flux < cost) return fail(`Needs ${cost} flux`);
   s.flux -= cost;
   s.voidPerks[key] = level + 1;
+  for (const t of s.towers) t.stats = statsOf(s, t);
+  return OK;
+}
+
+/** Buys the next level of a fel perk, with dark energy (endless unless the perk has a max). */
+export function buyFelPerk(s: TdState, key: FelPerkKey): Result {
+  if (s.phase === "over") return fail("The rite is over");
+  const level = s.felPerks[key];
+  const spec = FEL_PERKS[key];
+  if (felPerkMaxed(key, level)) return fail(`${spec.name} is at its limit`);
+  const cost = felPerkCost(key, level);
+  if (s.de < cost) return fail(`Needs ${cost} DE`);
+  s.de -= cost;
+  s.felPerks[key] = level + 1;
   for (const t of s.towers) t.stats = statsOf(s, t);
   return OK;
 }
@@ -1286,7 +1403,10 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
     // The dream set and every boss drop ATP, a little more each wave.
     const atp = spec.atp ? Math.max(1, Math.round(spec.atp * specFor(s, Math.max(1, c.wave || s.wave)).atpScale)) : 0;
     s.atp += atp;
-    if (spec.boss) s.events.push({ type: "bossKilled", kind: c.kind, gold: pay, atp });
+    // A fel super boss pays dark energy, more each wave and with Soul tithe.
+    const de = deReward(c.kind, Math.max(1, c.wave || s.wave), s.felPerks);
+    s.de += de;
+    if (spec.boss) s.events.push({ type: "bossKilled", kind: c.kind, gold: pay, atp, de });
     // An Atonia slain leaves the towers around it jammed for a moment.
     if (spec.jam && !spec.jamEvery) jamTowers(s, c.x, c.y, spec.jamRange ?? 1, spec.jam);
     if (c.summoned) {
@@ -1328,9 +1448,12 @@ function tick(s: TdState, t: number, nextText: () => string, every: number) {
     const core = coreOf(s);
     const atp = Math.round(core.atp + s.towers.reduce((sum, tw) => sum + tw.stats.atpIncome, 0));
     s.atp += atp;
+    // Soul tithe: a cleared wave pays dark energy.
+    const de = felTithe(s.felPerks, sp.wave);
+    s.de += de;
     if (core.mend > 0) s.lives = Math.min(s.maxLives, s.lives + core.mend);
     s.cleared = Math.max(s.cleared, sp.wave);
-    s.events.push({ type: "waveCleared", wave: sp.wave, bonus, income, interest, atp });
+    s.events.push({ type: "waveCleared", wave: sp.wave, bonus, income, interest, atp, de });
   }
   if (done.length) s.spawners = s.spawners.filter((sp) => !done.includes(sp));
 

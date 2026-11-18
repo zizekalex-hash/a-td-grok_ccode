@@ -19,7 +19,12 @@ import {
   wavSampleRate,
   cycleSpeeds,
   loadRehearse as load,
+  mixBytes,
+  MAX_BIT_BYTES,
   rawSamples,
+  VOICE_RAWS,
+  voiceReadings,
+  voicesSignal,
   soundOf,
   removePhrase,
   resetCount,
@@ -335,6 +340,100 @@ describe("rehearse: the phrase as sound", () => {
     assert.equal(back.settings.plays, 9999);
     assert.equal(back.settings.topSpeed, 1);
     assert.equal(back.settings.nonstop, true);
+  });
+});
+
+describe("rehearse: the robot voices as raw binary", () => {
+  /** A stand-in for a voice mix: a swelling tone, a second of it at 24 kHz. */
+  const voice = Float32Array.from({ length: 24_000 }, (_, i) => Math.sin((i / 24_000) * 2 * Math.PI * 220) * Math.sin((i / 24_000) * Math.PI));
+
+  it("keeps the mix as its own bytes: 32-bit floats as they are, little-endian, nothing re-encoded or raised", () => {
+    const bytes = mixBytes(voice);
+    assert.equal(bytes.length, voice.length * 4);
+    const view = new DataView(bytes.buffer);
+    for (const i of [0, 10, 1000, 9000, 23_999]) assert.equal(view.getFloat32(i * 4, true), voice[i]!, `sample ${i}`);
+    // Quiet stays quiet (no peak is brought up to anything); silence is zero bytes; a broken sample is zero.
+    const quiet = mixBytes(voice.map((v) => v * 0.01));
+    assert.ok(Math.abs(new DataView(quiet.buffer).getFloat32(9000 * 4, true) - voice[9000]! * 0.01) < 1e-7);
+    assert.deepEqual(mixBytes(new Float32Array(4)), new Uint8Array(16));
+    const odd = new DataView(mixBytes(Float32Array.from([0.5, Number.NaN, Infinity, -0.5])).buffer);
+    assert.equal(odd.getFloat32(0, true), 0.5);
+    assert.equal(odd.getFloat32(4, true), 0);
+    assert.equal(odd.getFloat32(8, true), 0);
+    assert.equal(odd.getFloat32(12, true), -0.5);
+  });
+
+  it("reads those bytes as raw bits (a bit each, the first bit of a byte first, 1 up and 0 down) or raw bytes (a byte each)", () => {
+    // 1011 0000 then 0100 1111: eight of sixteen bits are 1, so nothing is taken off to centre them.
+    const bits = rawSamples(Uint8Array.from([0b10110000, 0b01001111]), "bits");
+    assert.deepEqual(Array.from(bits), [1, -1, 1, 1, -1, -1, -1, -1, -1, 1, -1, -1, 1, 1, 1, 1]);
+    // Centred: more ones than zeros shifts them down, so the wave swings about zero.
+    const lean = rawSamples(Uint8Array.from([0xff, 0xff, 0xff, 0x00]), "bits");
+    assert.ok(Math.abs(lean.reduce((n, v) => n + v, 0)) < 1e-4);
+    const bytes = mixBytes(voice);
+    assert.equal(rawSamples(bytes, "u8").length, bytes.length);
+    assert.equal(rawSamples(bytes, "bits").length, Math.min(bytes.length, MAX_BIT_BYTES) * 8);
+    // A long one is read to a limit.
+    const long = Uint8Array.from({ length: MAX_BIT_BYTES + 500 }, (_, i) => (i * 37) & 255);
+    assert.equal(rawSamples(long, "bits").length, MAX_BIT_BYTES * 8);
+    // All the same bytes: still no empty or silent read.
+    assert.ok(rawSamples(new Uint8Array(0), "bits").length > 0);
+    assert.deepEqual(voiceReadings("both"), ["bits", "u8"]);
+    assert.deepEqual(voiceReadings("bits"), ["bits"]);
+    assert.deepEqual(voiceReadings("bytes"), ["u8"]);
+    assert.deepEqual(voiceReadings("off"), []);
+    assert.deepEqual(voiceReadings(undefined), []);
+  });
+
+  it("makes a sound of them like the phrase's own: its length, its peak, each reading its own", () => {
+    const bytes = mixBytes(voice);
+    const opts = { signalMs: 200, amp: 0.8, rawRate: 24_000 };
+    const sounds = VOICE_RAWS.filter((m) => m !== "off").map((m) => voicesSignal(bytes, m, 48_000, opts));
+    assert.equal(sounds.length, 3);
+    for (const s of sounds) {
+      assert.equal(s.length, 9600);
+      assert.ok(Math.abs(s.reduce((m, v) => Math.max(m, Math.abs(v)), 0) - 0.8) < 1e-6, "its peak is amp");
+    }
+    assert.equal(new Set(sounds.map((s) => s.join(","))).size, sounds.length, "each way of reading sounds different");
+    // Off is silence of the right length.
+    assert.ok(voicesSignal(bytes, "off", 48_000, opts).every((v) => v === 0));
+    // Nothing of PCM is in what can be chosen: the text has its own ways; the voices are raw.
+    assert.deepEqual(VOICE_RAWS, ["off", "bits", "bytes", "both"]);
+  });
+
+  it("mixes into the phrase's own sound at one peak each, then to amp; off or no bytes is the sound as it was", () => {
+    const base = { signalMs: 300, amp: 0.7, rawRate: 24_000 };
+    const text = "The chloride gradient is reversed.";
+    const bytes = mixBytes(voice);
+    const plain = phraseSignal(text, 48_000, base);
+    // No bytes, or "off": exactly as before.
+    assert.deepEqual(phraseSignal(text, 48_000, { ...base, voiceRaw: "both" }), plain);
+    assert.deepEqual(phraseSignal(text, 48_000, { ...base, voiceBytes: bytes, voiceRaw: "off" }), plain);
+    // With the voices: a different sound, at the peak asked for.
+    for (const encoding of ["u8", "pcm32", "both"] as const)
+      for (const voiceRaw of ["bits", "bytes", "both"] as const) {
+        const mixed = phraseSignal(text, 48_000, { ...base, encoding, voiceBytes: bytes, voiceRaw });
+        const alone = phraseSignal(text, 48_000, { ...base, encoding });
+        assert.equal(mixed.length, alone.length);
+        assert.notDeepEqual(mixed, alone, `${encoding} + voices ${voiceRaw}`);
+        assert.ok(Math.abs(mixed.reduce((m, v) => Math.max(m, Math.abs(v)), 0) - 0.7) < 1e-6, `${encoding}/${voiceRaw}: peak`);
+      }
+    // The rising cycle carries them through every play.
+    const cyc = cycleSignal(text, 48_000, { ...base, plays: 3, topSpeed: 3, voiceBytes: bytes, voiceRaw: "bits" });
+    const cycPlain = cycleSignal(text, 48_000, { ...base, plays: 3, topSpeed: 3 });
+    assert.equal(cyc.length, cycPlain.length);
+    assert.notDeepEqual(cyc, cycPlain);
+  });
+
+  it("is a setting that is off to start, read defensively; what 1.0.129 saved reads as raw bytes", () => {
+    assert.equal(defaultSettings().voiceRaw, "off");
+    for (const m of VOICE_RAWS) assert.equal(loadRehearse({ settings: { voiceRaw: m } }).settings.voiceRaw, m);
+    assert.equal(loadRehearse({ settings: { voiceRaw: "mp3" } }).settings.voiceRaw, "off");
+    assert.equal(loadRehearse({ settings: { voiceRaw: 3 } }).settings.voiceRaw, "off");
+    assert.equal(loadRehearse({}).settings.voiceRaw, "off");
+    // The PCM ways it had are the raw bytes now; all three mixed are both.
+    for (const old of ["u8", "pcm16", "pcm32"]) assert.equal(loadRehearse({ settings: { voiceRaw: old } }).settings.voiceRaw, "bytes", old);
+    assert.equal(loadRehearse({ settings: { voiceRaw: "all" } }).settings.voiceRaw, "both");
   });
 });
 

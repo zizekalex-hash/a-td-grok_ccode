@@ -10,6 +10,7 @@ import { useGame, type CourtPanel, type CourtTalkEntry, type CourtView } from "@
 import {
   advance,
   affectionGain,
+  dateBonus,
   firstGate,
   gateOf,
   isRegion,
@@ -57,7 +58,10 @@ import {
   type Spot,
   type World,
 } from "./world.ts";
-import { queenPortrait } from "./portrait.ts";
+import { looksRev, queenPortrait, youLook } from "./portrait.ts";
+import { readLooks, youName } from "./looks.ts";
+import { choose, doing, mark, roamRadius, stayFor, type Plan } from "./life.ts";
+import { FIGURE_H, FIGURE_W, queenFigure, youFigure } from "./figure.ts";
 import { shade } from "./svgkit.ts";
 import {
   drawLive,
@@ -115,7 +119,16 @@ import {
   speak,
   type Fill,
 } from "./speech.ts";
-import { drawPhrase, hashOf, phraseUnits } from "./bag.ts";
+import {
+  clearTexts,
+  deckTexts,
+  hashOf,
+  percentOf,
+  pickFresh,
+  reciteDone,
+  type DeckText,
+} from "./bag.ts";
+import { chosenText, labelOf, textMark, unitsFrom, wholeText } from "./source.ts";
 import { duoLines, duoReplyLines, pairTalk } from "./talk.ts";
 import {
   choicesFor,
@@ -124,6 +137,7 @@ import {
   loadTalk,
   markTried,
   newTalk,
+  opensUp,
   replyTo,
   talksLeft,
   type Choice,
@@ -135,7 +149,18 @@ import { queenLines } from "./talk.ts";
 import { pickBonus, readReps } from "@/game/reps";
 import type { CourtArcKey } from "@/game/config";
 import { cancelSleep, restedTotal, resting, sleepFrames } from "@/game/rest";
-import { courtHush, courtSay, courtSound, courtTapSound } from "@/game/rehearseRun";
+import {
+  courtHush,
+  courtSay,
+  courtScreen,
+  courtSound,
+  courtTapSound,
+  checkText,
+  rehearseLibrary,
+  rehearseState,
+  subscribeRehearse,
+  type CourtText,
+} from "@/game/rehearseRun";
 
 const C = CONFIG.court;
 const H = C.hearts;
@@ -233,25 +258,41 @@ function readSave(): CourtSave {
   return save;
 }
 
-/** The loaded texts' sectors, or the built-in text. */
-function allTexts(): string[][] {
-  const { texts, lines } = useGame.getState();
-  return texts.length ? texts.map((t) => t.lines) : [lines];
-}
-
 /** Which phrases of the texts have come in this round of the deck (see bag.ts). */
 const BAG_KEY = "azshara-court-bag-v1";
-let deck: { from: unknown; units: string[]; hashes: Set<string> } | null = null;
+let deck: {
+  from: unknown[];
+  /** Each text of the library: its phrases, and how many are recited this round. */
+  texts: DeckText[];
+  /** What the deck draws from, by the chosen text ("" for all of them mixed). */
+  by: Map<string, { units: string[]; hashes: Set<string>; mark: string }>;
+} | null = null;
 
-/** Every phrase of the loaded texts, worked out again only when the texts change. */
-function deckUnits(): { units: string[]; hashes: Set<string> } {
-  const { texts, lines } = useGame.getState();
-  const from = texts.length ? texts : lines;
-  if (deck?.from !== from) {
-    const units = phraseUnits(allTexts(), C.minPhraseWords);
-    deck = { from, units, hashes: new Set(units.map(hashOf)) };
+/**
+ * Every text of Rehearse's library (the .txt files of input_pertext, a .zip
+ * folder's too, or the built-in one) with its phrases and how far through it the
+ * recites are (`done` is the Court's bag of phrases recited through), worked out
+ * again only when the texts change.
+ */
+function deckOf(done: Set<string>): NonNullable<typeof deck> {
+  const g = useGame.getState();
+  const from = [g.texts, g.lines, g.folders, g.custom];
+  if (!deck || deck.from.some((f, i) => f !== from[i])) {
+    deck = { from, texts: deckTexts(rehearseLibrary(), C.minPhraseWords, done), by: new Map() };
   }
   return deck;
+}
+
+/** What a recite draws from: the phrases of the chosen text, or of all of them mixed. */
+function deckUnits(done: Set<string>, source: string) {
+  const d = deckOf(done);
+  let by = d.by.get(source);
+  if (!by) {
+    const units = unitsFrom(rehearseLibrary(), source, C.minPhraseWords);
+    by = { units, hashes: new Set(units.map(hashOf)), mark: textMark(source || "all", units) };
+    d.by.set(source, by);
+  }
+  return by;
 }
 
 function loadBag(): Set<string> {
@@ -279,6 +320,17 @@ function skillName(k: SkillKey) {
 }
 
 /** The Court: walk a small world by tapping, recite at its places to raise skills, and win the queens over. */
+/** The talk screen as the game holds it: the conversation, her lines still to come, what you can say, and where it stands. */
+type TalkState = {
+  t: Talk;
+  log: CourtTalkEntry[];
+  waiting: CourtTalkEntry[];
+  choices: Choice[];
+  ended: boolean;
+  fresh: boolean;
+  locked: boolean;
+};
+
 export class CourtGame implements GameBase {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -294,6 +346,8 @@ export class CourtGame implements GameBase {
   private visiting: QueenKey | null = null;
   /** Each queen's portrait in each mood, ready to draw on the map once loaded. */
   private portraits = new Map<string, HTMLImageElement>();
+  /** The looks' number when the portraits here were made (portrait.ts looksRev). */
+  private looksSeen = 0;
   private shown = new Map<QueenKey, CanvasImageSource>();
   /** Portraits painted at the size the map draws them, by mood, tier and pixels. */
   private bitmaps = new Map<string, HTMLCanvasElement>();
@@ -359,25 +413,26 @@ export class CourtGame implements GameBase {
   /** What each queen said lately, so she does not repeat herself, and your conversations. */
   private said = new Map<QueenKey, string[]>();
   /** Phrases of the texts already come in this round of the deck, and the last one. */
+  /** The phrases recited all through this round (by their names; a text finished is cleared for a fresh round). */
   private bag = loadBag();
-  private lastPhrase = "";
-  private deckDone = { done: 0, total: 0 };
+  /** The last few phrases that came, so a skipped one does not come straight back. */
+  private recent: string[] = [];
   private line: CourtView["line"] = null;
   /**
    * The talk screen: the conversation, what has been said, her lines still to
    * come (each shows on a tap), what you can say now, and whether a line of
    * hers is up that has not been tapped past yet.
    */
-  private talk: {
-    t: Talk;
-    log: CourtTalkEntry[];
-    waiting: CourtTalkEntry[];
-    choices: Choice[];
-    ended: boolean;
-    fresh: boolean;
-    locked: boolean;
-  } | null = null;
+  private talk: TalkState | null = null;
   private talkSeq = 1;
+  /**
+   * A deeper question asked over the crystal wine, waiting on the phrase you
+   * recite for her: the talk it came from (kept while the recite takes the
+   * screen), the question, and your line in the log.
+   */
+  private toast: { talk: TalkState; choice: Choice; asked: CourtTalkEntry | null } | null = null;
+  /** What she has told you on this date night (so she does not say it twice). */
+  private dateTold: string[] = [];
   private message = "Tap anywhere to walk there. Tap a place to train, a queen to talk.";
   private raf = 0;
   private running = false;
@@ -400,6 +455,8 @@ export class CourtGame implements GameBase {
   private boardKey = "";
 
   constructor(canvas: HTMLCanvasElement) {
+    // The looks made in the Atelier, before anything is drawn.
+    readLooks();
     this.canvas = canvas;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas unavailable");
@@ -435,16 +492,35 @@ export class CourtGame implements GameBase {
     this.last = performance.now();
     this.startedAt = this.last;
     this.raf = requestAnimationFrame(this.frame);
+    // On the Court's screen only the Court sounds. Pause all sound pressed anywhere (Rehearse, its window)
+    // stops the recite's sound; Play all sound starts it.
+    courtScreen(true);
+    this.pausedSeen = rehearseState().settings.paused;
+    this.unsubRehearse = subscribeRehearse(() => {
+      const p = rehearseState().settings.paused;
+      if (p === this.pausedSeen) return;
+      this.pausedSeen = p;
+      if (this.session && this.soundMuted !== p) {
+        this.soundMuted = p;
+        this.pushView(true);
+      }
+    });
     this.pushView(true);
   }
+
+  private pausedSeen = false;
+  private unsubRehearse: (() => void) | null = null;
 
   stop() {
     cancelSleep(this.wake);
     this.persist();
-    // The Court's sound ends with it (Rehearse's own comes back, if it plays on in the background).
+    // The Court's sound ends with it.
     this.soundKey = "";
     void courtSound(null);
     courtHush();
+    courtScreen(false);
+    this.unsubRehearse?.();
+    this.unsubRehearse = null;
     this.running = false;
     cancelAnimationFrame(this.raf);
     this.ro?.disconnect();
@@ -680,8 +756,27 @@ export class CourtGame implements GameBase {
   private voiceLine(line: { text: string; queen?: QueenKey }) {
     if (!line.queen || !this.save.sound.lines) return;
     if (this.session && this.save.sound.phrase) return;
-    const her = C.sound.queens[line.queen] ?? { pitch: 1, rate: 1 };
-    void courtSay(line.text, her, C.sound.lineVoices);
+    void courtSay(line.text, this.herVoice(line.queen), C.sound.lineVoices);
+  }
+
+  /** A queen's own voice: her pitch and pace, and the voice chosen for her on her sheet (or picked for her). */
+  private herVoice(q: QueenKey) {
+    const her = C.sound.queens[q] ?? { pitch: 1, rate: 1 };
+    return { ...her, voice: this.save.sound.voices[q], slot: QUEEN_KEYS.indexOf(q) };
+  }
+
+  /** Gives a queen a voice (a name, "" for one picked for her, "=" for Rehearse's), and lets you hear it. */
+  courtVoice(q: QueenKey, voice: string) {
+    this.save.sound = { ...this.save.sound, voices: { ...this.save.sound.voices, [q]: voice } };
+    this.persist();
+    this.pushView(true);
+    this.courtVoiceTry(q);
+  }
+
+  /** Her voice, tried: she says a hello aloud, whatever the switches say. */
+  courtVoiceTry(q: QueenKey) {
+    const hello = speak(q, "greet", Math.random, this.voiceFill(q), this.tierOf(q));
+    void courtSay(hello, this.herVoice(q), C.sound.lineVoices);
   }
 
   /** What the Court last asked Rehearse's players for: the phrase and its pass ("" for nothing). */
@@ -694,11 +789,66 @@ export class CourtGame implements GameBase {
    */
   private syncSound(held: boolean) {
     const s = this.session;
-    const on = !!s && !s.over && !s.roundDone && !held && this.save.sound.phrase;
-    const key = on && s ? `${s.phrase}|${s.phrases}|${s.pass}` : "";
+    const on =
+      !!s && !s.over && !s.roundDone && !held && this.save.sound.phrase && !this.soundMuted;
+    // By phrase, not by pass: the voices keep looping through a phrase's passes, and all
+    // start again only on the next phrase (or when the text it is from is another).
+    const key = on && s ? `${s.phrases}|${s.phrase}|${this.save.source}` : "";
     if (key === this.soundKey) return;
     this.soundKey = key;
-    void courtSound(on && s ? s.phrase : null, key);
+    // Recited for a queen: the main voice is her own.
+    void courtSound(
+      on && s ? s.phrase : null,
+      key,
+      on && s?.queen ? this.herVoice(s.queen) : undefined,
+      on && s ? this.wholeOf(s.phrase) : undefined,
+    );
+  }
+
+  /**
+   * The text the recite is from, for the voices set to read a whole text: the one
+   * chosen (or the only one there is), with the phrase being recited among its
+   * phrases. None when several are mixed, or the phrase is not of the text yet.
+   */
+  private wholeOf(phrase: string): CourtText | undefined {
+    const library = rehearseLibrary();
+    const t = wholeText(library, this.save.source);
+    if (!t) return undefined;
+    const d = deckUnits(this.bag, chosenText(library, this.save.source)?.key ?? "");
+    const at = d.units.indexOf(phrase);
+    return at < 0 ? undefined : { units: d.units, at, mark: d.mark };
+  }
+
+  /** The recite's sound stopped by hand (the Sound sheet, or Pause all sound in Rehearse); it starts by itself again with the next recite. */
+  private soundMuted = false;
+
+  /** Pauses or plays the sound of the recite you are in. */
+  courtMute() {
+    this.soundMuted = !this.soundMuted;
+    this.message = this.soundMuted
+      ? "The recite's sound is paused. It starts by itself again with the next recite."
+      : "The recite's sound plays.";
+    this.pushView(true);
+  }
+
+  /** Chooses the text recites draw their phrases from ("" for all of Rehearse's texts); the next phrase comes from it. */
+  courtSource(key: string) {
+    this.save.source = chosenText(rehearseLibrary(), key)?.key ?? "";
+    this.recent = [];
+    this.message = this.save.source
+      ? `Phrases from “${chosenText(rehearseLibrary(), this.save.source)?.name ?? "the text"}”, from the next one.`
+      : "Phrases from all your texts, from the next one.";
+    this.persist();
+    this.pushView(true);
+  }
+
+  /** Rehearse shown over the Court (its Sound button): the Court's clock is held meanwhile. */
+  private away = false;
+
+  courtAway(on: boolean) {
+    if (this.away === on) return;
+    this.away = on;
+    this.pushView(true);
   }
 
   /** Turns a part of Rehearse's sound in the Court on or off: the phrase you recite, or the queens' lines. */
@@ -762,6 +912,7 @@ export class CourtGame implements GameBase {
       rival: jealous ? this.rivalName(q) : "",
       wish: this.save.wishes.done[q] ? null : { count: w.passes, skill: skillName(w.skill) },
       passes: this.save.devotion[q],
+      bottles: this.save.wine,
     };
   }
 
@@ -813,20 +964,63 @@ export class CourtGame implements GameBase {
     const talk = this.talk;
     if (!talk || talk.ended || talk.waiting.length) return;
     const c = talk.choices.find((x) => x.id === id);
-    if (!c) return;
+    // A bottle can only be poured while one is in the bag.
+    if (!c || (c.kind === "pour" && this.save.wine < 1)) return;
     const q = talk.t.queen;
-    const spec = C.queens[q];
-    const day = dayOf(Date.now());
     this.touch(q);
     talk.fresh = false;
-    this.talkAdd({ who: "you", text: c.text, tone: c.tone });
+    const asked = this.talkAdd({ who: "you", text: c.text, tone: c.tone });
     if (talk.locked) {
       talk.ended = true;
       this.courtTalkEnd();
       return;
     }
+    // A deeper question over the wine is answered once you have recited for her: the recite starts by itself.
+    if (c.kind === "exotic") return this.courtToast(c, asked);
+    this.courtAnswer(c);
+  }
+
+  /**
+   * A deeper question over the crystal wine: she answers it once a phrase has been
+   * recited for her. The recite starts by itself (sipPhrases phrases at her place, her
+   * watching, with the usual XP, gold, streak and text progress); when it is through
+   * the talk comes back with her answer. Leaving the recite early brings the talk back
+   * with the question still waiting (see endSession).
+   */
+  private courtToast(c: Choice, asked: CourtTalkEntry | null) {
+    const talk = this.talk;
+    if (!talk) return;
+    const q = talk.t.queen;
+    this.toast = { talk, choice: c, asked };
+    this.courtRecite(C.queens[q].place as PlaceKey, { queen: q, toast: true });
+    if (!this.session?.toast) {
+      // The recite could not begin: the question waits, as if leaving it early.
+      this.toast = null;
+      if (asked) talk.log = talk.log.filter((e) => e !== asked);
+      return this.pushView(true);
+    }
+    // What you asked stays in her box while you recite, and what is to be done in the message.
+    this.line = { speaker: "You", text: c.text, color: PAL.gold };
+    this.lineQueue = [];
+    this.lineAt = performance.now();
+    this.message = `Recite for ${C.queens[q].name}: she answers when the phrase is through.`;
+    this.pushView(true);
+  }
+
+  /** Her answer to a line you said, and what it does: affection, her mood, a bottle poured, a wish told. */
+  private courtAnswer(c: Choice) {
+    const talk = this.talk;
+    if (!talk) return;
+    const q = talk.t.queen;
+    const spec = C.queens[q];
+    const day = dayOf(Date.now());
     const r = replyTo(talk.t, c, this.talkContext(q), Math.random);
     if (c.tone) markTried(this.save, q, c.tone);
+    if (r.poured) {
+      this.save.wine = Math.max(0, this.save.wine - 1);
+      this.save.wineShared[q] += 1;
+      sfx.bless();
+    }
     if (r.mood) this.feel(q, r.mood);
     const first = this.talkHer(r.lines[0] ?? "...");
     if (first) first.taste = r.taste;
@@ -836,15 +1030,15 @@ export class CourtGame implements GameBase {
     if (first && !r.ended)
       speakAs(
         `${spec.name}, ${spec.title}: ${spec.persona}`,
-        `The player says to you${c.tone ? `, in a ${c.tone} tone` : ""}: "${c.text}".${r.taste ? ` You ${r.taste === "plain" ? "are unmoved by" : r.taste === "disliked" ? "dislike" : r.taste === "loved" ? "love" : "like"} that kind of talk.` : ""} Answer in one or two short sentences.`,
+        `The player says to you${c.tone ? `, in a ${c.tone} tone` : ""}: "${c.text}".${r.taste ? ` You ${r.taste === "plain" ? "are unmoved by" : r.taste === "disliked" ? "dislike" : r.taste === "loved" ? "love" : "like"} that kind of talk.` : ""}${c.kind === "pour" ? " They are pouring you a glass of crystal wine." : c.kind === "exotic" ? " You are sharing crystal wine with them and it loosens your tongue: answer more intimately and honestly than usual." : ""} Answer in one or two short sentences.`,
         (text) => {
           if (!this.running) return;
           first.text = text;
           this.pushView(true);
         },
       );
-    // What the exchange is worth: the first few a day add affection; a tone she dislikes costs a little, never a tier.
-    if (r.affection > 0 && countTalk(this.save, q, day)) {
+    // What the exchange is worth: the first few a day add affection (the wine's, always); a tone she dislikes costs a little, never a tier.
+    if (r.affection > 0 && (r.free || countTalk(this.save, q, day))) {
       const gained = this.addAffection(q, r.affection, true);
       if (first) first.gain = gained;
     } else if (r.affection < 0) {
@@ -953,10 +1147,145 @@ export class CourtGame implements GameBase {
 
   // ---- Queens who come out to find you ----
 
+  // ---- A life of her own (life.ts) ----
+
+  /** Queens about by themselves in this region: where each is, where she is going and why. */
+  private roam = new Map<
+    QueenKey,
+    { x: number; y: number; path: Spot[]; plan: Plan; thinkIn: number; place: string; queen: string; seed: number }
+  >();
+  private roamRegion = "";
+
+  /** Each queen of this region does what her brain picks: walks there, stays a while, thinks again. */
+  private life(dt: number) {
+    const L = C.life;
+    if (!L.enabled) return;
+    if (this.roamRegion !== this.save.region) {
+      this.roam.clear();
+      this.roamRegion = this.save.region;
+    }
+    const think = () => (L.think[0] ?? 5) + Math.random() * Math.max(0, (L.think[1] ?? 14) - (L.think[0] ?? 5));
+    for (const q of queensIn(this.save.region)) {
+      // Out to find you: that comes first.
+      if (this.out.has(q)) {
+        this.roam.delete(q);
+        continue;
+      }
+      const [hc, hr] = C.queens[q].at as Spot;
+      let r = this.roam.get(q);
+      if (!r) {
+        r = { x: hc, y: hr, path: [], plan: "home", thinkIn: think(), place: "", queen: "", seed: 0 };
+        this.roam.set(q, r);
+      }
+      // With you (you walk to her, her sheet or a talk is open, you recite for her): she stands still.
+      const p = this.panel;
+      const busy =
+        (this.goal?.kind === "queen" && this.goal.queen === q) ||
+        ((p?.kind === "queen" || p?.kind === "talk") && p.queen === q) ||
+        (p?.kind === "atelier" && p.who === q);
+      if (busy) {
+        r.path = [];
+        continue;
+      }
+      if (r.path.length) {
+        const [tc, tr] = r.path[0]!;
+        const d = Math.hypot(tc - r.x, tr - r.y);
+        const step = L.speed * dt;
+        if (d <= step) {
+          r.x = tc;
+          r.y = tr;
+          r.path.shift();
+          if (!r.path.length) {
+            // There: she stays a while; an outing made counts towards what she does next.
+            r.thinkIn = stayFor(r.plan);
+            if (r.plan !== "home") {
+              this.save.life[q] += 1;
+              this.persist();
+            }
+          }
+        } else {
+          r.x += ((tc - r.x) / d) * step;
+          r.y += ((tr - r.y) / d) * step;
+        }
+        continue;
+      }
+      r.thinkIn -= dt;
+      if (r.thinkIn > 0) continue;
+      this.decide(q, r, [hc, hr]);
+      if (!r.path.length) r.thinkIn = stayFor(r.plan);
+    }
+  }
+
+  /** Her brain's turn: what she does next, and the way there. */
+  private decide(
+    q: QueenKey,
+    r: { x: number; y: number; path: Spot[]; plan: Plan; place: string; queen: string; seed: number },
+    home: Spot,
+  ) {
+    const here = queensIn(this.save.region);
+    const at: Spot = [Math.round(r.x), Math.round(r.y)];
+    const doors = (Object.keys(this.world.doors) as PlaceKey[]).filter(
+      (pl) => pl !== C.queens[q].place && !gateOf(pl),
+    );
+    const friends = bondsOf(q)
+      .filter((b) => b.kind !== "rival" && here.includes(b.queen) && !this.out.has(b.queen))
+      .map((b) => b.queen);
+    const plan = choose({
+      hour: new Date().getHours(),
+      mood: this.moodNow(q),
+      tier: this.tierOf(q),
+      outings: this.save.life[q],
+      places: doors.length > 0,
+      friends: friends.length > 0,
+      away: Math.hypot(r.x - home[0], r.y - home[1]) > 0.6,
+    });
+    const pick = <T>(list: T[]) => list[Math.floor(Math.random() * list.length)]!;
+    let to: Spot | null = null;
+    r.place = "";
+    r.queen = "";
+    if (plan === "home") to = home;
+    else if (plan === "stroll") {
+      const far = roamRadius(this.save.life[q]);
+      for (let i = 0; i < 12 && !to; i++) {
+        const c = home[0] + Math.round((Math.random() * 2 - 1) * far);
+        const row = home[1] + Math.round((Math.random() * 2 - 1) * far);
+        if (walkable(this.world, c, row) && (c !== at[0] || row !== at[1])) to = [c, row];
+      }
+    } else if (plan === "visit") {
+      const place = pick(doors);
+      to = this.world.doors[place] ?? null;
+      r.place = C.places[place].name;
+    } else if (plan === "call") {
+      const friend = pick(friends);
+      const [fc, fr] = this.queenCell(friend);
+      to = nearestWalkable(this.world, [fc + (fc > at[0] ? -1 : 1), fr]);
+      r.queen = C.queens[friend].name;
+    }
+    r.plan = plan;
+    r.seed += 1;
+    if (!to || (to[0] === at[0] && to[1] === at[1])) return;
+    const path = pathTo(this.world, at, to);
+    // No way there, or a long way round: she stays where she is.
+    if (!path || path.length < 2 || path.length > 60) {
+      r.plan = Math.hypot(r.x - home[0], r.y - home[1]) > 0.6 ? "rest" : "home";
+      return;
+    }
+    r.path = path.slice(1);
+  }
+
+  /** What she is doing by herself now, for her sheet ("" when she is out with you or elsewhere). */
+  private lifeNote(q: QueenKey): string {
+    const r = this.roam.get(q);
+    if (!r || this.out.has(q)) return "";
+    return doing(r.plan, r.path.length > 0, { place: r.place || undefined, queen: r.queen || undefined }, r.seed);
+  }
+
   /** Where she is now, in cells: out on the map, or at her place. */
   private queenSpot(q: QueenKey): { x: number; y: number } {
     const o = this.out.get(q);
     if (o) return { x: o.x, y: o.y };
+    const about = this.roam.get(q);
+    if (about) return { x: about.x, y: about.y };
     const [c, r] = C.queens[q].at as Spot;
     return { x: c, y: r };
   }
@@ -1022,7 +1351,9 @@ export class CourtGame implements GameBase {
 
   /** She leaves her place and walks to you. */
   private comeOut(q: QueenKey) {
-    const from = C.queens[q].at as Spot;
+    // From wherever she is: at her place, or about by herself.
+    const from = this.queenCell(q);
+    this.roam.delete(q);
     const path = pathTo(this.world, from, this.cellOf());
     if (!path || path.length < 2) return;
     const now = Date.now();
@@ -1902,27 +2233,135 @@ export class CourtGame implements GameBase {
    * The next phrase to recite: one at random of those of your texts that have not
    * come yet, so none comes twice until all have (then the deck starts again).
    */
-  private nextPhrase(): string {
-    const { units, hashes } = deckUnits();
-    // Phrases of texts no longer loaded are forgotten.
-    for (const h of this.bag) if (!hashes.has(h)) this.bag.delete(h);
-    const d = drawPhrase(units, this.bag, Math.random, this.lastPhrase);
-    if (!d) return pickPhrase(allTexts(), Math.random);
-    if (d.cycled && units.length > 1)
+  private nextPhrase(finished?: string): string {
+    // The phrase just recited through counts first (and may finish its text).
+    if (finished) this.phraseDone(finished);
+    const library = rehearseLibrary();
+    const source = chosenText(library, this.save.source)?.key ?? "";
+    const { units } = deckUnits(this.bag, source);
+    // With every text mixed, phrases of texts no longer loaded are forgotten (one text keeps the rest's).
+    if (!source) {
+      const all = new Set<string>();
+      for (const t of deckOf(this.bag).texts) for (const h of t.hashes) all.add(h);
+      let gone = false;
+      for (const h of this.bag) if (!all.has(h)) gone = this.bag.delete(h) || gone;
+      if (gone) deck = null;
+    }
+    // At random among those not recited through yet (never one that just came, while another is left).
+    const phrase = pickFresh(units, this.bag, Math.random, this.recent);
+    if (!phrase) return pickPhrase(library.map((t) => t.lines), Math.random);
+    this.recent = [...this.recent, phrase].slice(-3);
+    return phrase;
+  }
+
+  /**
+   * A phrase recited all through (every pass): counted towards every text it is
+   * in. A text with every phrase done is recited through: checked as read through
+   * (✓ in the Read tab, its confirmed copy saved, as Rehearse does), counted in
+   * its rounds, and cleared so a fresh round of it begins.
+   */
+  private phraseDone(phrase: string) {
+    const d = deckOf(this.bag);
+    const finished = reciteDone(d.texts, this.bag, phrase);
+    for (const t of finished) {
+      checkText(t.key, "recited through", false);
+      this.save.textRounds[t.key] = Math.min(1_000_000, (this.save.textRounds[t.key] ?? 0) + 1);
+      // A whole text is worth a bottle of crystal wine (not a tiny one, and never more than the bag holds).
+      let wine = "";
+      if (t.hashes.size >= C.wine.minPhrases) {
+        if (this.save.wine < C.wine.max) {
+          this.save.wine += 1;
+          wine = ` 🍷 +1 crystal wine (×${this.save.wine}) to pour in a talk or on a date night.`;
+        } else wine = ` 🍷 Your bag holds all ${C.wine.max} bottles it can: pour one for a queen.`;
+      }
       this.notice(
-        `All ${units.length.toLocaleString("en")} phrases of your texts have come: a new round of them begins`,
+        `“${t.name}” recited through, all ${t.hashes.size.toLocaleString("en")} phrases: checked ✓ A fresh round of it begins.${wine}`,
         null,
       );
-    this.lastPhrase = d.phrase;
-    this.deckDone = { done: this.bag.size, total: units.length };
+      sfx.bless();
+    }
     saveBag(this.bag);
-    return d.phrase;
+    if (finished.length) this.persist();
+  }
+
+  /** Starts a text again from nothing: its phrases all count as not recited yet. ("" for every text.) */
+  courtFresh(key: string) {
+    const d = deckOf(this.bag);
+    const cleared = key ? d.texts.filter((t) => t.key === key) : d.texts;
+    if (!cleared.length) return;
+    clearTexts(d.texts, this.bag, cleared);
+    saveBag(this.bag);
+    this.recent = [];
+    this.message = key
+      ? `“${cleared[0]!.name}” starts again from the first phrase counted.`
+      : "Every text starts again.";
+    this.pushView(true);
+  }
+
+  /** The recite's text and how far through it you are, for the screen: the chosen text, or all of them. */
+  private deckView(): CourtView["deck"] {
+    const d = deckOf(this.bag);
+    const library = rehearseLibrary();
+    const one = chosenText(library, this.save.source) ?? wholeText(library, this.save.source);
+    const t = one ? d.texts.find((x) => x.key === one.key) : undefined;
+    if (t) {
+      const total = t.hashes.size;
+      return {
+        done: t.done,
+        total,
+        percent: percentOf(t.done, total),
+        name: t.name,
+        rounds: this.save.textRounds[t.key] ?? 0,
+      };
+    }
+    let done = 0;
+    let total = 0;
+    for (const x of d.texts) {
+      done += x.done;
+      total += x.hashes.size;
+    }
+    return { done, total, percent: percentOf(done, total), name: "all texts", rounds: 0 };
+  }
+
+  /** Each text to choose from, with how far through it you are. */
+  private sourcesView(): CourtView["sources"] {
+    const d = deckOf(this.bag);
+    const all = this.deckAll(d.texts);
+    const out: CourtView["sources"] = [
+      { key: "", label: `All ${d.texts.length} texts`, done: all.done, total: all.total, rounds: 0 },
+    ];
+    const library = rehearseLibrary();
+    for (const t of d.texts) {
+      const lib = library.find((x) => x.key === t.key);
+      out.push({
+        key: t.key,
+        label: lib ? labelOf(lib) : t.name,
+        done: t.done,
+        total: t.hashes.size,
+        rounds: this.save.textRounds[t.key] ?? 0,
+      });
+    }
+    return out;
+  }
+
+  private deckAll(texts: DeckText[]) {
+    let done = 0;
+    let total = 0;
+    for (const x of texts) {
+      done += x.done;
+      total += x.hashes.size;
+    }
+    return { done, total };
   }
 
   /** Recite at a place. A queen who stands there watches, if you meet her need. */
-  courtRecite(place: PlaceKey, opts: { queen?: QueenKey | null; date?: boolean } = {}) {
+  courtRecite(
+    place: PlaceKey,
+    opts: { queen?: QueenKey | null; date?: boolean; wine?: boolean; toast?: boolean } = {},
+  ) {
     sfx.unlock();
     const date = opts.date === true;
+    const toast = !date && opts.toast === true;
     // A queen who has found you and walks with you watches wherever you recite.
     const q = opts.queen !== undefined ? opts.queen : (queenAt(place) ?? this.withYou());
     const watching = q && meetsNeed(q, this.save.skills) ? q : null;
@@ -1932,29 +2371,43 @@ export class CourtGame implements GameBase {
       ? null
       : (this.withMe().find((k) => k !== watching && meetsNeed(k, this.save.skills)) ?? null);
     if (this.alsoWatching) this.touch(this.alsoWatching);
-    const skill = date && watching ? this.dateSkill(watching) : skillAt(place, this.save.stance);
+    const skill =
+      date && watching
+        ? this.dateSkill(watching)
+        : (skillAt(place, this.save.stance) ?? (toast && watching ? this.dateSkill(watching) : null));
     if (!skill) return;
     this.panel = null;
     this.talk = null;
-    // A line being said aloud gives way to the phrase.
+    // A line being said aloud gives way to the phrase, whose sound starts by itself.
     if (this.save.sound.phrase) courtHush();
+    this.soundMuted = false;
+    this.recent = [];
     this.session = startSession(
       {
         place,
         skill,
         queen: watching,
         date,
+        wine: date && opts.wine === true,
+        toast,
         wordMs: this.save.wordMs,
         reps: this.save.repsPerPhrase,
-        // A date is its own round of phrases.
-        round: date && watching ? C.datePhrases : this.save.phrasesPerRound,
+        // A date is its own round of phrases, and so is a sip of wine.
+        round: toast
+          ? C.wine.sipPhrases
+          : date && watching
+            ? C.datePhrases
+            : this.save.phrasesPerRound,
       },
       this.nextPhrase(),
       performance.now(),
     );
+    this.dateTold = [];
     if (watching) {
       this.save.lastSeen[watching] = Date.now();
-      if (!date && this.save.jealous[watching] > 0)
+      if (toast) {
+        /* The question you asked is what she has to say. */
+      } else if (!date && this.save.jealous[watching] > 0)
         this.queenSays(watching, "jealous", { rival: this.rivalName(watching) });
       else this.queenSays(watching, date ? "dateStart" : "watch");
     } else this.line = null;
@@ -1963,13 +2416,25 @@ export class CourtGame implements GameBase {
     this.pushView(true);
   }
 
-  courtDate(q: QueenKey) {
+  /** A date; with `wine`, a date night: a bottle of crystal wine is poured for the evening, so its affection counts more. */
+  courtDate(q: QueenKey, wine = false) {
     const tier = tierOf(this.save.affection[q]).index;
     if (tier < C.dateTier) {
       this.message = `${C.queens[q].name} is not ready for a date. Win her over to ${C.affectionTiers[C.dateTier]?.name} first.`;
       return this.pushView(true);
     }
-    this.courtRecite(C.queens[q].place as PlaceKey, { queen: q, date: true });
+    if (wine && this.save.wine < 1) {
+      this.message = "You have no crystal wine: recite a whole text through to earn a bottle.";
+      return this.pushView(true);
+    }
+    this.courtRecite(C.queens[q].place as PlaceKey, { queen: q, date: true, wine });
+    // The bottle is poured once the date has begun (a date that could not start keeps it).
+    if (wine && this.session?.wine) {
+      this.save.wine = Math.max(0, this.save.wine - 1);
+      this.save.wineShared[q] += 1;
+      this.persist();
+      this.pushView(true);
+    }
     this.courted(q);
   }
 
@@ -1994,25 +2459,37 @@ export class CourtGame implements GameBase {
     }
     const elixir = this.save.elixirReps > 0;
     if (this.save.sound.phrase) courtTapSound(s.phrase);
-    for (const r of tapComplete(s, now, () => this.nextPhrase(), elixir)) {
+    const finishing = s.phrase;
+    for (const r of tapComplete(s, now, (done) => this.nextPhrase(done), elixir)) {
       if (r.type === "pass") this.onPass(s, r, elixir);
       else if (r.type === "phrase") {
+        // The round's last phrase has no next one drawn: it is counted here (a phrase counted already is not again).
+        if (s.roundDone) this.phraseDone(finishing);
         this.save.skills[s.skill] += r.xp;
         this.drop(`+${Math.round(r.xp)} phrase bonus`, PAL.gold);
         // A whole phrase for a jealous queen softens her.
         const q = s.queen;
         if (q && this.save.jealous[q] > 0 && !this.makeUp(q, false))
           this.notice(`${C.queens[q].name} softens a little`, q);
+        // On a date night she opens up between the phrases.
+        if (q && s.wine && s.date) this.openUp(q);
       } else if (r.type === "round") {
         sfx.bless();
         this.persist();
       } else if (r.type === "end" && s.queen) {
         this.save.dates[s.queen] += 1;
-        this.addAffection(s.queen, C.affection.dateBonus, true);
-        this.queenSays(s.queen, "dateEnd", {}, "Your date with the player just ended beautifully.");
+        this.addAffection(s.queen, dateBonus(s.wine), true);
+        this.queenSays(
+          s.queen,
+          "dateEnd",
+          {},
+          `Your date with the player just ended beautifully${s.wine ? ", over a bottle of crystal wine" : ""}.`,
+        );
         this.endSession();
       }
     }
+    // A deeper question over the wine: its phrase is recited through, so the talk comes back with her answer.
+    if (s.toast && s.roundDone && this.session === s) this.endSession();
     this.pushView(true);
   }
 
@@ -2069,7 +2546,7 @@ export class CourtGame implements GameBase {
   courtRound(dir: number) {
     this.save.phrasesPerRound = Math.min(10, Math.max(1, this.save.phrasesPerRound + dir));
     const s = this.session;
-    if (s && !s.date && !s.roundDone)
+    if (s && !s.date && !s.toast && !s.roundDone)
       s.round = Math.max(this.save.phrasesPerRound, s.roundPhrases + 1);
     this.persist();
     this.pushView(true);
@@ -2119,7 +2596,7 @@ export class CourtGame implements GameBase {
       // Less while she is jealous.
       this.addAffection(
         q,
-        affectionGain(s.words.length, q, save.stance, r.streak, s.date) * jealousMult(save, q),
+        affectionGain(s.words.length, q, save.stance, r.streak, s.date, s.wine) * jealousMult(save, q),
         true,
       );
       save.lastSeen[q] = Date.now();
@@ -2241,6 +2718,30 @@ export class CourtGame implements GameBase {
       this.message = `Session: +${Math.round(s.totals.xp).toLocaleString()} ${skillName(s.skill)} XP, +${s.totals.gold} gold, ${s.totals.reps} reps.`;
     }
     this.persist();
+    // A question asked over the wine goes back to the talk: answered once its phrase was recited through, else still waiting.
+    if (s.toast) this.toastBack(s.roundDone);
+  }
+
+  /** The talk a recite took the screen from comes back: with her answer, or with the question still waiting. */
+  private toastBack(answered: boolean) {
+    const t = this.toast;
+    this.toast = null;
+    if (!t) return;
+    this.talk = t.talk;
+    this.panel = { kind: "talk", queen: t.talk.t.queen };
+    this.line = null;
+    this.lineQueue = [];
+    if (answered) this.courtAnswer(t.choice);
+    else if (t.asked) t.talk.log = t.talk.log.filter((e) => e !== t.asked);
+  }
+
+  /** On a date night she opens up between the phrases: something deeper, in her own voice (and in her own words, with a model connected). */
+  private openUp(q: QueenKey) {
+    const text = opensUp(q, this.dateTold, this.talkContext(q), Math.random);
+    if (!text) return;
+    const spec = C.queens[q];
+    this.remember(q, text);
+    this.speakLine({ speaker: spec.name, text, color: spec.color, queen: q });
   }
 
   /** Adds affection (more for the queen the town talks about today); what was added. */
@@ -2457,7 +2958,7 @@ export class CourtGame implements GameBase {
     }
     this.flashT += dt;
     this.backdrop.ensureBinary(settings, lines);
-    const held = paused || tomeOpen || menu;
+    const held = paused || tomeOpen || menu || this.away;
     // A held session keeps its place: when play resumes, its clock moves on by the time held.
     if (this.session && held && this.pausedAt === null) this.pausedAt = performance.now();
     if (this.session && !held && this.pausedAt !== null) {
@@ -2471,6 +2972,7 @@ export class CourtGame implements GameBase {
       if (!this.session) {
         this.gossip(dt);
         this.presence(dt);
+        this.life(dt);
       }
     }
     this.syncSound(held || phase !== "battle");
@@ -2538,7 +3040,8 @@ export class CourtGame implements GameBase {
     const talking = talk
       ? `${talk.t.queen}|${talk.log.length}|${talk.log[talk.log.length - 1]?.id ?? 0}|${talk.waiting.length}|${talk.choices.map((c) => c.id).join()}|${talk.ended}`
       : "";
-    const sig = `${this.drops.length}|${this.drops[0]?.id ?? 0}|${this.notices.length}|${this.notices[0]?.id ?? 0}|${moods}|${feelings}|${out}|${this.message}|${this.line?.text ?? ""}|${this.lineQueue.length}|${talking}|${reading}|${hungry?.queens.join() ?? ""}`;
+    const lifeNote = this.panel?.kind === "queen" ? this.lifeNote(this.panel.queen) : "";
+    const sig = `${this.soundMuted}|${lifeNote}|${this.drops.length}|${this.drops[0]?.id ?? 0}|${this.notices.length}|${this.notices[0]?.id ?? 0}|${moods}|${feelings}|${out}|${this.message}|${this.line?.text ?? ""}|${this.lineQueue.length}|${talking}|${reading}|${hungry?.queens.join() ?? ""}`;
     if (!force && sig === this.viewSig && now - this.viewAt < 1000) return;
     this.viewSig = sig;
     this.viewAt = now;
@@ -2552,6 +3055,8 @@ export class CourtGame implements GameBase {
         queen: s.queen,
         also: this.alsoWatching,
         date: s.date,
+        wine: s.wine,
+        toast: s.toast,
         phrase: s.phrase,
         words: s.words,
         word: at.word,
@@ -2595,9 +3100,13 @@ export class CourtGame implements GameBase {
         ),
         out: looking,
         hungry,
-        deck: { ...this.deckDone },
+        deck: this.deckView(),
+        sources: this.sourcesView(),
         line: this.line,
         lineMore: this.lineQueue.length,
+        away: this.away,
+        soundMuted: this.soundMuted,
+        lifeNote,
         talk: talk
           ? {
               queen: talk.t.queen,
@@ -2611,6 +3120,7 @@ export class CourtGame implements GameBase {
                 taste: c.tone ? knownTaste(this.save, talk.t.queen, c.tone) : null,
               })),
               ended: talk.ended,
+              wine: talk.t.wine,
               left: talksLeft(this.save, talk.t.queen, day),
               perDay: Math.floor(C.talk.perDay),
               locked: talk.locked,
@@ -2669,10 +3179,79 @@ export class CourtGame implements GameBase {
     const box = this.backdrop.fieldBox(useGame.getState().chrome);
     // Headroom above the first row for roofs and peaks.
     const rows = this.world.rows + HEADROOM;
-    const cell = Math.max(8, Math.min(box.w / this.world.cols, box.h / rows));
+    const far = Math.max(8, Math.min(box.w / this.world.cols, box.h / rows));
+    // Near: the map larger, you in the middle of it (never past its edges).
+    const cell = this.save.near ? far * C.view.nearZoom : far;
     this.cell = cell;
-    this.ox = Math.round(box.x + (box.w - this.world.cols * cell) / 2);
-    this.oy = Math.round(box.y + (box.h - rows * cell) / 2 + HEADROOM * cell);
+    const mapW = this.world.cols * cell;
+    const mapH = rows * cell;
+    const fit = (start: number, room: number, size: number, at: number) =>
+      size <= room
+        ? start + (room - size) / 2
+        : Math.min(start, Math.max(start + room - size, start + room / 2 - at));
+    this.ox = Math.round(fit(box.x, box.w, mapW, (this.pos.x + 0.5) * cell));
+    this.oy = Math.round(
+      fit(box.y, box.h, mapH, (this.pos.y + 0.5 + HEADROOM) * cell) + HEADROOM * cell,
+    );
+    this.field = box;
+  }
+
+  /** Where the map may be drawn (between the bars); near, it is cut off there. */
+  private field = { x: 0, y: 0, w: 0, h: 0 };
+
+  /** Near or far: the map larger and following you, or the whole region at once. */
+  courtNear() {
+    this.save.near = !this.save.near;
+    this.boardKey = "";
+    this.bitmaps.clear();
+    this.message = this.save.near
+      ? "Near: the map follows you. Far shows the whole region."
+      : "Far: the whole region at once.";
+    this.persist();
+    this.pushView(true);
+  }
+
+  /** People's whole figures, painted once at the size they are drawn (the picture itself is slow to draw each frame). */
+  private figures = new Map<string, HTMLImageElement>();
+
+  private figure(url: string, h: number): CanvasImageSource | null {
+    if (this.looksSeen !== looksRev()) {
+      this.looksSeen = looksRev();
+      this.portraits.clear();
+      this.bitmaps.clear();
+      this.figures.clear();
+    }
+    let img = this.figures.get(url);
+    if (!img) {
+      // Not too many kept: moods and steps come and go.
+      if (this.figures.size > 80) this.figures.clear();
+      img = new Image();
+      img.src = url;
+      this.figures.set(url, img);
+    }
+    if (!img.complete || img.naturalWidth <= 0) return null;
+    const px = Math.max(24, Math.ceil(h * this.backdrop.dpr));
+    const key = `fig|${url.length}|${url.slice(-48)}|${px}`;
+    let bmp = this.bitmaps.get(key);
+    if (!bmp) {
+      bmp = document.createElement("canvas");
+      bmp.height = px;
+      bmp.width = Math.ceil((px * FIGURE_W) / FIGURE_H);
+      bmp.getContext("2d")?.drawImage(img, 0, 0, bmp.width, bmp.height);
+      this.bitmaps.set(key, bmp);
+    }
+    return bmp;
+  }
+
+  /** A whole figure standing with its feet at (x, ground); false while its picture is not ready. */
+  private drawFigure(ctx: CanvasRenderingContext2D, url: string, x: number, ground: number): boolean {
+    const h = this.cell * C.view.figure;
+    const bmp = this.figure(url, h);
+    if (!bmp) return false;
+    const w = (h * FIGURE_W) / FIGURE_H;
+    // The picture's floor is a little above its bottom edge.
+    ctx.drawImage(bmp, x - w / 2, ground - h * 0.982, w, h);
+    return true;
   }
 
   private draw() {
@@ -2689,6 +3268,11 @@ export class CourtGame implements GameBase {
     const rain =
       (this.reduce ? CONFIG.rain.reducedMotionSpeed : CONFIG.rain.speed) * (water ? 0.5 : 1);
     this.backdrop.drawBinary(ctx, settings, this.time * rain);
+    // Near, the map is larger than its place: nothing of it shows under the bars.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(this.field.x, this.field.y, this.field.w, this.field.h);
+    ctx.clip();
     this.drawBoard(ctx);
     this.drawRegionName(ctx);
     // The texts drift over the map faintly, so its detail still shows.
@@ -2701,8 +3285,10 @@ export class CourtGame implements GameBase {
       this.reduce,
     );
     this.drawPath(ctx);
+    // Whoever stands further down the map is drawn over whoever stands behind.
     this.drawQueens(ctx);
     this.drawPlayer(ctx);
+    ctx.restore();
   }
 
   /** Terrain, buildings and signs, drawn into a cache once per size and region; then what moves, over it. */
@@ -2767,12 +3353,16 @@ export class CourtGame implements GameBase {
     const size = Math.max(9, Math.min(16, this.cell * 0.4));
     const top = this.backdrop.fieldBox(useGame.getState().chrome).y;
     const above = this.oy - HEADROOM * this.cell - 3;
-    const inside = above - size < top;
+    const inside = above - size < top || this.save.near;
     ctx.font = `700 ${size}px ${DISPLAY}`;
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
-    const x = this.ox + (inside ? 6 : 2);
-    const y = inside ? this.oy + this.world.rows * this.cell - 5 : above;
+    const x = this.save.near ? this.field.x + 6 : this.ox + (inside ? 6 : 2);
+    const y = this.save.near
+      ? this.field.y + size + 6
+      : inside
+        ? this.oy + this.world.rows * this.cell - 5
+        : above;
     if (inside) {
       ctx.lineWidth = 3;
       ctx.strokeStyle = "rgba(2, 0, 5, 0.85)";
@@ -2819,7 +3409,10 @@ export class CourtGame implements GameBase {
       const spec = C.queens[q];
       const o = this.out.get(q);
       // Where she usually stands, if she lives on this map.
-      if (o && here.includes(q)) {
+      const about = o ? undefined : this.roam.get(q);
+      const [homeC, homeR] = spec.at as Spot;
+      const gone = !!about && Math.hypot(about.x - homeC, about.y - homeR) > 0.6;
+      if ((o || gone) && here.includes(q)) {
         // Where she usually stands: an empty ring while she is out.
         const [hc, hr] = spec.at as Spot;
         ctx.strokeStyle = `${spec.color}66`;
@@ -2838,9 +3431,10 @@ export class CourtGame implements GameBase {
         ctx.stroke();
         ctx.setLineDash([]);
       }
-      const c = o ? o.x : (spec.at as Spot)[0];
-      const r = o ? o.y : (spec.at as Spot)[1];
-      const bob = this.reduce ? 0 : Math.sin(this.time * (o ? 6 : 2) + c) * s * 0.05;
+      const c = o ? o.x : about ? about.x : homeC;
+      const r = o ? o.y : about ? about.y : homeR;
+      const moving = !!o || !!about?.path.length;
+      const bob = this.reduce ? 0 : Math.sin(this.time * (moving ? 6 : 2) + c) * s * 0.05;
       const x = this.ox + (c + 0.5) * s;
       const y = this.oy + (r + 0.5) * s + bob;
       // A shadow and a ring on the ground where she stands.
@@ -2855,15 +3449,26 @@ export class CourtGame implements GameBase {
       ctx.ellipse(x, gy, s * 0.5, s * 0.15, 0, 0, Math.PI * 2);
       ctx.stroke();
       ctx.drawImage(this.glowOf(spec.color, "66"), x - s * 0.95, y - s * 0.95, s * 1.9, s * 1.9);
-      const pr = s * 0.62;
+      // Her whole figure, standing there, her face in a small round frame above it.
+      const walking = moving && !this.reduce;
+      const step = walking ? (Math.sin(this.time * 9 + c) > 0 ? 1 : -1) : 0;
+      const stands = this.drawFigure(ctx, queenFigure(q, { mood: this.moodNow(q), step }), x, gy + bob);
+      const pr = stands ? s * 0.36 : s * 0.62;
+      const py = stands ? gy - s * (C.view.figure + 0.3) + bob : y;
       const img = this.portrait(q, pr * 2);
       if (img) {
-        ctx.drawImage(img, x - pr, y - pr, pr * 2, pr * 2);
+        ctx.drawImage(img, x - pr, py - pr, pr * 2, pr * 2);
       } else {
         // Until her portrait has loaded, a crown.
         ctx.font = `${Math.round(s * 0.8)}px ${PIECE_FONT}`;
         ctx.fillStyle = spec.color;
         ctx.fillText(`♛${TEXT_VS}`, x, y);
+      }
+      // What she is about, as a small mark beside her face.
+      const sign = about ? mark(about.plan) : "";
+      if (sign && gone) {
+        ctx.font = `${Math.max(9, Math.round(s * 0.42))}px ${FONT}`;
+        ctx.fillText(sign, x + pr + s * 0.3, py);
       }
       const tier = tierOf(this.save.affection[q]).index;
       ctx.font = `700 ${Math.max(7, Math.round(s * 0.26))}px ${DISPLAY}`;
@@ -2900,6 +3505,12 @@ export class CourtGame implements GameBase {
    * shown stays up while a new one loads.
    */
   private portrait(q: QueenKey, size: number): CanvasImageSource | null {
+    // A look changed in the Atelier: every picture made before is of the old one.
+    if (this.looksSeen !== looksRev()) {
+      this.looksSeen = looksRev();
+      this.portraits.clear();
+      this.bitmaps.clear();
+    }
     const mood = this.moodNow(q);
     const tier = tierOf(this.save.affection[q]).index;
     const key = `${q}|${mood}|${tier}`;
@@ -2970,14 +3581,46 @@ export class CourtGame implements GameBase {
     return sprite;
   }
 
-  /** You: a hooded wanderer with a cape in your style's colour, eyes glowing under the hood; stepping while you walk. */
+  /**
+   * You, as your look in the Atelier has you: a cape in your style's colour, a
+   * robe in your look's, and either a hood with your eyes glowing under it or
+   * your own head (skin, hair, horns); broader with broader shoulders; your
+   * name above. Stepping while you walk.
+   */
   private drawPlayer(ctx: CanvasRenderingContext2D) {
+    const look = youLook();
+    const hooded = look.headpiece === "hood";
+    // Broader or narrower with your shoulders' slider.
+    const wide = 1 + Math.max(-1, Math.min(1, look.shape?.shoulders ?? 0)) * 0.22;
     const s = this.cell;
     const x = this.ox + (this.pos.x + 0.5) * s;
     const y = this.oy + (this.pos.y + 0.5) * s;
     const color = STANCE_COLOR[this.save.stance];
     const walking = this.path.length > 0 && !this.reduce;
     const step = walking ? Math.sin(this.time * 11) : 0;
+    // Your whole figure, as the Atelier has you; the small hooded one below only till its picture is ready.
+    {
+      const fy = y + s * 0.42;
+      ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+      ctx.beginPath();
+      ctx.ellipse(x, fy, s * 0.42, s * 0.12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const gr0 = s * 0.9;
+      ctx.drawImage(this.glowOf(STANCE_COLOR[this.save.stance], "55"), x - gr0, fy - gr0 * 1.6, gr0 * 2, gr0 * 2);
+      const frame = walking ? (step > 0 ? 1 : -1) : 0;
+      if (this.drawFigure(ctx, youFigure({ step: frame }), x, fy - Math.abs(step) * s * 0.03)) {
+        const above = fy - s * (C.view.figure + 0.12);
+        ctx.font = `700 ${Math.max(7, Math.round(s * 0.24))}px ${FONT}`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(2, 0, 5, 0.85)";
+        ctx.strokeText(youName(), x, above);
+        ctx.fillStyle = STANCE_COLOR[this.save.stance];
+        ctx.fillText(youName(), x, above);
+        return;
+      }
+    }
     const bob = walking ? Math.abs(step) * s * 0.035 : 0;
     const pulse = this.reduce ? 1 : 1 + Math.sin(this.time * 4) * 0.08;
     const u = s * 0.1;
@@ -2991,17 +3634,34 @@ export class CourtGame implements GameBase {
     // The cape, swaying as you go.
     ctx.fillStyle = shade(color, -0.45);
     ctx.beginPath();
-    ctx.moveTo(x - u * 1.6, top - u * 1.2);
+    ctx.moveTo(x - u * 1.6 * wide, top - u * 1.2);
     ctx.quadraticCurveTo(
-      x - u * 3 - step * u * 0.6,
+      x - u * 3 * wide - step * u * 0.6,
       top + u * 1.6,
-      x - u * 2.4 - step * u,
+      x - u * 2.4 * wide - step * u,
       top + u * 3.4,
     );
-    ctx.lineTo(x + u * 2.4 - step * u, top + u * 3.4);
-    ctx.quadraticCurveTo(x + u * 3 - step * u * 0.6, top + u * 1.6, x + u * 1.6, top - u * 1.2);
+    ctx.lineTo(x + u * 2.4 * wide - step * u, top + u * 3.4);
+    ctx.quadraticCurveTo(
+      x + u * 3 * wide - step * u * 0.6,
+      top + u * 1.6,
+      x + u * 1.6 * wide,
+      top - u * 1.2,
+    );
     ctx.closePath();
     ctx.fill();
+    // Long hair falls behind your shoulders, when your head is bare.
+    const hair = shade(look.hair || "#2b1a14", -0.1);
+    if (!hooded && look.hairStyle !== "short" && look.hairStyle !== "bun") {
+      ctx.fillStyle = hair;
+      ctx.beginPath();
+      ctx.moveTo(x - u * 1.25, top - u * 2.6);
+      ctx.quadraticCurveTo(x - u * 1.9, top + u * 0.2, x - u * 1.3, top + u * 1.5);
+      ctx.lineTo(x + u * 1.3, top + u * 1.5);
+      ctx.quadraticCurveTo(x + u * 1.9, top + u * 0.2, x + u * 1.25, top - u * 2.6);
+      ctx.closePath();
+      ctx.fill();
+    }
     // Legs, then the robe.
     ctx.strokeStyle = "#140a1c";
     ctx.lineWidth = Math.max(1, u * 0.7);
@@ -3012,12 +3672,12 @@ export class CourtGame implements GameBase {
     ctx.moveTo(x + u * 0.6, top + u * 2.2);
     ctx.lineTo(x + u * 0.6 - step * u * 0.8, top + u * 3.6);
     ctx.stroke();
-    ctx.fillStyle = "#1c1030";
+    ctx.fillStyle = shade(look.accent || "#5cc8ff", -0.74);
     ctx.beginPath();
-    ctx.moveTo(x - u * 1.3, top - u * 1);
-    ctx.lineTo(x + u * 1.3, top - u * 1);
-    ctx.lineTo(x + u * 1.8, top + u * 2.6);
-    ctx.lineTo(x - u * 1.8, top + u * 2.6);
+    ctx.moveTo(x - u * 1.3 * wide, top - u * 1);
+    ctx.lineTo(x + u * 1.3 * wide, top - u * 1);
+    ctx.lineTo(x + u * 1.8 * wide, top + u * 2.6);
+    ctx.lineTo(x - u * 1.8 * wide, top + u * 2.6);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = color;
@@ -3025,32 +3685,71 @@ export class CourtGame implements GameBase {
     ctx.beginPath();
     ctx.moveTo(x, top - u * 0.8);
     ctx.lineTo(x, top + u * 2.5);
-    ctx.moveTo(x - u * 1.7, top + u * 2.4);
-    ctx.lineTo(x + u * 1.7, top + u * 2.4);
+    ctx.moveTo(x - u * 1.7 * wide, top + u * 2.4);
+    ctx.lineTo(x + u * 1.7 * wide, top + u * 2.4);
     ctx.stroke();
-    // The hood, a dark face and two glowing eyes.
-    ctx.fillStyle = shade(color, -0.25);
-    ctx.beginPath();
-    ctx.moveTo(x - u * 1.5, top - u * 0.6);
-    ctx.quadraticCurveTo(x - u * 1.7, top - u * 3.6, x, top - u * 4.2);
-    ctx.quadraticCurveTo(x + u * 1.7, top - u * 3.6, x + u * 1.5, top - u * 0.6);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "#06020c";
-    ctx.beginPath();
-    ctx.ellipse(x, top - u * 2, u * 0.95, u * 1.15, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = shade(color, 0.5);
-    ctx.fillRect(x - u * 0.6, top - u * 2.2, u * 0.4, u * 0.25);
-    ctx.fillRect(x + u * 0.2, top - u * 2.2, u * 0.4, u * 0.25);
+    const eyes = look.eyes || "#7fd4ff";
+    if (hooded) {
+      // The hood, a dark face and your eyes glowing in it.
+      ctx.fillStyle = shade(color, -0.25);
+      ctx.beginPath();
+      ctx.moveTo(x - u * 1.5, top - u * 0.6);
+      ctx.quadraticCurveTo(x - u * 1.7, top - u * 3.6, x, top - u * 4.2);
+      ctx.quadraticCurveTo(x + u * 1.7, top - u * 3.6, x + u * 1.5, top - u * 0.6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#06020c";
+      ctx.beginPath();
+      ctx.ellipse(x, top - u * 2, u * 0.95, u * 1.15, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = shade(eyes, 0.4);
+      ctx.fillRect(x - u * 0.6, top - u * 2.2, u * 0.4, u * 0.25);
+      ctx.fillRect(x + u * 0.2, top - u * 2.2, u * 0.4, u * 0.25);
+    } else {
+      // Your own head: horns, a face in your skin, your hair over it, your eyes.
+      if (look.horns) {
+        ctx.fillStyle = look.horns;
+        for (const sd of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(x + sd * u * 0.5, top - u * 3);
+          ctx.quadraticCurveTo(x + sd * u * 1.5, top - u * 3.6, x + sd * u * 1.9, top - u * 4.6);
+          ctx.quadraticCurveTo(x + sd * u * 1.1, top - u * 4, x + sd * u * 0.9, top - u * 2.8);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      ctx.fillStyle = look.skin || "#e0ac86";
+      ctx.beginPath();
+      ctx.ellipse(x, top - u * 2, u * 1.05, u * 1.25, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = hair;
+      ctx.beginPath();
+      ctx.moveTo(x - u * 1.15, top - u * 1.9);
+      ctx.quadraticCurveTo(x - u * 1.3, top - u * 3.6, x, top - u * 3.55);
+      ctx.quadraticCurveTo(x + u * 1.3, top - u * 3.6, x + u * 1.15, top - u * 1.9);
+      ctx.quadraticCurveTo(x + u * 0.6, top - u * 2.9, x, top - u * 2.75);
+      ctx.quadraticCurveTo(x - u * 0.6, top - u * 2.9, x - u * 1.15, top - u * 1.9);
+      ctx.closePath();
+      ctx.fill();
+      if (look.hairStyle === "bun") {
+        ctx.beginPath();
+        ctx.arc(x, top - u * 3.75, u * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = look.eyeStyle === "glow" ? shade(eyes, 0.4) : "#1a0f14";
+      ctx.fillRect(x - u * 0.55, top - u * 2.05, u * 0.32, u * 0.26);
+      ctx.fillRect(x + u * 0.23, top - u * 2.05, u * 0.32, u * 0.26);
+    }
     // Your name, small, above.
+    const name = youName();
+    const above = top - u * (look.horns && !hooded ? 5.6 : 5.2);
     ctx.font = `700 ${Math.max(7, Math.round(s * 0.22))}px ${FONT}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineWidth = 3;
     ctx.strokeStyle = "rgba(2, 0, 5, 0.85)";
-    ctx.strokeText("AX", x, top - u * 5.2);
+    ctx.strokeText(name, x, above);
     ctx.fillStyle = color;
-    ctx.fillText("AX", x, top - u * 5.2);
+    ctx.fillText(name, x, above);
   }
 }

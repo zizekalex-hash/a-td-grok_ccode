@@ -1,5 +1,5 @@
 {
-  "_about": "Game tuning. Edit values here instead of the code; `npm test` checks this file for mistakes. Settings are the starting values a new player gets; settingLimits are the slider ranges, including how fast text may flash (flashMs per phrase, wordFlashMs per sector). fpsCap 120 means no cap; renderScale is the share of the screen's pixel density the game draws at. phraseEvery: in tower defense and auto chess, each tower's or piece's first attack and every phraseEvery-th after it carry a phrase; the rest fly bare, which is lighter to draw. phrasePauseMs is the least time between two phrases, and textPauseMs the pause after a text has been read through, before the next text (or the same one again) starts; shots in a pause fly bare.",
+  "_about": "Game tuning. Edit values here instead of the code; `npm test` checks this file for mistakes. Settings are the starting values a new player gets; settingLimits are the slider ranges, including how fast text may flash (flashMs per phrase, wordFlashMs per sector). fpsCap 120 means no cap; renderScale is the share of the screen's pixel density the game draws at. shaderArt is how strongly the flowing shader pictures show behind the Court's screens and the title (0 draws none). phraseEvery: in tower defense and auto chess, each tower's or piece's first attack and every phraseEvery-th after it carry a phrase; the rest fly bare, which is lighter to draw. phrasePauseMs is the least time between two phrases, and textPauseMs the pause after a text has been read through, before the next text (or the same one again) starts; shots in a pause fly bare.",
   "settings": {
     "flashMs": 120,
     "textSize": 13,
@@ -17,6 +17,7 @@
     "uiScale": 100,
     "fpsCap": 60,
     "renderScale": 100,
+    "shaderArt": 80,
     "phraseEvery": 3,
     "phrasePauseMs": 300,
     "textPauseMs": 2000,
@@ -81,6 +82,11 @@
     },
     "renderScale": {
       "min": 40,
+      "max": 100,
+      "step": 5
+    },
+    "shaderArt": {
+      "min": 0,
       "max": 100,
       "step": 5
     },
@@ -991,6 +997,238 @@
           { "name": "Tuberomammillary", "copy": "Another 30% more damage taken, and 30% of armor lost.", "add": {"vuln":0.3,"shred":0.3} },
           { "name": "Flare-up", "copy": "Creeps move another 20% slower, and any but bosses at 8% life collapse.", "add": {"mire":0.2,"execute":0.08} }
         ]
+      },
+      "cinder": {
+        "name": "Cinder",
+        "label": "CIN",
+        "role": "burn",
+        "color": "#a3ff3c",
+        "copy": "Fel. Throws embers that stick and burn: low damage, a long burn that goes through some armor. Cheap, and where the dark set starts.",
+        "fel": true,
+        "cost": 24,
+        "range": 2.2,
+        "rate": 1.3,
+        "damage": 7,
+        "burn": 9,
+        "burnTime": 3,
+        "pierce": 0.5,
+        "paths": [
+          { "name": "Wildfire", "copy": "The burn spreads: a blast around each ember, and 4 more fire a second.", "add":{"splash":0.6,"burn":4} },
+          { "name": "Slow burn", "copy": "Burns 70% harder and 2 seconds longer.", "mult":{"burn":1.7}, "add":{"burnTime":2} }
+        ],
+        "ascend": [
+          { "name": "Inferno", "copy": "Hits 1.6 times as hard and burns 1.6 times as hard, over a wider blast.", "mult":{"damage":1.6,"burn":1.6}, "add":{"splash":0.4} },
+          { "name": "Ashfall", "copy": "Burns 3 seconds longer, and every ember wears away 4 points of armor.", "mult":{"rate":1.3}, "add":{"burnTime":3,"corrode":0.04} }
+        ]
+      },
+      "hex": {
+        "name": "Hex",
+        "label": "HEX",
+        "role": "curse",
+        "color": "#7dffb0",
+        "copy": "Fel. Curses what it hits: slows it, and it cannot mend for a while; each hit also wears a little armor away.",
+        "fel": true,
+        "cost": 30,
+        "range": 2.3,
+        "rate": 0.9,
+        "damage": 6,
+        "slow": 0.3,
+        "slowTime": 2,
+        "block": 2.5,
+        "corrode": 0.02,
+        "paths": [
+          { "name": "Withering", "copy": "Hits twice as hard, and a cursed creep cannot mend 1.5 seconds longer.", "mult":{"damage":2}, "add":{"block":1.5} },
+          { "name": "Binding", "copy": "Slows 15% more, and stops creeps dead for 0.3 seconds.", "add":{"slow":0.15,"slowTime":1.5,"stun":0.3} }
+        ],
+        "ascend": [
+          { "name": "Doom", "copy": "Hits twice as hard, and every hit wears 4 points of armor away.", "mult":{"damage":2}, "add":{"corrode":0.04} },
+          { "name": "Shackles", "copy": "Stops creeps 0.5 seconds, and slows 10% more.", "add":{"stun":0.5,"slow":0.1} }
+        ]
+      },
+      "blight": {
+        "name": "Blight",
+        "label": "BLT",
+        "role": "rot",
+        "color": "#5be37d",
+        "copy": "Fel. A rotting shot: it burns through all armor, and each hit also takes a sliver of the life the creep has left.",
+        "fel": true,
+        "cost": 44,
+        "range": 2.1,
+        "rate": 0.8,
+        "damage": 4,
+        "burn": 12,
+        "burnTime": 4,
+        "pierce": 1,
+        "rend": 0.004,
+        "paths": [
+          { "name": "Plague", "copy": "The rot spreads: a blast around each shot, and 2 seconds longer.", "add":{"splash":0.8,"burnTime":2} },
+          { "name": "Consumption", "copy": "Hits 1.5 times as hard, and takes another 0.6% of the life left.", "mult":{"damage":1.5}, "add":{"rend":0.006} }
+        ],
+        "ascend": [
+          { "name": "Pestilence", "copy": "A wider blast, and 10 more rot a second.", "add":{"splash":0.5,"burn":10} },
+          { "name": "Wasting", "copy": "Takes another 1% of the life left, and the creep cannot mend for 2 seconds.", "add":{"rend":0.01,"block":2} }
+        ]
+      },
+      "siphon": {
+        "name": "Siphon",
+        "label": "SPH",
+        "role": "drain",
+        "color": "#c8ff6b",
+        "copy": "Fel. An instant strike that jumps from creep to creep without losing strength. It drinks: every kill pays a little more O/I once it takes a path.",
+        "fel": true,
+        "cost": 40,
+        "range": 2.4,
+        "rate": 1.0,
+        "damage": 12,
+        "chain": 3,
+        "chainKeep": 1,
+        "paths": [
+          { "name": "Leech", "copy": "Every kill pays 20% more O/I, and the strike jumps once more.", "add":{"bounty":0.2,"chain":1} },
+          { "name": "Arc", "copy": "Fires 50% faster, and jumps once more.", "mult":{"rate":1.5}, "add":{"chain":1} }
+        ],
+        "ascend": [
+          { "name": "Vampiric", "copy": "Every kill pays 30% more O/I, and it hits 1.5 times as hard.", "mult":{"damage":1.5}, "add":{"bounty":0.3} },
+          { "name": "Storm of souls", "copy": "Jumps 3 more times, and hits 30% harder.", "mult":{"damage":1.3}, "add":{"chain":3} }
+        ]
+      },
+      "wrath": {
+        "name": "Wrath",
+        "label": "WRA",
+        "role": "smite",
+        "color": "#e6ff4d",
+        "copy": "Fel. A slow, long-range bolt that goes through most armor; every third one hits three times as hard.",
+        "fel": true,
+        "cost": 50,
+        "range": 3.6,
+        "rate": 0.45,
+        "damage": 60,
+        "pierce": 0.6,
+        "spikeEvery": 3,
+        "spikeMult": 3,
+        "paths": [
+          { "name": "Judgement", "copy": "Hits 60% harder, from half a cell further.", "mult":{"damage":1.6}, "add":{"range":0.5} },
+          { "name": "Zeal", "copy": "Fires 60% faster; every third bolt hits a whole time more.", "mult":{"rate":1.6}, "add":{"spikeMult":1} }
+        ],
+        "ascend": [
+          { "name": "Annihilate", "copy": "Hits twice as hard, through all armor.", "mult":{"damage":2}, "add":{"pierce":0.4} },
+          { "name": "Unrelenting", "copy": "Fires 50% faster; every third bolt hits two times more.", "mult":{"rate":1.5}, "add":{"spikeMult":2} }
+        ]
+      },
+      "rift": {
+        "name": "Rift",
+        "label": "RFT",
+        "role": "stun",
+        "color": "#2fe0c0",
+        "copy": "Fel. A blast that tears the ground: it hits everything around where it lands and stops it for a moment.",
+        "fel": true,
+        "cost": 56,
+        "range": 2.3,
+        "rate": 0.6,
+        "damage": 22,
+        "splash": 1.2,
+        "stun": 0.3,
+        "paths": [
+          { "name": "Tear", "copy": "Hits 70% harder, over a wider blast.", "mult":{"damage":1.7}, "add":{"splash":0.4} },
+          { "name": "Maelstrom", "copy": "Fires 50% faster, and stops creeps 0.2 seconds longer.", "mult":{"rate":1.5}, "add":{"stun":0.2} }
+        ],
+        "ascend": [
+          { "name": "Breach", "copy": "Hits twice as hard, over a much wider blast.", "mult":{"damage":2}, "add":{"splash":0.5} },
+          { "name": "Collapse", "copy": "Stops creeps 0.4 seconds longer, and fires 40% faster.", "mult":{"rate":1.4}, "add":{"stun":0.4} }
+        ]
+      },
+      "pact": {
+        "name": "Pact",
+        "label": "PCT",
+        "role": "aura",
+        "color": "#94ffd1",
+        "copy": "Fel. Does not fire. Towers in its circle hit 20% harder and fire 10% faster, and those that fire reach a little further.",
+        "fel": true,
+        "cost": 48,
+        "range": 1.6,
+        "rate": 0,
+        "damage": 0,
+        "aura": 0.2,
+        "haste": 0.1,
+        "reach": 0.3,
+        "paths": [
+          { "name": "Bargain", "copy": "Towers in its circle hit another 20% harder, over a wider circle.", "add":{"aura":0.2,"range":0.3} },
+          { "name": "Tithe-fire", "copy": "Towers fire another 12% faster, and reach a little further.", "add":{"haste":0.12,"reach":0.3} }
+        ],
+        "ascend": [
+          { "name": "Blood oath", "copy": "Another 30% harder and 10% faster.", "add":{"aura":0.3,"haste":0.1} },
+          { "name": "Pact of ruin", "copy": "Reach half a cell further, another 15% faster, over a wider circle.", "add":{"reach":0.5,"haste":0.15,"range":0.3} }
+        ]
+      },
+      "maw": {
+        "name": "Maw",
+        "label": "MAW",
+        "role": "collapse",
+        "color": "#3bd16f",
+        "copy": "Fel. Does not fire. Hungry: creeps in its circle take 10% more damage and lose 30% of their armor, and any but bosses at 8% life or less collapse.",
+        "fel": true,
+        "cost": 70,
+        "range": 1.8,
+        "rate": 0,
+        "damage": 0,
+        "execute": 0.08,
+        "shred": 0.3,
+        "vuln": 0.1,
+        "paths": [
+          { "name": "Hunger", "copy": "Any but bosses collapse at another 4% life, over a wider circle.", "add":{"execute":0.04,"range":0.3} },
+          { "name": "Gnash", "copy": "Another 15% more damage taken, and 20% more armor lost.", "add":{"vuln":0.15,"shred":0.2} }
+        ],
+        "ascend": [
+          { "name": "Devour", "copy": "Any but bosses collapse at another 6% life, and 20% more armor lost.", "add":{"execute":0.06,"shred":0.2} },
+          { "name": "Feast", "copy": "Another 20% more damage taken, over a much wider circle.", "add":{"vuln":0.2,"range":0.4,"shred":0.2} }
+        ]
+      },
+      "eclipse": {
+        "name": "Eclipse",
+        "label": "ECL",
+        "role": "mire",
+        "color": "#66ffa8",
+        "copy": "Fel. Does not fire. Darkens its circle: creeps there move 25% slower, take 8% more damage and lose 15% of their armor (bosses resist half the slowing).",
+        "fel": true,
+        "cost": 64,
+        "range": 2.0,
+        "rate": 0,
+        "damage": 0,
+        "mire": 0.25,
+        "vuln": 0.08,
+        "shred": 0.15,
+        "paths": [
+          { "name": "Umbra", "copy": "Creeps move another 15% slower, over a wider circle.", "add":{"mire":0.15,"range":0.3} },
+          { "name": "Penumbra", "copy": "Another 12% more damage taken, and 20% more armor lost.", "add":{"vuln":0.12,"shred":0.2} }
+        ],
+        "ascend": [
+          { "name": "Totality", "copy": "Creeps move another 20% slower, and take 10% more damage.", "add":{"mire":0.2,"vuln":0.1} },
+          { "name": "Dusk", "copy": "A much wider circle, and 20% more armor lost.", "add":{"range":0.5,"shred":0.2,"mire":0.1} }
+        ]
+      },
+      "oblivion": {
+        "name": "Oblivion",
+        "label": "OBL",
+        "role": "beam",
+        "color": "#d7ff8a",
+        "copy": "Fel. A beam of dark energy that goes through half of any armor, ramping up the longer it stays on one creep, and eats a sliver of the life it leaves.",
+        "fel": true,
+        "cost": 100,
+        "range": 2.8,
+        "rate": 6,
+        "damage": 5,
+        "pierce": 0.5,
+        "beam": true,
+        "ramp": 0.2,
+        "maxRamp": 25,
+        "rend": 0.003,
+        "paths": [
+          { "name": "Event horizon", "copy": "Ramps faster and 20 steps higher.", "add":{"ramp":0.1,"maxRamp":20} },
+          { "name": "Maw of night", "copy": "80% stronger, from further, and each pulse eats another 0.3% of the life left.", "mult":{"damage":1.8}, "add":{"range":0.5,"rend":0.003} }
+        ],
+        "ascend": [
+          { "name": "The end", "copy": "Hits twice as hard, ramping faster still.", "mult":{"damage":2}, "add":{"ramp":0.15} },
+          { "name": "Heat death", "copy": "Pulses 60% faster, each eating another 0.5% of the life left.", "mult":{"rate":1.6}, "add":{"rend":0.005} }
+        ]
       }
     },
     "creeps": {
@@ -1295,6 +1533,70 @@
         "jamEvery": 6,
         "boss": true,
         "atp": 90
+      },
+      "nightterror": {
+        "name": "Night Terror",
+        "label": "NTR",
+        "color": "#9dff4d",
+        "hp": 2600,
+        "speed": 0.5,
+        "gold": 200,
+        "leak": 10,
+        "size": 0.55,
+        "sides": 9,
+        "armor": 0.25,
+        "jam": 1.2,
+        "jamRange": 2,
+        "jamEvery": 6,
+        "summon": "spindle",
+        "summonEvery": 2,
+        "summonCount": 4,
+        "boss": true,
+        "atp": 120,
+        "de": 300
+      },
+      "nightmare": {
+        "name": "Nightmare",
+        "label": "NMR",
+        "color": "#5dffa0",
+        "hp": 3800,
+        "speed": 0.45,
+        "gold": 280,
+        "leak": 12,
+        "size": 0.57,
+        "sides": 11,
+        "armor": 0.35,
+        "ward": 0.05,
+        "guard": 0.25,
+        "guardRange": 2,
+        "lull": 0.3,
+        "lullRange": 2.4,
+        "boss": true,
+        "atp": 160,
+        "de": 500
+      },
+      "insomnia": {
+        "name": "Insomnia",
+        "label": "INS",
+        "color": "#d8ff3c",
+        "hp": 5600,
+        "speed": 0.4,
+        "gold": 400,
+        "leak": 15,
+        "size": 0.62,
+        "sides": 13,
+        "armor": 0.4,
+        "ward": 0.03,
+        "rush": 0.02,
+        "rushMax": 1.5,
+        "phaseEvery": 7,
+        "phaseTime": 1.4,
+        "summon": "debt",
+        "summonEvery": 4,
+        "summonCount": 3,
+        "boss": true,
+        "atp": 220,
+        "de": 900
       }
     },
     "perks": {
@@ -1394,6 +1696,79 @@
           "baseCost": 120,
           "costPerLevel": 90,
           "amount": 6
+        }
+      }
+    },
+    "write": {
+      "_about": "What the tower-defense game writes on screen. With only true, every message (the line under the board), banner and spoken line is a phrase of the loaded text instead of words of the game's: the text is cut into phrases (sentences, a long one in pieces of at most lineWords words for the line and bannerWords for the banner), shuffled and dealt one at a time, every phrase before any comes again, then shuffled again. Floating rewards stay numbers (+120, +40 DE) and a mistake (not enough O/I and the like) still says why. false: the game's own words.",
+      "only": true,
+      "lineWords": 10,
+      "bannerWords": 9
+    },
+    "de": {
+      "_about": "Dark energy (DE), the fourth currency: it buys the fel set of towers (the ten with fel: true), their levels, paths and Ascensions. It is made by sacrifice and trade, and earned by slaying the fel super bosses (see fel). Trade makes it from the other currencies: one DE costs cost.gold O/I, cost.flux flux or cost.atp ATP (the altar's buttons trade the amounts in trade, or as much as you have). Sacrificing a tower (its Sacrifice button, beside Sell) takes it away for offering of what was put into it, in DE (a sold tower gives back sellRefund, in its own currency): so it is the best way out of a tower you no longer want, and a fel tower is sold, not sacrificed. Sacrificing lives gives life DE for each, and never your last minLives. start: DE a run begins with.",
+      "start": 0,
+      "cost": { "gold": 5, "flux": 4, "atp": 4 },
+      "offering": 0.85,
+      "life": 30,
+      "minLives": 1,
+      "trade": [1, 10]
+    },
+    "fel": {
+      "_about": "What dark energy buys besides the fel towers, and how it is earned by fighting. damage and burn multiply every fel tower's own damage and burn (a DE costs 4 flux, 5 O/I or 4 ATP, so the fel set has to hit harder than the others for the price). perks are endless upgrades bought with DE: the first level costs baseCost, each one after growth times the one before, and a perk with max 0 has no limit. power (Hellfire): every fel tower's damage and burn are multiplied by 1 + amount for every level, level on top of level. haste (Cinderwind): the same for fire rate. reach: amount more cells of range per level for fel towers that fire. tithe (Soul tithe): each time a wave clears, amount DE for every wave number, per level (wave 100, level 4, amount 0.25: 100 DE). barter: the altar's trades cost amount less per level. devour: sacrificing a tower gives amount more per level. Super bosses: from wave `from`, every `every` waves, a fel super boss (the kinds in turn) closes the wave, one more for every extraEvery waves; each is a boss with a great deal of life, and slaying it pays its creep's de, growing deScale a wave, and bossTithe more for every level of Soul tithe: that is how dark energy is earned in a fight.",
+      "damage": 2.4,
+      "burn": 2.4,
+      "deScale": 0.04,
+      "bossTithe": 0.05,
+      "supers": { "from": 40, "every": 20, "extraEvery": 150, "kinds": ["nightterror", "nightmare", "insomnia"] },
+      "perks": {
+        "power": {
+          "name": "Hellfire",
+          "copy": "Fel towers hit 10% harder for every level, each on top of the last. No limit.",
+          "max": 0,
+          "baseCost": 60,
+          "growth": 1.3,
+          "amount": 0.1
+        },
+        "haste": {
+          "name": "Cinderwind",
+          "copy": "Fel towers fire 3% faster for every level, each on top of the last.",
+          "max": 20,
+          "baseCost": 220,
+          "growth": 1.26,
+          "amount": 0.03
+        },
+        "reach": {
+          "name": "Abyssal reach",
+          "copy": "+0.12 cells of range for every fel tower that fires.",
+          "max": 10,
+          "baseCost": 300,
+          "growth": 1.3,
+          "amount": 0.12
+        },
+        "tithe": {
+          "name": "Soul tithe",
+          "copy": "When a wave clears, 0.25 DE for every wave number, per level.",
+          "max": 20,
+          "baseCost": 200,
+          "growth": 1.28,
+          "amount": 0.25
+        },
+        "barter": {
+          "name": "Barter",
+          "copy": "The altar's trades cost 4% less.",
+          "max": 10,
+          "baseCost": 400,
+          "growth": 1.3,
+          "amount": 0.04
+        },
+        "devour": {
+          "name": "Devour",
+          "copy": "Sacrificing a tower gives 5% more dark energy.",
+          "max": 10,
+          "baseCost": 300,
+          "growth": 1.25,
+          "amount": 0.05
         }
       }
     },
@@ -1595,6 +1970,48 @@
     "wordMsMin": 300,
     "wordMsMax": 3000,
     "phrasesPerRound": 3,
+    "life": {
+      "_about": "A life of her own (life.ts): with no model behind her, each queen of the region you are in still does things. Every so often (think seconds, least and most) her brain scores what she could do: stay home, stroll nearby, visit a place of her region, call on a sister or friend who lives there, or rest. weights are each thing's worth to start; moods multiplies them by her mood now (a longing queen calls on a friend, a jealous one walks it off, a delighted one is out and about); night multiplies them from nightFrom to nightTo o'clock (she stays in); homesick multiplies going home when she is out; tierBoost adds to strolling for each affection tier. She then picks by score, the likeliest mostly. What she has done counts (kept in the save): visits open after visitAfter outings, calls after callAfter, and she strolls radius squares from home, one more every radiusEvery outings up to radiusMax. speed is squares a second; stay is how long she stays where she went (seconds, least and most). She stands still while you walk to her, talk to her or recite for her, and when she comes out to find you that comes first. doing: what her sheet says she is doing ({place}, {queen} filled in). marks: the small mark over her head.",
+      "enabled": true,
+      "think": [5, 14],
+      "speed": 1.5,
+      "weights": { "home": 3, "stroll": 4, "visit": 2.5, "call": 2, "rest": 1 },
+      "moods": {
+        "aloof": { "home": 1.4, "call": 0.6 },
+        "delighted": { "stroll": 1.6, "visit": 1.4, "rest": 0.5 },
+        "blush": { "home": 1.3 },
+        "smitten": { "stroll": 1.5 },
+        "adoring": { "stroll": 1.4, "call": 1.3 },
+        "jealous": { "stroll": 1.8, "call": 0.4, "rest": 0.4 },
+        "longing": { "call": 2.2, "home": 1.3, "visit": 0.7 },
+        "fierce": { "visit": 1.6, "rest": 0.4 }
+      },
+      "night": { "home": 3, "stroll": 0.35, "visit": 0.2, "call": 0.5, "rest": 3 },
+      "nightFrom": 22,
+      "nightTo": 6,
+      "homesick": 1.6,
+      "tierBoost": 0.12,
+      "visitAfter": 2,
+      "callAfter": 5,
+      "radius": 3,
+      "radiusEvery": 6,
+      "radiusMax": 8,
+      "stay": { "home": [6, 14], "stroll": [3, 7], "visit": [8, 16], "call": [8, 18], "rest": [10, 20] },
+      "doing": {
+        "home": ["At home.", "At her place, as ever.", "Home, keeping an eye on the door."],
+        "walking": ["On her way to {place}.", "Walking, in no hurry.", "Out for a walk."],
+        "stroll": ["Taking the air.", "Looking at the sky.", "Stretching her legs near home."],
+        "visit": ["Visiting {place}.", "Looking in at {place}.", "At {place}, on an errand of her own."],
+        "call": ["Calling on {queen}.", "Talking with {queen}.", "Paying {queen} a visit."],
+        "rest": ["Resting.", "Sitting a while.", "Having a quiet moment."]
+      },
+      "marks": { "home": "", "stroll": "🚶", "visit": "🏛", "call": "💬", "rest": "💤" }
+    },
+    "view": {
+      "_about": "How the Court's map is seen. Near (the button above the line at the bottom; on to start) draws the map nearZoom times larger and keeps you in the middle of it, so people are people and not dots; Far shows the whole region at once. figure: how tall a person stands on the map, in map squares (yours and the queens').",
+      "nearZoom": 2.2,
+      "figure": 2.3
+    },
     "night": {
       "_about": "Day and night on the Court's map, by the device's clock: dark from 20:00 to 5:00, with dusk and dawn in between. At night the map darkens by darkness and windows, doors and gates glow. enabled false keeps it day.",
       "enabled": true,
@@ -1714,6 +2131,46 @@
       "_about": "How the queens' portraits are drawn. style: \"dark\" for the dark fantasy look (a night scene lit from behind in her colour, a glowing rune circle, wild flowing hair, rim-lit skin, glowing eyes, a spiked crown and golden chains) or \"classic\" for the earlier, brighter look.",
       "style": "dark"
     },
+    "atelier": {
+      "_about": "The Atelier (Atelier on the Queens list, Change her look on a queen's sheet): every queen's look, and your own, changed by hand: traits (hair, eyes, ears, headpiece, outfit, adornment, marking), colours, and a shape, sliders that widen a jaw, lift a brow or lengthen a neck. What you change is kept on the device (azshara-court-looks-v1) and laid over the looks in court.queens, which stay as the originals that Original gives back. shape: how far each slider moves at its end (a slider runs from -1 to 1; 0 is as drawn). headWidth, headLength, eyeSize, noseSize, noseLength, lipWidth, lipFull, neckWidth, shoulders, figure, hairVolume, hornSize, earSize and browThick are parts of the size (0.1: a tenth more at +1, a tenth less at -1); jaw, chin, cheeks, eyeSpace, eyeHeight, browHeight, browArch, mouthHeight and neckLength are moves in the portrait's own units (it is 100 wide); eyeTilt is degrees; blush is added to the mood's blush. The whole figure's sliders (Body page; a portrait shows none of them): height, build, waist, hips, legs and limbs are parts of the size; chest runs from flat to full. A look's body is feminine (every queen's to start) or masculine (yours to start): broader shoulders, a straighter waist, narrower hips. palettes: the swatches offered for each colour (any other colour can be picked too); bg holds pairs, the middle of the background and its edge. random: how far Random may push a slider. you: your own look to start with (drawn in talks, and on your figure on the map) and the name over your figure.",
+      "shape": {
+        "headWidth": 0.1, "headLength": 0.08, "jaw": 1.8, "chin": 2.2, "cheeks": 1.6, "blush": 0.5,
+        "eyeSize": 0.22, "eyeSpace": 1.3, "eyeHeight": 1.4, "eyeTilt": 9,
+        "browHeight": 1.4, "browThick": 0.5, "browArch": 1.3,
+        "noseSize": 0.3, "noseLength": 0.2,
+        "lipWidth": 0.2, "lipFull": 0.3, "mouthHeight": 1.2,
+        "neckLength": 3, "neckWidth": 0.18, "shoulders": 0.12, "figure": 0.1,
+        "hairVolume": 0.1, "hornSize": 0.35, "earSize": 0.3,
+        "height": 0.07, "build": 0.14, "chest": 1, "waist": 0.16, "hips": 0.15, "legs": 0.07, "limbs": 0.22
+      },
+      "random": 0.6,
+      "palettes": {
+        "skin": ["#fbe3d0", "#f6d0b8", "#f2c9a5", "#e0ac86", "#c68f6a", "#a0694a", "#7a4a32", "#56331f", "#d8d8e0", "#c9b8e8", "#9fb8e8", "#a8d8c0", "#6a5a8a"],
+        "hair": ["#f2f2f8", "#f4ead0", "#e8c872", "#b5562d", "#d7263d", "#7a4a2a", "#2b1a14", "#0e0a12", "#8a5ad8", "#3a86ff", "#3fae5a", "#ff6fae"],
+        "eyes": ["#3a86ff", "#7fd4ff", "#3fae5a", "#18d0a0", "#f5a623", "#ffd24a", "#8a5a2a", "#a855f7", "#ff4d6d", "#e8e8f0"],
+        "lips": ["#c2185b", "#c8435a", "#e0607a", "#a01030", "#7a1838", "#d98a7a", "#b87a6a", "#5a2a6a", "#1a1020"],
+        "horns": ["#e9dcc0", "#f3e0c0", "#3a2a2a", "#8a5ad8", "#d7263d", "#e8c872"],
+        "accent": ["#e8c872", "#ff7a6b", "#d7263d", "#ff4f8b", "#a855f7", "#7a3ad8", "#3a56c8", "#5cc8ff", "#18d0a0", "#3fae5a", "#f5a623", "#e8e8f0"],
+        "bg": [["#8a5520", "#1e0f06"], ["#9a2234", "#220508"], ["#4a1a4a", "#12061a"], ["#2a1840", "#0b0614"], ["#1c2a4a", "#070a14"], ["#0f3a2a", "#04120c"], ["#5a3a10", "#140c04"], ["#2a2a34", "#08080c"]]
+      },
+      "you": {
+        "name": "AX",
+        "look": { "skin": "#e0ac86", "hair": "#2b1a14", "sheen": "", "hairStyle": "short", "eyes": "#7fd4ff", "eyeStyle": "open", "shadow": "#a87a5e", "lips": "#b87a6a", "ears": "round", "horns": "", "headpiece": "hood", "accent": "#5cc8ff", "bg": ["#1c2a4a", "#070a14"], "marking": "", "outfit": "leather", "adorn": "none", "lashes": "none", "body": "masculine" }
+      }
+    },
+    "wine": {
+      "_about": "Crystal wine, a rare bottle earned by reciting a text all through (one for every text of at least minPhrases phrases finished; it cannot be bought, and you keep at most max). Poured for a queen in the talk screen (the Pour choice, once a talk, while she is not jealous, from affection tier minTier): it gives pour affection at once and starts an exotic conversation, the next sips exchanges in which what you can ask turns to deeper things (the exotic topics in the talk pack), choices of them at a time, each worth sipAffection outside the day's limit; then the bottle is empty. Each deeper question is answered only after you recite for her: picking it starts a recite by itself, sipPhrases phrases at her place with her watching (the usual XP, gold, streak and text progress, and her affection for each pass), and when they are recited through the talk comes back with her answer; leaving the recite early brings the talk back with the question still waiting. On a date, the date button's wine twin (Date night) pours one for the evening: the date's affection, and its bonus, count dateMult times more, and between the date's phrases she opens up with something deeper. start: bottles a new save has.",
+      "start": 0,
+      "max": 12,
+      "minPhrases": 5,
+      "minTier": 1,
+      "pour": 10,
+      "sips": 4,
+      "sipPhrases": 1,
+      "sipAffection": 9,
+      "choices": 3,
+      "dateMult": 1.6
+    },
     "talk": {
       "_about": "Talking with a queen face to face (Talk to her, on her sheet). Each turn offers things to say: topics, lines in a tone (sweet, bold, witty, humble, honest), and now and then her wish, her feelings, your story together, or a sister, friend or rival of hers. tastes: the tone each queen loves, likes and dislikes; every other tone she takes plainly. Once you have tried a tone on her, the choices show how she takes it. affection: what an exchange is worth by how she takes it (topic: any plain question), for the first perDay exchanges a day with her; after that talking is free and adds nothing. A tone she dislikes costs affection, never below the tier she is at. topics and tones: how many of each are offered at once. moreChance: how often she adds a second line of her own to an answer. askChance: how often she asks you something back (you answer in a tone). When she is jealous, the tones are apologies: one she loves or likes eases her jealousy a step, once a talk.",
       "perDay": 10,
@@ -1737,8 +2194,8 @@
       }
     },
     "sound": {
-      "_about": "Rehearse's sound in the Court (the speaker buttons on the recite and talk screens turn each part on and off; everything else is set in the Recitation drill's Rehearse tab, and a change there is followed here at once: Pause all sound quiets the Court too). While you recite, the phrase on screen sounds as Rehearse is set, at Rehearse's sample rate: its bytes sound (Rehearse's Sound: all the time with Nonstop on, else once on each tap that completes a pass) and the robot voice says it as it says a single phrase there (Rehearse's Robot voice: every layer heard, with its voices and shape, a layer stacked on the one before multiplied, as many voices live as the sample rate allows). The main voice says the phrase Repeats times (The main voice says it, there) and then waits: in the Court a pass is the tap, so each pass has it say it again; 0 is over and over. A layer not said over and over is said once each pass. Queens say their lines aloud in the same voice (the main voice's layer, its shape and its voices), once, each at her own pitch and pace: queens.<name>.pitch and rate multiply Rehearse's (1 leaves it as set). lineVoices is the most voices a queen's line is said with (the nearest copies first), so that her words stay words when the layer has dozens of copies; the phrase you recite always has them all.",
-      "lineVoices": 12,
+      "_about": "Rehearse's sound in the Court (the Sound button turns each part on and off; everything else is set in the Recitation drill's Rehearse tab, and a change there is followed here at once). While you recite, the phrase on screen sounds as Rehearse is set, at Rehearse's sample rate: its bytes sound (Rehearse's Sound: all the time with Nonstop on, else once on each tap that completes a pass) and the robot voice says it as it says a single phrase there (Rehearse's Robot voice: every layer heard, with its voices and shape, a layer stacked on the one before multiplied, every voice but the main one mixed into one sound, as there). The sound starts by itself when a recite starts and stops when it ends, and uses Rehearse's sound settings, never its texts; Rehearse's own Pause all sound is left alone (the Sound sheet pauses the recite's sound by hand). The voices keep looping through all the passes of a phrase and start again only on the next phrase: the main voice says it Repeats times (0: over and over) and then waits for the next phrase, and a layer set to read a whole text reads the recite's text round and round till the recite is over (a recite from one text: see source). A layer not said over and over is said once for each phrase. Each queen has her own voice: in the Court the main voice (the one that says the phrase you recite for her, and her lines) is hers, one of the phone's voices, chosen on her sheet (Her voice) or picked for her, a different one for each queen while they last, in the language of Rehearse's voice; every other voice (the copies, the background) stays the voice Rehearse is set to. queens.<name>.pitch and rate are her own pitch and pace: they multiply Rehearse's (1 leaves it as set). A queen's line is said once by the main voice's layer: her voice, and with it the layer's other voices as Rehearse has them. lineVoices is the most voices her line is said with (the nearest copies first); 0 is all of them, as Rehearse is set.",
+      "lineVoices": 0,
       "queens": {
         "eltharia": { "pitch": 1.12, "rate": 1 },
         "alexstrasza": { "pitch": 1.05, "rate": 0.98 },

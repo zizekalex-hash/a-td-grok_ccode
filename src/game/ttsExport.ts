@@ -271,6 +271,44 @@ async function sayAll(
   };
 }
 
+/** The longest a phrase's voice mix is made (s): copies that run on longer are cut there. */
+export const VOICE_MIX_MAX_SEC = 20;
+/** The rate the robot voices are mixed at to be read as raw bytes (the phone's own voices are about this). */
+export const VOICE_RAW_RATE = 24_000;
+
+/**
+ * Every heard layer and copy saying one phrase, mixed as one (a single channel):
+ * the phone says the phrase once for each voice (kept), and the copies, their
+ * speeds, reversals and gains are laid out and mixed as in a .tts.wav. For the
+ * voices as raw bytes. Throws why it could not (not in the app, every layer off).
+ */
+export async function voiceMix(
+  text: string,
+  set: RehearseSettings,
+  rate = VOICE_RAW_RATE,
+  deps: TtsDeps = phone,
+  step: (note: string, part: number) => void = () => {},
+): Promise<Float32Array> {
+  const job: TtsJob = { kind: "phrase", phrases: [text], path: "", rate };
+  const vs = await sayAll(job, set, deps, step, () => false);
+  const plan = ttsPlan(vs.layers, vs.lens, false);
+  if (!plan.plays.length || plan.total <= 0)
+    throw new Error("Every copy is silent, or left out: nothing to make");
+  const mixing = vs.mixer(plan, rate);
+  const frames = Math.max(1, Math.min(mixing.mix.frames, Math.round(VOICE_MIX_MAX_SEC * rate)));
+  const out = new Float32Array(frames);
+  let at = 0;
+  while (at < frames) {
+    const len = Math.min(rate, frames - at);
+    step("Mixing the voices into one…", at / frames);
+    out.set(await mixing.pull(len), at);
+    at += len;
+    await pause();
+  }
+  guardAll(out);
+  return out;
+}
+
 /**
  * Makes the job's .tts.wav from Rehearse's voice settings (every layer). step:
  * what it is doing and how far (0..1). stopped: asked to stop (it throws

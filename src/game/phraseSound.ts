@@ -28,7 +28,11 @@ export type LoopSound = Pick<
   RehearseSettings,
   "signalMs" | "amp" | "rawRate" | "mode" | "plays" | "topSpeed"
 > &
-  Partial<Pick<RehearseSettings, "encoding">>;
+  Partial<Pick<RehearseSettings, "encoding" | "voiceRaw">> & {
+    /** The robot voices as raw bytes (voiceRaw.ts), once made, and what identifies them. */
+    voiceBytes?: Uint8Array | null;
+    voiceTag?: string;
+  };
 
 export interface PhraseLoop {
   /** Plays this phrase's sound over and over (the same phrase and settings again: nothing changes). */
@@ -244,6 +248,8 @@ export function phraseLoop(): PhraseLoop {
         sound.plays,
         sound.topSpeed,
         ctx.sampleRate,
+        sound.voiceRaw ?? "off",
+        sound.voiceBytes ? (sound.voiceTag ?? sound.voiceBytes.length) : "",
       ]);
       // The same phrase and settings: it goes on as it is.
       if (now?.key === key) return;

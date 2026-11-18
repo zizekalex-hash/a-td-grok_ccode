@@ -122,6 +122,12 @@ export const SLIDER_GROUPS: { title: string; sliders: SliderSpec[] }[] = [
         format: (n) => `${Math.round(n)}%`,
         copy: "How sharp the game is drawn. Lower is softer but much lighter: 50% draws a quarter of the pixels.",
       },
+      {
+        key: "shaderArt",
+        label: "Shader art",
+        format: (n) => (n <= 0 ? "Off" : `${Math.round(n)}%`),
+        copy: "Flowing colour behind the Court's screens (reciting, talking, the Atelier) and the title, drawn by the graphics chip with maths and no image files. Lower is dimmer; Off draws none. It is drawn small and softly, 30 frames a second at most, so it is light on the battery; Render resolution scales it too.",
+      },
     ],
   },
   {
@@ -179,7 +185,7 @@ export const OPTION_TABS: OptionsTabSpec[] = [
   {
     id: "display",
     title: "Display",
-    sliders: ["fpsCap", "renderScale", "uiScale", "binaryOpacity", "binaryPitch"],
+    sliders: ["fpsCap", "renderScale", "shaderArt", "uiScale", "binaryOpacity", "binaryPitch"],
     toggles: [
       { key: "showFps", label: "Frame-rate counter", copy: "Frames drawn each second, in the top-left corner." },
       { key: "holo", label: "Hologram", copy: "Tilt and a violet echo on the text." },

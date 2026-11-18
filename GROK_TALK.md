@@ -81,11 +81,21 @@ I will give you one JSON file of the game's words. Make it much richer:
   20 for each of loved, liked, plain, disliked (her answer to a tone, by how
   she takes it; any queen must be able to say it); "sorry" 6 per tone (your
   apology when she is jealous); "ask" 8 for each of more, bond, wish,
-  memory, feeling, bye; "answers": more 12, bye 12, byeWarm 12, each
+  memory, feeling, bye, and 6 for pour (what you say to pour her a glass of
+  crystal wine); "answers": more 12, bye 12, byeWarm 12, pour 8 (her answer
+  to the wine), empty 8 (what she says when the bottle is empty), each
   "feeling" (calm, lonely, seeking, present, satisfied, distant, confront,
   softened, jealous) 8, each "sorry" (loved, liked, plain, disliked) 8;
   "herAsks.list" 30 questions she asks you, each with two to five "replies"
   keyed by tone (your answer in that tone).
+- The exotic conversation (a bottle of crystal wine is open): shared.json
+  "exotic" has topics like "topics", but deeper, more intimate and more
+  honest: at least 12 of them (a bottle gives four exchanges, three topics to
+  choose from each time), each with 3 or 4 "ask" lines (what you say) and 4 to
+  8 "answer" lines (what she says over the wine, in any queen's voice). Warm,
+  tender, a little daring; never crude. An answer is said after you recite a
+  phrase for her, and also by herself between the phrases of a date night, so
+  it must stand alone (it may not rely on a question before it).
 - Answer with the complete file only, as valid JSON (double quotes, no
   comments, no trailing commas) in one json code block.
 
@@ -126,10 +136,12 @@ Placeholders allowed:
   other): {other} the other queen, {pet} what the speaker calls you.
 - shared.json "tones" (what you say) and "ask" (your questions): {queen} her
   name; "ask.bond" also {other} (the queen you ask about) and must use it.
+  "exotic" asks (what you say over the wine): {queen} too.
   "sorry" (your apologies): {queen} and {rival} (who she is jealous of).
-- shared.json "reacts", "answers" and the "ask" of each "herAsks.list" entry
-  (what she says): the same placeholders as her own lines ({pet}, {thing},
-  {place} and so on); "answers.sorry" also {rival}. The "replies" of a
+- shared.json "reacts", "answers", the "answer" of each "exotic" topic and the
+  "ask" of each "herAsks.list" entry (what she says): the same placeholders as
+  her own lines ({pet}, {thing}, {place} and so on); "answers.sorry" also
+  {rival}. The "replies" of a
   "herAsks.list" entry (what you answer): none.
 - shared.json "pairs" (two particular queens both with you; keys are the two
   queens' file names in alphabetical order joined by +, like

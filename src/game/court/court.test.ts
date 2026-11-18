@@ -5,6 +5,7 @@ import { xpForLevel } from "../recite.ts";
 import {
   advance,
   affectionGain,
+  dateBonus,
   firstGate,
   gateOf,
   queensIn,
@@ -434,6 +435,24 @@ describe("court skills and queens", () => {
     assert.ok(affectionGain(10, "eltharia", "water", 1, false) > base, "Eltharia is Water");
     assert.ok(affectionGain(10, "eltharia", "fire", 5, false) > base);
     assert.ok(affectionGain(10, "eltharia", "fire", 1, true) > base);
+  });
+
+  it("warms her still more on a date night, with crystal wine poured: the date's affection and its bonus", () => {
+    const date = affectionGain(10, "eltharia", "fire", 1, true);
+    const night = affectionGain(10, "eltharia", "fire", 1, true, true);
+    assert.ok(Math.abs(night - date * C.wine.dateMult) < 1e-9);
+    // Wine alone is no date: it only counts on one.
+    assert.equal(affectionGain(10, "eltharia", "fire", 1, false, true), affectionGain(10, "eltharia", "fire", 1, false));
+    assert.equal(dateBonus(false), C.affection.dateBonus);
+    assert.ok(Math.abs(dateBonus(true) - C.affection.dateBonus * C.wine.dateMult) < 1e-9);
+    assert.ok(C.wine.dateMult > 1, "a bottle has to be worth pouring");
+  });
+
+  it("starts a date night only for a date", () => {
+    const o = { place: "yard" as const, skill: "strength" as const, queen: "jaina" as const, wordMs: 100, reps: 3, round: 3 };
+    assert.equal(startSession({ ...o, date: true, wine: true }, "Keep the light steady.", 0).wine, true);
+    assert.equal(startSession({ ...o, date: true }, "Keep the light steady.", 0).wine, false);
+    assert.equal(startSession({ ...o, date: false, wine: true }, "Keep the light steady.", 0).wine, false);
   });
 
   it("names the tier and the next step", () => {
@@ -1279,5 +1298,70 @@ describe("court alliances", () => {
     let granted: string[] = [];
     for (let i = 0; i < w.passes; i++) granted = countWish(save, w.skill, day);
     assert.ok(granted.includes(a) && granted.includes(b), granted.join());
+  });
+});
+
+describe("a sip of crystal wine is a short recite", () => {
+  const o = {
+    place: "yard" as const,
+    skill: "strength" as const,
+    queen: "jaina" as const,
+    wordMs: 100,
+    reps: 3,
+    round: C.wine.sipPhrases,
+  };
+
+  it("is a round of its own, done once its phrases are recited through, and never a date", () => {
+    assert.ok(Number.isInteger(C.wine.sipPhrases) && C.wine.sipPhrases >= 1);
+    const s = startSession({ ...o, date: false, toast: true }, "Keep the light steady.", 0);
+    assert.equal(s.toast, true);
+    assert.equal(s.date, false);
+    assert.equal(s.round, C.wine.sipPhrases);
+    const types: string[] = [];
+    let taps = 0;
+    while (!s.roundDone && taps < 60) {
+      const at = s.start + passMs(s);
+      advance(s, at);
+      for (const r of tapComplete(s, at, () => "Another phrase for the same sip.", false)) types.push(r.type);
+      taps += 1;
+    }
+    assert.equal(taps, o.reps * C.wine.sipPhrases, "every pass of every phrase, and no more");
+    assert.equal(types[types.length - 1], "round", "the round is what ends it");
+    assert.equal(types.filter((t) => t === "phrase").length, C.wine.sipPhrases);
+    assert.equal(startSession({ ...o, date: true, toast: true }, "Keep the light steady.", 0).toast, false, "a date is a date");
+    assert.equal(startSession({ ...o, date: false }, "Keep the light steady.", 0).toast, false);
+  });
+});
+
+describe("a phrase recited all through", () => {
+  /** Finishes the words of the pass, then taps; what the next-phrase callback was told is collected. */
+  const run = (reps: number, round: number) => {
+    const s = session({ reps, round });
+    const told: string[] = [];
+    const types: string[] = [];
+    let n = 0;
+    for (let i = 0; i < reps * round + 2 && !s.roundDone; i++) {
+      const at = s.start + passMs(s);
+      advance(s, at);
+      for (const r of tapComplete(s, at, (done) => (told.push(done), `Phrase number ${++n} comes now.`), false))
+        types.push(r.type);
+    }
+    return { s, told, types };
+  };
+
+  it("is told to the next-phrase callback only once all its passes are done", () => {
+    const { s, told, types } = run(3, 3);
+    // Three phrases of three passes: the first two hand over to a next phrase, the last ends the round.
+    assert.deepEqual(told, ["Keep the light steady.", "Phrase number 1 comes now."]);
+    assert.equal(types.filter((t) => t === "pass").length, 9);
+    assert.equal(types.filter((t) => t === "phrase").length, 3);
+    assert.equal(s.roundDone, true);
+    assert.equal(s.phrase, "Phrase number 2 comes now.", "the last phrase of the round was never handed on");
+  });
+
+  it("is told after every pass when a phrase is a single pass", () => {
+    const { told } = run(1, 4);
+    assert.equal(told.length, 3);
+    assert.equal(new Set(told).size, 3);
   });
 });

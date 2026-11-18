@@ -9,6 +9,8 @@ import { buildable, findMap, laneCount } from "./map.ts";
 import {
   CREEPS,
   isCreepKind,
+  FEL_PERK_KEYS,
+  FEL_PERKS,
   isDifficulty,
   noPerks,
   ascensionsOf,
@@ -108,6 +110,14 @@ export function restore(raw: string | null): TdState | null {
     if (num(vp[key])) s.voidPerks[key] = Math.max(0, Math.min(VOID_PERKS[key].max, Math.floor(vp[key])));
   // ATP and the core's level (a save from before there were any starts the core at level 1).
   s.atp = num(st.atp) ? Math.max(0, st.atp) : s.atp;
+  // Dark energy (a save from before there was any starts with none), and the fel upgrades it bought (endless ones are bounded only by sense).
+  s.de = num(st.de) ? Math.max(0, st.de) : s.de;
+  const fp = obj(st.felPerks);
+  for (const key of FEL_PERK_KEYS)
+    if (num(fp[key])) {
+      const max = FEL_PERKS[key].max > 0 ? FEL_PERKS[key].max : 1000;
+      s.felPerks[key] = Math.max(0, Math.min(max, Math.floor(fp[key])));
+    }
   const core = obj(st.core);
   s.core.level = num(core.level) ? Math.max(1, Math.min(MAX_CORE_LEVEL, Math.floor(core.level))) : 1;
   s.core.pulse = num(core.pulse) ? Math.max(0, core.pulse) : 0;
@@ -135,7 +145,7 @@ export function restore(raw: string | null): TdState | null {
       cooldown: num(t.cooldown) ? t.cooldown : 0,
       targeting: TARGETING.includes(t.targeting as Targeting) ? (t.targeting as Targeting) : "first",
       // Stats are worked out again, never read from the save.
-      stats: towerStats(t.key, level, s.perks, path, ascend, s.voidPerks),
+      stats: towerStats(t.key, level, s.perks, path, ascend, s.voidPerks, s.felPerks),
       focusId: -1,
       focusStacks: 0,
       phrase: "",

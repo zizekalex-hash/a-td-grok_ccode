@@ -158,7 +158,7 @@ export function SoundMonitor() {
         />
         <p className="text-muted">
           {stats.running
-            ? `${stats.voices.toLocaleString()} background voices · mixing ${Math.round(stats.load * 100)}% of real time · ${stats.ahead.toFixed(1)} s ahead · ${stats.rate / 1000} kHz${stats.waiting ? ` · ${stats.waiting} waiting for a phrase` : ""}${stats.late ? ` · ${stats.late} late` : ""}`
+            ? `${stats.voices.toLocaleString()} background voices · mixing ${Math.round(stats.load * 100)}% of real time · ${stats.ahead.toFixed(1)} s ahead · ${stats.rate / 1000} kHz${stats.waiting ? ` · ${stats.waiting} starting` : ""}${stats.late ? ` · ${stats.late} late` : ""}`
             : "No background mix playing."}
         </p>
       </button>

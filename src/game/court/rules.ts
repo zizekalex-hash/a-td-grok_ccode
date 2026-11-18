@@ -91,7 +91,26 @@ export interface CourtSave {
    * Rehearse's sound in the Court: the phrase you recite sounds as Rehearse is
    * set (phrase), and the queens say their lines aloud in its voice (lines).
    */
-  sound: { phrase: boolean; lines: boolean };
+  /** The map seen near (larger, following you) or far (the whole region). */
+  near: boolean;
+  /** The text a recite draws its phrases from, by its key (source.ts); "" for every text of Rehearse's library. */
+  source: string;
+  /** How many times each text has been recited through, every phrase of it (by the text's key). */
+  textRounds: Record<string, number>;
+  /** Crystal wine kept (one bottle for each text recited through), and the bottles shared with each queen (court.wine). */
+  wine: number;
+  wineShared: Record<QueenKey, number>;
+  /** How many outings each queen has made by herself (life.ts): she does more the more she has done. */
+  life: Record<QueenKey, number>;
+  sound: {
+    phrase: boolean;
+    lines: boolean;
+    /**
+     * Each queen's own voice (hervoice.ts): the name of one the phone has, ""
+     * for one picked for her, "=" for the voice Rehearse is set to.
+     */
+    voices: Record<QueenKey, string>;
+  };
 }
 
 /** A notice or rumor kept in the News list. */
@@ -138,7 +157,17 @@ export function newSave(): CourtSave {
     newsRead: 0,
     tried: Object.fromEntries(QUEEN_KEYS.map((k) => [k, []])) as unknown as Record<QueenKey, string[]>,
     talked: { day: 0, count: zero(QUEEN_KEYS) },
-    sound: { phrase: true, lines: true },
+    near: true,
+    source: "",
+    textRounds: {},
+    wine: CONFIG.court.wine.start,
+    wineShared: zero(QUEEN_KEYS),
+    life: zero(QUEEN_KEYS),
+    sound: {
+      phrase: true,
+      lines: true,
+      voices: Object.fromEntries(QUEEN_KEYS.map((q) => [q, ""])) as Record<QueenKey, string>,
+    },
   };
 }
 
@@ -255,19 +284,28 @@ export function bonusReward(
   };
 }
 
-/** Affection a queen feels while you recite where she can see: more in her element, with a streak, on a date. */
+/**
+ * Affection a queen feels while you recite where she can see: more in her
+ * element, with a streak, on a date (and more again on a date night, with a
+ * bottle of crystal wine poured).
+ */
 export function affectionGain(
   words: number,
   queen: QueenKey,
   stance: Element,
   streak: number,
   date: boolean,
+  wine = false,
 ): number {
   const q = C.queens[queen];
   const element = q.element === stance ? 1 + C.affection.elementBonus : 1;
-  return (
-    words * C.affection.perWord * element * streakMult(streak) * (date ? C.affection.dateMult : 1)
-  );
+  const night = date ? C.affection.dateMult * (wine ? C.wine.dateMult : 1) : 1;
+  return words * C.affection.perWord * element * streakMult(streak) * night;
+}
+
+/** What a finished date adds: its bonus, more on a date night. */
+export function dateBonus(wine: boolean): number {
+  return C.affection.dateBonus * (wine ? C.wine.dateMult : 1);
 }
 
 export function tierOf(affection: number): { index: number; name: string; next: number } {
@@ -387,6 +425,10 @@ export interface Session {
   /** The queen watching, if any. */
   queen: QueenKey | null;
   date: boolean;
+  /** A date night: a bottle of crystal wine was poured for it, so its affection counts more. */
+  wine: boolean;
+  /** A deeper question over the wine, answered once this recite is through: a round of court.wine.sipPhrases phrases, no summary. */
+  toast: boolean;
   phrase: string;
   words: string[];
   letters: number;
@@ -420,6 +462,8 @@ export function startSession(
     skill: SkillKey;
     queen: QueenKey | null;
     date: boolean;
+    wine?: boolean;
+    toast?: boolean;
     wordMs: number;
     reps: number;
     round: number;
@@ -429,6 +473,8 @@ export function startSession(
 ): Session {
   return {
     ...o,
+    wine: o.date && o.wine === true,
+    toast: !o.date && o.toast === true,
     round: Math.max(1, Math.floor(o.round)),
     phrase,
     words: wordsIn(phrase),
@@ -499,7 +545,8 @@ export function advance(s: Session, now: number): boolean {
 export function tapComplete(
   s: Session,
   now: number,
-  nextPhrase: () => string,
+  /** The next phrase, given the one just finished (all its passes done). */
+  nextPhrase: (finished: string) => string,
   elixir: boolean,
 ): Reward[] {
   if (s.over || s.roundDone || !s.waiting) return [];
@@ -537,7 +584,7 @@ export function tapComplete(
     }
     return out;
   }
-  newPhrase(s, nextPhrase(), now);
+  newPhrase(s, nextPhrase(s.phrase), now);
   return out;
 }
 

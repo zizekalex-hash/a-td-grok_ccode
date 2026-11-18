@@ -44,7 +44,7 @@ export interface Look {
   hair: string;
   /** Hair highlight colour; empty for a lighter shade of the hair. */
   sheen?: string;
-  /** long, flowing, bun or ponytail. */
+  /** long, flowing, bun, ponytail or short. */
   hairStyle: string;
   eyes: string;
   /** open, glow (lit, no pupils) or closed (dreaming). */
@@ -68,6 +68,109 @@ export interface Look {
   outfit?: string;
   /** flowers, pearls, feathers, leaves, chains, beads, or none. */
   adorn?: string;
+  /** Her whole figure's build (figure.ts): feminine (when left out) or masculine. */
+  body?: string;
+  /** full (winged liner and long lashes; when left out) or none (a plain lid line). */
+  lashes?: string;
+  /**
+   * Sliders from -1 to 1 that reshape her: a wider jaw, a longer neck, larger
+   * eyes (the Atelier's; how far each moves is court.atelier.shape). 0, or left
+   * out, is as drawn.
+   */
+  shape?: Record<string, number>;
+}
+
+/** The shape sliders a look may carry, in the order the Atelier shows them. */
+export const SHAPE_KEYS = [
+  "headWidth",
+  "headLength",
+  "jaw",
+  "chin",
+  "cheeks",
+  "blush",
+  "earSize",
+  "eyeSize",
+  "eyeSpace",
+  "eyeHeight",
+  "eyeTilt",
+  "browHeight",
+  "browThick",
+  "browArch",
+  "noseSize",
+  "noseLength",
+  "lipWidth",
+  "lipFull",
+  "mouthHeight",
+  "hairVolume",
+  "hornSize",
+  "neckLength",
+  "neckWidth",
+  "shoulders",
+  "figure",
+  // The whole figure's (figure.ts); a portrait shows none of them.
+  "height",
+  "build",
+  "chest",
+  "waist",
+  "hips",
+  "legs",
+  "limbs",
+] as const;
+
+/** The sliders that only a whole figure shows. */
+export const BODY_KEYS: readonly ShapeKey[] = ["height", "build", "chest", "waist", "hips", "legs", "limbs"];
+export const BODIES = ["feminine", "masculine"] as const;
+export type ShapeKey = (typeof SHAPE_KEYS)[number];
+
+/** The hair styles there are, and how lashes may be worn. */
+export const HAIR_STYLES = ["long", "flowing", "bun", "ponytail", "short"] as const;
+export const LASHES = ["full", "none"] as const;
+
+/**
+ * How far a look's slider moves her: its value (-1 to 1, 0 when left out or
+ * not a number) times the slider's reach in court.atelier.shape.
+ */
+function reach(look: Look, key: ShapeKey): number {
+  const v = look.shape?.[key];
+  if (typeof v !== "number" || !Number.isFinite(v) || v === 0) return 0;
+  const most = (CONFIG.court.atelier.shape as Record<string, number>)[key] ?? 0;
+  return Math.max(-1, Math.min(1, v)) * most;
+}
+
+/** A number as short as it can be written, to two places. */
+const n2 = (v: number) => String(Math.round(v * 100) / 100);
+
+/**
+ * Part of the picture moved (dx, dy), turned (degrees, about cx cy) and resized
+ * (sx, sy, about cx cy). With nothing to change it is the part as it was, so a
+ * look with no shape draws exactly as before.
+ */
+function reshape(
+  inner: string,
+  o: { cx: number; cy: number; dx?: number; dy?: number; sx?: number; sy?: number; turn?: number },
+): string {
+  const { cx, cy, dx = 0, dy = 0, sx = 1, sy = 1, turn = 0 } = o;
+  if (!inner || (!dx && !dy && sx === 1 && sy === 1 && !turn)) return inner;
+  const t: string[] = [];
+  if (dx || dy) t.push(`translate(${n2(dx)} ${n2(dy)})`);
+  if (turn) t.push(`rotate(${n2(turn)} ${n2(cx)} ${n2(cy)})`);
+  if (sx !== 1 || sy !== 1)
+    t.push(`translate(${n2(cx)} ${n2(cy)}) scale(${n2(sx)} ${n2(sy)}) translate(${n2(-cx)} ${n2(-cy)})`);
+  return `<g transform="${t.join(" ")}">${inner}</g>`;
+}
+
+/** The face as drawn, and the same outline with a wider jaw, a longer chin or fuller cheeks. */
+const FACE =
+  "M35 38 C35 24.5 65 24.5 65 38 C65 47 63.2 53.6 58.6 59.4 C55.4 63.3 52.6 65.6 50 66 C47.4 65.6 44.6 63.3 41.4 59.4 C36.8 53.6 35 47 35 38 Z";
+
+function facePath(jaw: number, chin: number, cheeks: number): string {
+  if (!jaw && !chin && !cheeks) return FACE;
+  return (
+    `M35 38 C35 24.5 65 24.5 65 38 C65 47 ${n2(63.2 + cheeks)} 53.6 ${n2(58.6 + jaw)} ${n2(59.4 + chin * 0.2)} ` +
+    `C${n2(55.4 + jaw * 0.7)} ${n2(63.3 + chin * 0.55)} ${n2(52.6 + jaw * 0.3)} ${n2(65.6 + chin)} 50 ${n2(66 + chin)} ` +
+    `C${n2(47.4 - jaw * 0.3)} ${n2(65.6 + chin)} ${n2(44.6 - jaw * 0.7)} ${n2(63.3 + chin * 0.55)} ${n2(41.4 - jaw)} ${n2(59.4 + chin * 0.2)} ` +
+    `C${n2(36.8 - cheeks)} 53.6 35 47 35 38 Z`
+  );
 }
 
 const HAIR_BACK: Record<string, string> = {
@@ -77,6 +180,7 @@ const HAIR_BACK: Record<string, string> = {
   bun: "M29 48 C26 24 40 14 51 14 C64 14 76 24 72 48 C73 56 71 62 68 66 L33 66 C29 62 28 56 29 48 Z",
   ponytail:
     "M28 48 C25 22 40 12 51 12 C63 12 76 22 73 46 C74 54 72 60 69 64 L32 64 C29 60 27 54 28 48 Z",
+  short: "M30.5 46 C27.5 23 40 13.5 51 13.5 C62 13.5 74.5 23 70.5 46 C71 50 70.2 53 68.6 55.4 L32.4 55.4 C30.8 53 30 50 30.5 46 Z",
 };
 
 /** Locks that frame the face, in front of it. */
@@ -90,6 +194,9 @@ const HAIR_FRONT: Record<string, string> = {
   bun: "M34.5 39 C35 26 46 22 51 24 C58 22 66 28 66 39 C61 31 55 29 50.5 31 C46 29 39 31 34.5 39 Z M36 38 C33 46 34 54 36 60 C36.4 52 37.2 45 39 40 Z",
   ponytail:
     "M34 39 C34 25 48 19 53 21 C61 21 67 28 66.5 38 C60 30 52 28 45 31 C40 33.5 37 36 34 39 Z M36 37 C33 46 34 55 36.5 62 C37 53 37.6 45 40 39 Z",
+  short:
+    "M34 39.5 C33.6 25 47 19.5 53 21 C61 20.6 67 27.6 66.4 38.6 C61 31 54 28.4 47 30.4 C41.4 32 37.4 35.4 34 39.5 Z " +
+    "M35.4 37 C34 41 34.1 44.6 35 47.6 C35.6 44 36.6 41 38.4 38.6 Z M64.6 36.4 C66 40.4 65.9 44 65 47 C64.4 43.4 63.4 40.4 61.6 38 Z",
 };
 
 type MouthKind = "neutral" | "smirk" | "smile" | "soft" | "open" | "pout" | "sad";
@@ -361,16 +468,16 @@ function mouth(kind: MouthKind, lips: string, skinDark: string): string {
 }
 
 /** Brows from outer end to inner: knit together when angry, raised in the middle when sad, one up when haughty. */
-function brows(hairDark: string, x: Expr): string {
+function brows(hairDark: string, x: Expr, thick = 1, arch = 0): string {
   const out: string[] = [];
   for (const sd of [-1, 1]) {
     const raise = x.oneBrow && sd > 0 ? 1.7 : 0;
     const t = x.browTilt;
     const O: [number, number] = [50 + sd * 12.6, 40.4 - raise - t * 0.4];
-    const K: [number, number] = [50 + sd * 8.4, 35.8 - raise + t * 0.3];
+    const K: [number, number] = [50 + sd * 8.4, 35.8 - raise + t * 0.3 - arch];
     const I: [number, number] = [50 + sd * 2.8, 38.4 - raise + t * 1.8];
     out.push(
-      `<path d="M${f(O[0])} ${f(O[1])} Q${f(K[0])} ${f(K[1])} ${f(I[0])} ${f(I[1])}" fill="none" stroke="${hairDark}" stroke-width="1.05" stroke-linecap="round"/>`,
+      `<path d="M${f(O[0])} ${f(O[1])} Q${f(K[0])} ${f(K[1])} ${f(I[0])} ${f(I[1])}" fill="none" stroke="${hairDark}" stroke-width="${thick === 1 ? "1.05" : f(1.05 * thick)}" stroke-linecap="round"/>`,
     );
     for (const u of [0.1, 0.25, 0.4, 0.55, 0.7, 0.85]) {
       const px = (1 - u) ** 2 * O[0] + 2 * u * (1 - u) * K[0] + u ** 2 * I[0];
@@ -506,10 +613,14 @@ function eyes(
   x: Expr,
   /** Whether to draw her tear (left out when an overlay moves it). */
   tears: boolean,
+  /** One eye's drawing set in its place (moved, turned or resized by the look's shape). */
+  place: (s: number, inner: string) => string = (_s, inner) => inner,
 ): string {
-  const out: string[] = [];
   const hot = hex(iris, "#3a86ff");
-  for (const s of [-1, 1]) {
+  // A plain lid: no winged liner, no long lashes, a lighter shadow.
+  const plain = look.lashes === "none";
+  const one = (s: number): string => {
+    const out: string[] = [];
     const g = eyeGeom(s);
     const [ix, iy] = g.inner;
     const [ox, oy] = g.outer;
@@ -522,7 +633,7 @@ function eyes(
     const almond = `${open} Q${dx} ${dy} ${ox} ${oy} Z`;
     // Eyeshadow, swept up towards the brow; the crease; a soft shadow beneath.
     out.push(
-      `<path d="M${ox + s * 1.2} ${oy + 0.4} Q${ux} ${uy - 4.4} ${ix - s * 0.6} ${iy - 1.2} Q${ux} ${uy - 0.6} ${ox} ${oy} Z" fill="${shadowCol}" opacity="0.62" filter="url(#soft)"/>`,
+      `<path d="M${ox + s * 1.2} ${oy + 0.4} Q${ux} ${uy - 4.4} ${ix - s * 0.6} ${iy - 1.2} Q${ux} ${uy - 0.6} ${ox} ${oy} Z" fill="${shadowCol}" opacity="${plain ? "0.3" : "0.62"}" filter="url(#soft)"/>`,
     );
     out.push(
       `<path d="M${ox} ${oy - 1.2} Q${ux} ${uy - 2.1} ${ix} ${iy - 1.3}" fill="none" stroke="${skinDark}" stroke-width="0.55" opacity="0.7"/>`,
@@ -541,9 +652,9 @@ function eyes(
       const y0 = oy + (happy ? 1 : 0.6);
       const y1 = iy + (happy ? 0.6 : 0);
       out.push(
-        `<path d="M${ox} ${f(y0)} Q${g.cx} ${f(peak)} ${ix} ${f(y1)}" fill="none" stroke="${lash}" stroke-width="1.5" stroke-linecap="round"/>`,
+        `<path d="M${ox} ${f(y0)} Q${g.cx} ${f(peak)} ${ix} ${f(y1)}" fill="none" stroke="${lash}" stroke-width="${plain ? "1" : "1.5"}" stroke-linecap="round"/>`,
       );
-      for (const t of [0.12, 0.3, 0.5]) {
+      for (const t of plain ? [] : [0.12, 0.3, 0.5]) {
         const px = ox + (ix - ox) * t;
         const py = (1 - t) ** 2 * y0 + 2 * t * (1 - t) * peak + t ** 2 * y1;
         out.push(
@@ -553,7 +664,7 @@ function eyes(
         );
       }
       if (tears && x.tear && s < 0) out.push(tear(ox + 1.6, oy + 3));
-      continue;
+      return out.join("");
     }
     const clip = `eye${s < 0 ? "L" : "R"}`;
     const cx = g.cx + x.look * 1.3 * (look.eyeStyle === "glow" ? 0.6 : 1);
@@ -608,14 +719,15 @@ function eyes(
     if (drop > 0) {
       out.push(`<path d="${open} Q${ux} ${f(uy + drop)} ${ox} ${oy} Z" fill="url(#skin)"/>`);
     }
-    // Winged liner and lashes, along the lid.
+    // Winged liner and lashes, along the lid (a plain lid: its line only).
     out.push(
-      `<path d="${lid}" fill="none" stroke="${lash}" stroke-width="1.45" stroke-linecap="round"/>`,
+      `<path d="${lid}" fill="none" stroke="${lash}" stroke-width="${plain ? "0.95" : "1.45"}" stroke-linecap="round"/>`,
     );
-    out.push(
-      `<path d="M${ox + s * 0.4} ${oy + 0.2} L${g.wing[0]} ${g.wing[1]} L${ox - s * 0.6} ${oy - 0.9} Z" fill="${lash}"/>`,
-    );
-    for (const t of [0.04, 0.12, 0.2, 0.28, 0.36, 0.46, 0.58]) {
+    if (!plain)
+      out.push(
+        `<path d="M${ox + s * 0.4} ${oy + 0.2} L${g.wing[0]} ${g.wing[1]} L${ox - s * 0.6} ${oy - 0.9} Z" fill="${lash}"/>`,
+      );
+    for (const t of plain ? [] : [0.04, 0.12, 0.2, 0.28, 0.36, 0.46, 0.58]) {
       const px = ox + (ix - ox) * t;
       const py = oy + (iy - oy) * t - Math.sin(Math.PI * t) * (3.1 - drop / 2);
       const len = 1.9 - t * 1.6;
@@ -628,11 +740,13 @@ function eyes(
     out.push(
       `<path d="M${f(ox - s * 1.2)} ${f(oy + 1.3)} Q${dx} ${f(dy - 0.2)} ${f(ix + s * 0.6)} ${f(iy + 0.4)}" fill="none" stroke="#ffffff" stroke-width="0.3" opacity="${x.tear ? 0.85 : 0.5}"/>`,
     );
-    for (const [ax, ay] of [
-      [0.3, -2.4],
-      [0.55, -3.1],
-      [0.75, -2.2],
-    ] as const) {
+    for (const [ax, ay] of plain
+      ? []
+      : ([
+          [0.3, -2.4],
+          [0.55, -3.1],
+          [0.75, -2.2],
+        ] as const)) {
       out.push(
         `<circle cx="${f(ox + (ix - ox) * ax)}" cy="${f(iy + ay - 0.3)}" r="0.22" fill="#ffffff" opacity="0.7"/>`,
       );
@@ -644,7 +758,7 @@ function eyes(
     out.push(
       `<circle cx="${f(ix - s * 0.5)}" cy="${f(iy + 0.15)}" r="0.42" fill="#ffffff" opacity="0.55"/>`,
     );
-    for (const t of [0.08, 0.2, 0.32]) {
+    for (const t of plain ? [] : [0.08, 0.2, 0.32]) {
       const px = ox + (dx - ox) * t * 2;
       const py = oy + (dy - oy) * t * 2 + 0.5;
       out.push(
@@ -652,8 +766,9 @@ function eyes(
       );
     }
     if (tears && x.tear && s < 0) out.push(tear(ox + 1.6, oy + 3));
-  }
-  return out.join("");
+    return out.join("");
+  };
+  return place(-1, one(-1)) + place(1, one(1));
 }
 
 function headpiece(kind: string, accent: string, rim: string): string {
@@ -801,6 +916,31 @@ export function portraitSvg(
   element = "",
   o: PortraitOptions = {},
 ): string {
+  return compose(look, ring, element, o).svg;
+}
+
+/**
+ * Her head by itself, for a whole figure (figure.ts): what the picture defines
+ * (colours, clips), what sits behind her body (the hair down her back, a hood)
+ * and what sits over it (her neck, her head and all on it). In the portrait's
+ * own units, her chin at 66 and her neck down to 72.
+ */
+export function headPieces(
+  look: Look,
+  ring: string,
+  o: PortraitOptions = {},
+): { defs: string; back: string; front: string } {
+  const c = compose(look, ring, "", { ...o, air: false });
+  return { defs: c.defs, back: c.back, front: c.front };
+}
+
+/** The portrait, and its parts. */
+function compose(
+  look: Look,
+  ring: string,
+  element: string,
+  o: PortraitOptions,
+): { svg: string; defs: string; back: string; front: string } {
   const base = EXPR[o.mood ?? "smile"] ?? EXPR.smile;
   const x: Expr = o.blink ? { ...base, shut: true } : base;
   const tier = Math.max(0, Math.min(5, Math.floor(o.tier ?? 0)));
@@ -831,8 +971,38 @@ export function portraitSvg(
   const rand = rng(seedOf(`${look.hair}|${look.hairStyle}|${look.skin}|${look.eyes}`));
   // The mood's air from its own numbers, so her strands stay the same in every mood.
   const moodRand = rng(seedOf(`${look.hair}|${o.mood ?? "smile"}`));
-  const face =
-    "M35 38 C35 24.5 65 24.5 65 38 C65 47 63.2 53.6 58.6 59.4 C55.4 63.3 52.6 65.6 50 66 C47.4 65.6 44.6 63.3 41.4 59.4 C36.8 53.6 35 47 35 38 Z";
+  // The look's shape: how far each slider moves her (all 0 for a look with none: drawn as ever).
+  const sh = (key: ShapeKey) => reach(look, key);
+  const chin = sh("chin");
+  const face = facePath(sh("jaw"), chin, sh("cheeks"));
+  const blush = Math.max(0, Math.min(1.5, x.blush + sh("blush")));
+  const eyeUp = sh("eyeHeight");
+  const hairVol = sh("hairVolume");
+  /** Her head: lifted on a longer neck, wider or longer. */
+  const headAt = {
+    cx: 50,
+    cy: 46,
+    dy: -sh("neckLength"),
+    sx: 1 + sh("headWidth"),
+    sy: 1 + sh("headLength"),
+  };
+  const shouldersAt = { cx: 50, cy: 100, sx: 1 + sh("shoulders") };
+  /** One eye in its place: apart or closer, higher, larger, its outer corner tilted up. */
+  const eyePlace = (s: number, inner: string) =>
+    reshape(inner, {
+      cx: 50 + s * 7,
+      cy: 45,
+      dx: s * sh("eyeSpace"),
+      dy: -eyeUp,
+      sx: 1 + sh("eyeSize"),
+      sy: 1 + sh("eyeSize"),
+      turn: -s * sh("eyeTilt"),
+    });
+  const figure = sh("figure")
+    ? `translate(50 56) scale(${n2(1.12 * (1 + sh("figure")))}) translate(-50 -56)`
+    : FIGURE;
+  /** A number of the chin's shading as it was written (63.4), moved with the chin. */
+  const n1 = (v: number) => (chin ? n2(v) : String(v));
   const sparkles = [
     [16, 20, 1.3],
     [84, 24, 1.6],
@@ -855,6 +1025,8 @@ export function portraitSvg(
           `<path d="M${x(16.5)} 44 C${x(21)} 40 ${x(25)} 35 ${x(29)} 29.5" fill="none" stroke="${skinDark}" stroke-width="0.5" opacity="0.7"/>`
       : `<path d="M${x(14.6)} 44.5 C${x(18)} 43.5 ${x(18)} 51 ${x(14.6)} 52 Z" fill="url(#skin)" stroke="${skinDark}" stroke-width="0.4"/>`;
   };
+  const earAt = (s: number) =>
+    reshape(ear(s), { cx: 50 + s * 14.6, cy: 48, sx: 1 + sh("earSize"), sy: 1 + sh("earSize") });
   /** A drop earring hanging from the lobe: lower on a round ear than on a long elf ear. */
   const earring = (s: number) => {
     const x = 50 + s * 15.3;
@@ -865,6 +1037,146 @@ export function portraitSvg(
       `<path d="M${x} ${y + 2} q-1.5 2.5 0 3.9 q1.5 -1.4 0 -3.9 Z" fill="${accent}" stroke="#fff3c4" stroke-width="0.35"/>`
     );
   };
+  // Everything that uses the look's random numbers is made in the order it always
+  // was (the backdrop, the hair behind, the hair in front), so her strands stay the same.
+  const back = backdrop(rand, bg0, accent, element);
+  const arcane = dark ? arcaneCircle(accent, darkRand) + dust(accent, darkRand) : "";
+  // Dark look: wild locks flowing out from behind the hair.
+  const wildBack =
+    dark && style !== "short" ? wildHair(darkRand, hair, hairDark, sheen, accent) : "";
+  // The hair behind her head.
+  const hairBack = [
+    `<path d="${HAIR_BACK[style]}" fill="url(#hair)"/>`,
+    `<path d="${HAIR_BACK[style]}" fill="none" stroke="${sheen}" stroke-width="0.6" opacity="0.5"/>`,
+    strands("hairBack", rand, 46, 16, 84, 8, 100, sheen, hairDark),
+    style === "bun"
+      ? `<ellipse cx="50" cy="15" rx="10" ry="8" fill="url(#hair)"/><path d="M42 14 Q50 9 58 14 M44 17 Q50 13.5 56 17" fill="none" stroke="${sheen}" stroke-width="0.6" opacity="0.8"/>`
+      : "",
+    style === "ponytail"
+      ? `<path d="M64 24 C88 26 88 60 79 92 C76 70 75 48 62 34 Z" fill="url(#hair)"/><path d="M68 28 C82 34 82 58 78 80" fill="none" stroke="${sheen}" stroke-width="0.6" opacity="0.6"/>`
+      : "",
+    // Depth in the hair: the head's shadow on the hair behind it, and a ring of shine on the crown.
+    `<g clip-path="url(#hairBack)">`,
+    `<path d="${face}" transform="translate(50 46) scale(1.16 1.1) translate(-50 -46)" fill="#000000" opacity="0.3" filter="url(#soft)"/>`,
+    `<path d="M30.5 25 C33.5 21.2 37 19.2 41 18.3 M44.8 17.4 C48.3 16.9 51.7 16.9 55.2 17.4 M59 18.3 C63 19.2 66.5 21.2 69.5 25" fill="none" stroke="${sheen}" stroke-width="2.2" stroke-linecap="round" opacity="0.28" filter="url(#glowSmall)"/>`,
+    `<path d="M33 22.4 C36 19.9 38.6 18.8 41.2 18.2 M46 17.3 C48.7 17 51.3 17 54 17.3 M58.8 18.2 C61.4 18.8 64 19.9 67 22.4" fill="none" stroke="#ffffff" stroke-width="0.45" stroke-linecap="round" opacity="0.3"/>`,
+    `</g>`,
+  ].join("");
+  // The neck.
+  const neck = [
+    `<path d="M44.2 58 C44.4 64 43.8 68.5 42.4 72 L57.6 72 C56.2 68.5 55.6 64 55.8 58 Z" fill="url(#neck)"/>`,
+    `<path d="M45.6 63 Q45.2 68 44.2 71.4" fill="none" stroke="#ffffff" stroke-width="1.1" opacity="0.08" filter="url(#soft)"/>`,
+    `<path d="M43 61 Q50 69 57 61 L57 65.5 Q50 71 43 65.5 Z" fill="#000000" opacity="0.14"/>`,
+  ].join("");
+  // Her shoulders and what she wears over them, with a pendant.
+  const shoulders = [
+    `<path d="M12 100 C15 83 29 74.5 43 71.5 L57 71.5 C71 74.5 85 83 88 100 Z" fill="url(#skin)"/>`,
+    `<path d="M39 80.6 Q44 82 47.6 80.8 M52.4 80.8 Q56 82 61 80.6" fill="none" stroke="${skinDark}" stroke-width="0.6" opacity="0.7"/>`,
+    outfitFront(outfit, accent, skinDark),
+    `<ellipse cx="34" cy="79" rx="5" ry="2.2" fill="#ffffff" opacity="0.12" filter="url(#soft)"/><ellipse cx="66" cy="79" rx="5" ry="2.2" fill="#ffffff" opacity="0.12" filter="url(#soft)"/>`,
+    closedOutfit(outfit)
+      ? ""
+      : `<path d="M41.8 73.2 Q50 78.6 58.2 73.2" fill="none" stroke="url(#gold)" stroke-width="0.9"/>` +
+        `<path d="M41.8 73.2 Q50 78.6 58.2 73.2" fill="none" stroke="#7a560e" stroke-width="0.35" stroke-dasharray="0.45 0.55"/>` +
+        gem(50, 79.2, 2, accent) +
+        gem(45.2, 76.6, 0.9, accent) +
+        gem(54.8, 76.6, 0.9, accent) +
+        tierJewels(tier, accent),
+    dark ? shoulderLight(accent) + chains(accent) : "",
+  ].join("");
+  // Dark look: a few locks falling forward over her shoulders.
+  const wildFront =
+    dark && style !== "short" ? wildHair(darkRand, hair, hairDark, sheen, accent, 6, true) : "";
+  // The nose: a shadow down one side of the bridge, a lit ridge, the tip and nostrils.
+  const nose = [
+    `<path d="M49.2 42.6 Q48.6 47 48.3 50.6" fill="none" stroke="${skinDark}" stroke-width="1.4" opacity="0.16" filter="url(#soft)"/>`,
+    `<path d="M50.7 47.6 Q51.5 51.8 49.7 53.4" fill="none" stroke="${skinDark}" stroke-width="0.7" stroke-linecap="round" opacity="0.8"/>`,
+    `<path d="M48.7 53.6 Q50 54.4 51.3 53.6" fill="none" stroke="${skinDark}" stroke-width="0.5" opacity="0.8"/>`,
+    `<ellipse cx="48.7" cy="53.5" rx="0.6" ry="0.3" fill="${shade(skin, -0.5)}" opacity="0.45"/><ellipse cx="51.3" cy="53.5" rx="0.6" ry="0.3" fill="${shade(skin, -0.5)}" opacity="0.45"/>`,
+    `<ellipse cx="51.4" cy="48.6" rx="0.45" ry="2.2" fill="#ffffff" opacity="0.26"/>`,
+    `<circle cx="50.5" cy="52.4" r="0.6" fill="#ffffff" opacity="0.3"/>`,
+  ].join("");
+  const horns = horn
+    ? `<path d="M40 30.5 C34.5 18.5 25.5 9.5 15.5 10.5 C24.5 14.5 30.5 21.5 35.2 32.2 Z" fill="url(#horn)" stroke="${shade(horn, -0.45)}" stroke-width="0.7"/>` +
+      `<path d="M60 30.5 C65.5 18.5 74.5 9.5 84.5 10.5 C75.5 14.5 69.5 21.5 64.8 32.2 Z" fill="url(#horn)" stroke="${shade(horn, -0.45)}" stroke-width="0.7"/>` +
+      `<path d="M35.2 27 q2.2 -0.6 3.2 0.8 M31.5 21.4 q2 -0.8 3 0.4 M27 16.6 q1.8 -0.8 2.6 0.2 M64.8 27 q-2.2 -0.6 -3.2 0.8 M68.5 21.4 q-2 -0.8 -3 0.4 M73 16.6 q-1.8 -0.8 -2.6 0.2" fill="none" stroke="${shade(horn, -0.5)}" stroke-width="0.4" opacity="0.8"/>` +
+      `<path d="M37 26 C33 19 27 14 21 12.5 M63 26 C67 19 73 14 79 12.5" fill="none" stroke="${shade(horn, 0.4)}" stroke-width="0.6" opacity="0.8"/>`
+    : "";
+  // Her head: ears, then the face over them, her features, the hair in front and what she wears on it.
+  const head = [
+    earAt(-1),
+    earAt(1),
+    `<path d="${face}" fill="url(#skin)"/>`,
+    `<path d="${face}" fill="url(#warm)"/>`,
+    `<path d="${face}" fill="none" stroke="${rim}" stroke-width="0.5" opacity="0.13"/>`,
+    dark ? rimLight(face, accent) : "",
+    // A soft glow over the skin, as if lit by candlelight.
+    `<ellipse cx="47" cy="44" rx="12" ry="14" fill="#ffffff" opacity="0.07" filter="url(#soft)"/>`,
+    `<g clip-path="url(#faceClip)">`,
+    `<ellipse cx="50" cy="31.5" rx="9" ry="4.2" fill="#ffffff" opacity="0.13" filter="url(#soft)"/>`,
+    `<path d="${HAIR_FRONT[style]}" transform="translate(0.5 1.7)" fill="${shade(skin, -0.55)}" opacity="0.22" filter="url(#soft)"/>`,
+    `<ellipse cx="43" cy="41.6" rx="5" ry="1.6" fill="${skinDark}" opacity="0.2" filter="url(#soft)"/><ellipse cx="57" cy="41.6" rx="5" ry="1.6" fill="${skinDark}" opacity="0.2" filter="url(#soft)"/>`,
+    `<path d="M48.6 46 Q48 50.5 48.4 53" fill="none" stroke="${skinDark}" stroke-width="1.2" opacity="0.18" filter="url(#soft)"/>`,
+    `<ellipse cx="39.5" cy="49.5" rx="3.2" ry="1.4" fill="#ffffff" opacity="0.14" filter="url(#soft)"/><ellipse cx="60.5" cy="49.5" rx="3.2" ry="1.4" fill="#ffffff" opacity="0.14" filter="url(#soft)"/>`,
+    `<ellipse cx="50" cy="${n1(63.4 + chin)}" rx="3.2" ry="0.9" fill="${skinDark}" opacity="0.3" filter="url(#soft)"/><ellipse cx="50" cy="${n1(64.6 + chin)}" rx="1.8" ry="0.7" fill="#ffffff" opacity="0.18"/>`,
+    `<path d="M${f(66)} 30 C70 44 64 58 52 67" fill="none" stroke="${rim}" stroke-width="1.4" opacity="0.18" filter="url(#soft)"/>`,
+    `</g>`,
+    `<path d="M36.6 49.5 Q39.5 56.5 45 59.6 M63.4 49.5 Q60.5 56.5 55 59.6" fill="none" stroke="${skinDark}" stroke-width="1.6" opacity="0.12" filter="url(#soft)"/>`,
+    // Blush, deeper as she warms to you; shy lines when she is flustered.
+    `<ellipse cx="40.6" cy="52.4" rx="${f(4.6 + blush * 1.1)}" ry="${f(2.5 + blush * 0.6)}" transform="rotate(-12 40.6 52.4)" fill="url(#blush)" opacity="${f(0.2 + blush * 0.5)}"/>`,
+    `<ellipse cx="59.4" cy="52.4" rx="${f(4.6 + blush * 1.1)}" ry="${f(2.5 + blush * 0.6)}" transform="rotate(12 59.4 52.4)" fill="url(#blush)" opacity="${f(0.2 + blush * 0.5)}"/>`,
+    x.blushLines
+      ? `<path d="M38.6 52.4 l-0.9 1.6 M40.4 52.4 l-0.9 1.6 M42.2 52.4 l-0.9 1.6 M57.8 52.4 l0.9 1.6 M59.6 52.4 l0.9 1.6 M61.4 52.4 l0.9 1.6" stroke="#e83e74" stroke-width="0.35" stroke-linecap="round" opacity="0.7"/>`
+      : "",
+    reshape(brows(hairDark, x, 1 + sh("browThick"), sh("browArch")), {
+      cx: 50,
+      cy: 38,
+      dy: -sh("browHeight") - eyeUp * 0.6,
+    }),
+    eyes(look, iris, lash, shadowCol, skinDark, x, air, eyePlace),
+    dark
+      ? reshape(
+          eyeGlow(
+            hex(iris, accent),
+            look.eyeStyle === "glow",
+            look.eyeStyle === "closed" || x.happy === true || x.shut === true,
+          ),
+          { cx: 50, cy: 45, dy: -eyeUp },
+        )
+      : "",
+    reshape(nose, {
+      cx: 50,
+      cy: 50,
+      sx: 1 + sh("noseSize"),
+      sy: (1 + sh("noseSize")) * (1 + sh("noseLength")),
+    }),
+    `<path d="M49.3 54.8 L49.6 56.4 M50.7 54.8 L50.4 56.4" stroke="${skinDark}" stroke-width="0.35" opacity="0.3"/>`,
+    reshape(mouth(x.mouth, lips, skinDark), {
+      cx: 50,
+      cy: 59.4,
+      dy: chin * 0.3 - sh("mouthHeight"),
+      sx: 1 + sh("lipWidth"),
+      sy: 1 + sh("lipFull"),
+    }),
+    markings(look.marking, accent, rim),
+    `<path d="${HAIR_FRONT[style]}" fill="url(#hair)"/>`,
+    strands("hairFront", rand, 30, 30, 70, 18, 78, sheen, hairDark),
+    `<path d="${HAIR_FRONT[style]}" fill="none" stroke="${sheen}" stroke-width="0.35" opacity="0.4"/>`,
+    `<path d="M36 34 C42 24 56 21 64 29" fill="none" stroke="${sheen}" stroke-width="0.7" opacity="0.75"/>`,
+    // A soft band of shine across the crown of the hair.
+    `<path d="M38 29.4 C42.5 24 57.5 24 62 29.4" fill="none" stroke="${sheen}" stroke-width="1.8" opacity="0.22" filter="url(#soft)"/>`,
+    // A few loose strands that catch the light.
+    style === "long" || style === "flowing"
+      ? `<path d="M37 16 C33 12 28 13 25 17 M63 15 C67 11 72 12 75 16 M30 30 C25 32 22 37 21 42 M70 30 C75 32 78 37 79 42" fill="none" stroke="${sheen}" stroke-width="0.3" opacity="0.6"/>`
+      : "",
+    adornment(look.adorn, accent),
+    earring(-1),
+    earring(1),
+    reshape(horns, { cx: 50, cy: 31, sx: 1 + sh("hornSize"), sy: 1 + sh("hornSize") }),
+    dark && look.headpiece === "crown" ? spikeCrown(accent) : "",
+    dark && look.headpiece === "circlet" ? filigree(31.6) : "",
+    dark && look.headpiece === "crown" ? "" : headpiece(look.headpiece, accent, rim),
+  ].join("");
   const parts = [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="240" height="240">`,
     `<defs>`,
@@ -893,122 +1205,27 @@ export function portraitSvg(
     `<circle cx="50" cy="50" r="48" fill="url(#bg)"/>`,
     `<g clip-path="url(#disc)">`,
     o.scene ? scene(o.scene, o.region ?? "", bg0, accent) : "",
-    backdrop(rand, bg0, accent, element),
+    back,
     dark ? darkScene() : "",
     moodTint(x),
     air ? moodMotes(x, moodRand, accent, true) : "",
     sparkles,
     `<circle cx="50" cy="44" r="40" fill="url(#halo)"/>`,
-    dark ? arcaneCircle(accent, darkRand) + dust(accent, darkRand) : "",
+    arcane,
     tier >= 5
       ? `<circle cx="50" cy="40" r="27" fill="none" stroke="#ffe08a" stroke-width="1.2" opacity="0.55" filter="url(#glowSmall)"/>`
       : "",
     // The figure a little larger than the frame, so the face reads even as a small avatar.
-    `<g transform="${FIGURE}">`,
-    // Dark look: wild locks flowing out from behind the hair.
-    dark ? wildHair(darkRand, hair, hairDark, sheen, accent) : "",
-    `<path d="${HAIR_BACK[style]}" fill="url(#hair)"/>`,
-    `<path d="${HAIR_BACK[style]}" fill="none" stroke="${sheen}" stroke-width="0.6" opacity="0.5"/>`,
-    strands("hairBack", rand, 46, 16, 84, 8, 100, sheen, hairDark),
-    style === "bun"
-      ? `<ellipse cx="50" cy="15" rx="10" ry="8" fill="url(#hair)"/><path d="M42 14 Q50 9 58 14 M44 17 Q50 13.5 56 17" fill="none" stroke="${sheen}" stroke-width="0.6" opacity="0.8"/>`
-      : "",
-    style === "ponytail"
-      ? `<path d="M64 24 C88 26 88 60 79 92 C76 70 75 48 62 34 Z" fill="url(#hair)"/><path d="M68 28 C82 34 82 58 78 80" fill="none" stroke="${sheen}" stroke-width="0.6" opacity="0.6"/>`
-      : "",
-    // Depth in the hair: the head's shadow on the hair behind it, and a ring of shine on the crown.
-    `<g clip-path="url(#hairBack)">`,
-    `<path d="${face}" transform="translate(50 46) scale(1.16 1.1) translate(-50 -46)" fill="#000000" opacity="0.3" filter="url(#soft)"/>`,
-    `<path d="M30.5 25 C33.5 21.2 37 19.2 41 18.3 M44.8 17.4 C48.3 16.9 51.7 16.9 55.2 17.4 M59 18.3 C63 19.2 66.5 21.2 69.5 25" fill="none" stroke="${sheen}" stroke-width="2.2" stroke-linecap="round" opacity="0.28" filter="url(#glowSmall)"/>`,
-    `<path d="M33 22.4 C36 19.9 38.6 18.8 41.2 18.2 M46 17.3 C48.7 17 51.3 17 54 17.3 M58.8 18.2 C61.4 18.8 64 19.9 67 22.4" fill="none" stroke="#ffffff" stroke-width="0.45" stroke-linecap="round" opacity="0.3"/>`,
-    `</g>`,
+    `<g transform="${figure}">`,
+    wildBack,
+    reshape(reshape(hairBack, { cx: 50, cy: 38, sx: 1 + hairVol, sy: 1 + hairVol * 0.6 }), headAt),
     look.headpiece === "hood" ? hood(accent) : "",
-    // A collar that stands behind the neck; the neck, shoulders and her outfit, with a pendant.
-    outfitBack(outfit, accent),
-    `<path d="M44.2 58 C44.4 64 43.8 68.5 42.4 72 L57.6 72 C56.2 68.5 55.6 64 55.8 58 Z" fill="url(#neck)"/>`,
-    `<path d="M45.6 63 Q45.2 68 44.2 71.4" fill="none" stroke="#ffffff" stroke-width="1.1" opacity="0.08" filter="url(#soft)"/>`,
-    `<path d="M43 61 Q50 69 57 61 L57 65.5 Q50 71 43 65.5 Z" fill="#000000" opacity="0.14"/>`,
-    `<path d="M12 100 C15 83 29 74.5 43 71.5 L57 71.5 C71 74.5 85 83 88 100 Z" fill="url(#skin)"/>`,
-    `<path d="M39 80.6 Q44 82 47.6 80.8 M52.4 80.8 Q56 82 61 80.6" fill="none" stroke="${skinDark}" stroke-width="0.6" opacity="0.7"/>`,
-    outfitFront(outfit, accent, skinDark),
-    `<ellipse cx="34" cy="79" rx="5" ry="2.2" fill="#ffffff" opacity="0.12" filter="url(#soft)"/><ellipse cx="66" cy="79" rx="5" ry="2.2" fill="#ffffff" opacity="0.12" filter="url(#soft)"/>`,
-    closedOutfit(outfit)
-      ? ""
-      : `<path d="M41.8 73.2 Q50 78.6 58.2 73.2" fill="none" stroke="url(#gold)" stroke-width="0.9"/>` +
-        `<path d="M41.8 73.2 Q50 78.6 58.2 73.2" fill="none" stroke="#7a560e" stroke-width="0.35" stroke-dasharray="0.45 0.55"/>` +
-        gem(50, 79.2, 2, accent) +
-        gem(45.2, 76.6, 0.9, accent) +
-        gem(54.8, 76.6, 0.9, accent) +
-        tierJewels(tier, accent),
-    dark ? shoulderLight(accent) + chains(accent) : "",
-    // Dark look: a few locks falling forward over her shoulders.
-    dark ? wildHair(darkRand, hair, hairDark, sheen, accent, 6, true) : "",
-    // Ears, then the face over them.
-    ear(-1),
-    ear(1),
-    `<path d="${face}" fill="url(#skin)"/>`,
-    `<path d="${face}" fill="url(#warm)"/>`,
-    `<path d="${face}" fill="none" stroke="${rim}" stroke-width="0.5" opacity="0.13"/>`,
-    dark ? rimLight(face, accent) : "",
-    // A soft glow over the skin, as if lit by candlelight.
-    `<ellipse cx="47" cy="44" rx="12" ry="14" fill="#ffffff" opacity="0.07" filter="url(#soft)"/>`,
-    `<g clip-path="url(#faceClip)">`,
-    `<ellipse cx="50" cy="31.5" rx="9" ry="4.2" fill="#ffffff" opacity="0.13" filter="url(#soft)"/>`,
-    `<path d="${HAIR_FRONT[style]}" transform="translate(0.5 1.7)" fill="${shade(skin, -0.55)}" opacity="0.22" filter="url(#soft)"/>`,
-    `<ellipse cx="43" cy="41.6" rx="5" ry="1.6" fill="${skinDark}" opacity="0.2" filter="url(#soft)"/><ellipse cx="57" cy="41.6" rx="5" ry="1.6" fill="${skinDark}" opacity="0.2" filter="url(#soft)"/>`,
-    `<path d="M48.6 46 Q48 50.5 48.4 53" fill="none" stroke="${skinDark}" stroke-width="1.2" opacity="0.18" filter="url(#soft)"/>`,
-    `<ellipse cx="39.5" cy="49.5" rx="3.2" ry="1.4" fill="#ffffff" opacity="0.14" filter="url(#soft)"/><ellipse cx="60.5" cy="49.5" rx="3.2" ry="1.4" fill="#ffffff" opacity="0.14" filter="url(#soft)"/>`,
-    `<ellipse cx="50" cy="63.4" rx="3.2" ry="0.9" fill="${skinDark}" opacity="0.3" filter="url(#soft)"/><ellipse cx="50" cy="64.6" rx="1.8" ry="0.7" fill="#ffffff" opacity="0.18"/>`,
-    `<path d="M${f(66)} 30 C70 44 64 58 52 67" fill="none" stroke="${rim}" stroke-width="1.4" opacity="0.18" filter="url(#soft)"/>`,
-    `</g>`,
-    `<path d="M36.6 49.5 Q39.5 56.5 45 59.6 M63.4 49.5 Q60.5 56.5 55 59.6" fill="none" stroke="${skinDark}" stroke-width="1.6" opacity="0.12" filter="url(#soft)"/>`,
-    // Blush, deeper as she warms to you; shy lines when she is flustered.
-    `<ellipse cx="40.6" cy="52.4" rx="${f(4.6 + x.blush * 1.1)}" ry="${f(2.5 + x.blush * 0.6)}" transform="rotate(-12 40.6 52.4)" fill="url(#blush)" opacity="${f(0.2 + x.blush * 0.5)}"/>`,
-    `<ellipse cx="59.4" cy="52.4" rx="${f(4.6 + x.blush * 1.1)}" ry="${f(2.5 + x.blush * 0.6)}" transform="rotate(12 59.4 52.4)" fill="url(#blush)" opacity="${f(0.2 + x.blush * 0.5)}"/>`,
-    x.blushLines
-      ? `<path d="M38.6 52.4 l-0.9 1.6 M40.4 52.4 l-0.9 1.6 M42.2 52.4 l-0.9 1.6 M57.8 52.4 l0.9 1.6 M59.6 52.4 l0.9 1.6 M61.4 52.4 l0.9 1.6" stroke="#e83e74" stroke-width="0.35" stroke-linecap="round" opacity="0.7"/>`
-      : "",
-    brows(hairDark, x),
-    eyes(look, iris, lash, shadowCol, skinDark, x, air),
-    dark
-      ? eyeGlow(
-          hex(iris, accent),
-          look.eyeStyle === "glow",
-          look.eyeStyle === "closed" || x.happy === true || x.shut === true,
-        )
-      : "",
-    // The nose: a shadow down one side of the bridge, a lit ridge, the tip and nostrils.
-    `<path d="M49.2 42.6 Q48.6 47 48.3 50.6" fill="none" stroke="${skinDark}" stroke-width="1.4" opacity="0.16" filter="url(#soft)"/>`,
-    `<path d="M50.7 47.6 Q51.5 51.8 49.7 53.4" fill="none" stroke="${skinDark}" stroke-width="0.7" stroke-linecap="round" opacity="0.8"/>`,
-    `<path d="M48.7 53.6 Q50 54.4 51.3 53.6" fill="none" stroke="${skinDark}" stroke-width="0.5" opacity="0.8"/>`,
-    `<ellipse cx="48.7" cy="53.5" rx="0.6" ry="0.3" fill="${shade(skin, -0.5)}" opacity="0.45"/><ellipse cx="51.3" cy="53.5" rx="0.6" ry="0.3" fill="${shade(skin, -0.5)}" opacity="0.45"/>`,
-    `<ellipse cx="51.4" cy="48.6" rx="0.45" ry="2.2" fill="#ffffff" opacity="0.26"/>`,
-    `<circle cx="50.5" cy="52.4" r="0.6" fill="#ffffff" opacity="0.3"/>`,
-    `<path d="M49.3 54.8 L49.6 56.4 M50.7 54.8 L50.4 56.4" stroke="${skinDark}" stroke-width="0.35" opacity="0.3"/>`,
-    mouth(x.mouth, lips, skinDark),
-    markings(look.marking, accent, rim),
-    `<path d="${HAIR_FRONT[style]}" fill="url(#hair)"/>`,
-    strands("hairFront", rand, 30, 30, 70, 18, 78, sheen, hairDark),
-    `<path d="${HAIR_FRONT[style]}" fill="none" stroke="${sheen}" stroke-width="0.35" opacity="0.4"/>`,
-    `<path d="M36 34 C42 24 56 21 64 29" fill="none" stroke="${sheen}" stroke-width="0.7" opacity="0.75"/>`,
-    // A soft band of shine across the crown of the hair.
-    `<path d="M38 29.4 C42.5 24 57.5 24 62 29.4" fill="none" stroke="${sheen}" stroke-width="1.8" opacity="0.22" filter="url(#soft)"/>`,
-    // A few loose strands that catch the light.
-    style === "long" || style === "flowing"
-      ? `<path d="M37 16 C33 12 28 13 25 17 M63 15 C67 11 72 12 75 16 M30 30 C25 32 22 37 21 42 M70 30 C75 32 78 37 79 42" fill="none" stroke="${sheen}" stroke-width="0.3" opacity="0.6"/>`
-      : "",
-    adornment(look.adorn, accent),
-    earring(-1),
-    earring(1),
-    horn
-      ? `<path d="M40 30.5 C34.5 18.5 25.5 9.5 15.5 10.5 C24.5 14.5 30.5 21.5 35.2 32.2 Z" fill="url(#horn)" stroke="${shade(horn, -0.45)}" stroke-width="0.7"/>` +
-        `<path d="M60 30.5 C65.5 18.5 74.5 9.5 84.5 10.5 C75.5 14.5 69.5 21.5 64.8 32.2 Z" fill="url(#horn)" stroke="${shade(horn, -0.45)}" stroke-width="0.7"/>` +
-        `<path d="M35.2 27 q2.2 -0.6 3.2 0.8 M31.5 21.4 q2 -0.8 3 0.4 M27 16.6 q1.8 -0.8 2.6 0.2 M64.8 27 q-2.2 -0.6 -3.2 0.8 M68.5 21.4 q-2 -0.8 -3 0.4 M73 16.6 q-1.8 -0.8 -2.6 0.2" fill="none" stroke="${shade(horn, -0.5)}" stroke-width="0.4" opacity="0.8"/>` +
-        `<path d="M37 26 C33 19 27 14 21 12.5 M63 26 C67 19 73 14 79 12.5" fill="none" stroke="${shade(horn, 0.4)}" stroke-width="0.6" opacity="0.8"/>`
-      : "",
-    dark && look.headpiece === "crown" ? spikeCrown(accent) : "",
-    dark && look.headpiece === "circlet" ? filigree(31.6) : "",
-    dark && look.headpiece === "crown" ? "" : headpiece(look.headpiece, accent, rim),
+    // A collar that stands behind the neck; the neck, shoulders and her outfit.
+    reshape(outfitBack(outfit, accent), shouldersAt),
+    reshape(neck, { cx: 50, cy: 65, sx: 1 + sh("neckWidth") }),
+    reshape(shoulders, shouldersAt),
+    wildFront,
+    reshape(head, headAt),
     air ? tierGlow(tier) : "",
     `</g>`,
     `<circle cx="50" cy="50" r="48" fill="url(#${dark ? "vignetteDark" : "vignette"})"/>`,
@@ -1023,7 +1240,16 @@ export function portraitSvg(
     gem(97.4, 50, 1.4, rim),
     `</svg>`,
   ];
-  return parts.join("");
+  const svg = parts.join("");
+  return {
+    svg,
+    defs: svg.slice(svg.indexOf("<defs>") + 6, svg.indexOf("</defs>")),
+    back:
+      wildBack +
+      reshape(reshape(hairBack, { cx: 50, cy: 38, sx: 1 + hairVol, sy: 1 + hairVol * 0.6 }), headAt) +
+      (look.headpiece === "hood" ? hood(accent) : ""),
+    front: reshape(neck, { cx: 50, cy: 65, sx: 1 + sh("neckWidth") }) + wildFront + reshape(head, headAt),
+  };
 }
 
 /**
@@ -1068,7 +1294,62 @@ export function portraitUrl(
 
 const cache = new Map<string, string>();
 
-/** A queen's portrait from config.json in a mood, made once. */
+// ---- Looks changed by hand (the Atelier): laid over config.json's ----
+
+const custom = new Map<string, Look>();
+let yours: Look | null = null;
+let looksNow = 0;
+const lookSubs = new Set<() => void>();
+
+/** A queen's look now: the one made in the Atelier, or config.json's. */
+export function lookOf(queen: CourtQueenKey): Look {
+  return custom.get(queen) ?? CONFIG.court.queens[queen].look;
+}
+
+/** Your own look now: the one made in the Atelier, or the one config.json starts you with. */
+export function youLook(): Look {
+  return yours ?? CONFIG.court.atelier.you.look;
+}
+
+/**
+ * A look changed: a queen's (null: config.json's again) or your own ("you").
+ * Every portrait made before is forgotten, and whoever shows one is told.
+ */
+export function setLook(who: CourtQueenKey | "you", look: Look | null) {
+  if (who === "you") yours = look;
+  else if (look) custom.set(who, look);
+  else custom.delete(who);
+  cache.clear();
+  looksNow += 1;
+  for (const fn of lookSubs) fn();
+}
+
+/** A number that goes up whenever a look changes: a page that shows portraits draws again on it. */
+export function looksRev(): number {
+  return looksNow;
+}
+
+export function subscribeLooks(fn: () => void): () => void {
+  lookSubs.add(fn);
+  return () => {
+    lookSubs.delete(fn);
+  };
+}
+
+/** Your own portrait, in a mood, ringed in your look's colour. Made once. */
+export function youPortrait(o: PortraitOptions = {}): string {
+  const style = o.style ?? CONFIG.court.portraits.style;
+  const key = `you|${o.mood ?? "smile"}|${style}`;
+  let url = cache.get(key);
+  if (!url) {
+    const look = youLook();
+    url = portraitUrl(look, look.accent, "", { ...o, air: false, style });
+    cache.set(key, url);
+  }
+  return url;
+}
+
+/** A queen's portrait in a mood, from her look now, made once. */
 export function queenPortrait(queen: CourtQueenKey, o: PortraitOptions = {}): string {
   const tier = Math.max(0, Math.min(5, Math.floor(o.tier ?? 0)));
   const style = o.style ?? CONFIG.court.portraits.style;
@@ -1077,7 +1358,13 @@ export function queenPortrait(queen: CourtQueenKey, o: PortraitOptions = {}): st
   if (!url) {
     const q = CONFIG.court.queens[queen];
     const region = (CONFIG.court.places as Record<string, { region: string }>)[q.place]?.region;
-    url = portraitUrl(q.look, q.color, q.element, { ...o, tier, scene: q.place, region, style });
+    url = portraitUrl(lookOf(queen), q.color, q.element, {
+      ...o,
+      tier,
+      scene: q.place,
+      region,
+      style,
+    });
     cache.set(key, url);
   }
   return url;
@@ -1089,7 +1376,7 @@ export function queenAir(queen: CourtQueenKey, mood: Mood = "smile", tier = 0): 
   const key = `air|${queen}|${mood}|${t}`;
   let url = cache.get(key);
   if (url === undefined) {
-    const svg = portraitAirSvg(CONFIG.court.queens[queen].look, mood, t);
+    const svg = portraitAirSvg(lookOf(queen), mood, t);
     url = svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : "";
     cache.set(key, url);
   }
@@ -1103,17 +1390,14 @@ export function placeBanner(place: string): string {
   if (!url) {
     const places = CONFIG.court.places as Record<string, { region: string }>;
     const region = places[place]?.region ?? "realm";
-    const queen = Object.values(CONFIG.court.queens).find((q) => q.place === place);
+    const queen = (Object.keys(CONFIG.court.queens) as CourtQueenKey[]).find(
+      (q) => CONFIG.court.queens[q].place === place,
+    );
     const tint =
       (CONFIG.court.regions as Record<string, { tint: string }>)[region]?.tint ?? "#a855f7";
-    const svg = queen
-      ? sceneBanner(
-          place,
-          region,
-          queen.look.bg[0] ?? "",
-          queen.look.bg[1] ?? "",
-          queen.look.accent,
-        )
+    const look = queen ? lookOf(queen) : null;
+    const svg = look
+      ? sceneBanner(place, region, look.bg[0] ?? "", look.bg[1] ?? "", look.accent)
       : sceneBanner(place, region, shade(tint, -0.55), "#05020c", tint);
     url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     cache.set(key, url);

@@ -131,4 +131,13 @@ describe("swarm: background voices mixed into one", () => {
     assert.ok(p.peak > 0);
     assert.ok(Date.now() - t < 5000, "a second of 300 voices mixed in good time");
   });
+  it("never waits: a phrase not made yet, the voice says its last one again meanwhile", () => {
+    const first = flat(5, 0.4);
+    const sw = createSwarm([layer({ mode: "text" })], 3, 1000);
+    const p = sw.mix(20, (_v, ph) => (ph === 0 ? first : null));
+    // Phrase 1 is not made: no silence, phrase 0 again (and phrase 1 wanted).
+    assert.ok(Array.from(p.left).every((x) => Math.abs(x - 0.4) < 1e-6));
+    assert.equal(sw.wanted()[0]?.phrase, 1);
+    assert.equal(sw.stats().waiting, 0);
+  });
 });

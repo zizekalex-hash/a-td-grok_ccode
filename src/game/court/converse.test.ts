@@ -13,7 +13,9 @@ import {
   knownTaste,
   loadTalk,
   markTried,
+  canPour,
   newTalk,
+  opensUp,
   replyTo,
   talksLeft,
   talkVariety,
@@ -25,6 +27,7 @@ import {
 import { FEELING_KEYS, herAsks, TONE_KEYS } from "./talk.ts";
 
 const T = CONFIG.court.talk;
+const W = CONFIG.court.wine;
 
 /** A small seeded generator, so a test's talk is the same every run. */
 function seeded(seed: number): () => number {
@@ -56,6 +59,7 @@ function ctx(over: Partial<TalkContext> = {}): TalkContext {
     rival: "",
     wish: null,
     passes: 0,
+    bottles: 0,
     ...over,
   };
 }
@@ -292,7 +296,7 @@ describe("the talk screen: variety, and what a save keeps", () => {
     const back = newSave();
     loadTalk(back, JSON.parse(JSON.stringify(save)));
     assert.deepEqual(back.tried.azshara, ["humble"]);
-    assert.deepEqual(back.sound, { phrase: true, lines: true });
+    assert.deepEqual([back.sound.phrase, back.sound.lines], [true, true]);
     // A save from before the talk screen, and a broken one.
     const old = newSave();
     loadTalk(old, {});
@@ -301,6 +305,208 @@ describe("the talk screen: variety, and what a save keeps", () => {
     loadTalk(old, { tried: { jaina: ["sweet", "nonsense", 3] }, talked: { day: "x", count: { jaina: -4 } }, sound: { phrase: false } });
     assert.deepEqual(old.tried.jaina, ["sweet"]);
     assert.equal(old.talked.count.jaina, 0);
-    assert.deepEqual(old.sound, { phrase: false, lines: true });
+    assert.deepEqual([old.sound.phrase, old.sound.lines], [false, true]);
+  });
+});
+
+describe("the talk screen: long talks never break", () => {
+  it("always has something to say next, in whole words, for every queen in every state", () => {
+    const bad = /[{}]|undefined|null|NaN|\[object/;
+    const states: Partial<TalkContext>[] = [
+      {},
+      { tier: 0 },
+      { tier: 5, feeling: "satisfied", passes: 300 },
+      { jealous: true, rival: "Azshara", feeling: "jealous" },
+      { wish: { count: 15, skill: "Lore" } },
+      { wish: { count: 40, skill: "Charisma" }, tier: 4, feeling: "seeking" },
+      { feeling: "lonely", tier: 3 },
+      { feeling: "distant", tier: 1 },
+      { bottles: 3, tier: 3 },
+      { bottles: 1, tier: 5, feeling: "satisfied", passes: 300 },
+    ];
+    let turns = 0;
+    for (const q of QUEEN_KEYS) {
+      states.forEach((over, k) => {
+        const rand = seeded(1000 + QUEEN_KEYS.indexOf(q) * 31 + k);
+        const c = ctx(over);
+        const t = newTalk(q);
+        // A long talk: whatever comes up, never goodbye till the end.
+        for (let i = 0; i < 60; i++) {
+          const list = choicesFor(t, c, rand);
+          assert.ok(list.length >= 2, `${q}/${k}: turn ${i} offers something besides goodbye`);
+          assert.equal(new Set(list.map((x) => x.id)).size, list.length, `${q}/${k}: no choice twice`);
+          for (const x of list)
+            assert.ok(x.text.trim() && !bad.test(x.text), `${q}/${k}: choice "${x.text}"`);
+          const others = list.filter((x) => x.kind !== "bye");
+          const pick = others[Math.floor(rand() * others.length)]!;
+          const r = replyTo(t, pick, c, rand);
+          assert.ok(r.lines.length >= 1, `${q}/${k}: she answers "${pick.text}"`);
+          for (const line of r.lines)
+            assert.ok(line.trim() && !bad.test(line), `${q}/${k}: her line "${line}"`);
+          assert.equal(r.ended, false, `${q}/${k}: only goodbye ends a talk`);
+          assert.ok(Number.isFinite(r.affection), `${q}/${k}: affection is a number`);
+          turns += 1;
+        }
+        // A question of hers is answered first (the screen's Leave button aside); then goodbye is there.
+        let list = choicesFor(t, c, rand);
+        if (!list.some((x) => x.kind === "bye")) {
+          assert.ok(list.every((x) => x.kind === "reply"), `${q}/${k}: only her question holds goodbye back`);
+          replyTo(t, list[0]!, c, rand);
+          list = choicesFor(t, c, rand);
+        }
+        const bye = list.find((x) => x.kind === "bye");
+        assert.ok(bye, `${q}/${k}: goodbye is there once her question is answered`);
+        const last = replyTo(t, bye, c, rand);
+        assert.equal(last.ended, true);
+        assert.ok(last.lines.length >= 1 && !bad.test(last.lines.join(" ")), `${q}/${k}: her goodbye`);
+      });
+    }
+    assert.equal(turns, QUEEN_KEYS.length * states.length * 60);
+  });
+});
+
+describe("the talk screen: crystal wine", () => {
+  const bottle = (over: Partial<TalkContext> = {}) => ctx({ bottles: 2, tier: 3, ...over });
+
+  it("offers the bottle first, only with a bottle, from the tier, and never while she is jealous", () => {
+    const q: QueenKey = "azshara";
+    assert.equal(find(choicesFor(newTalk(q), ctx(), seeded(1)), "pour").length, 0, "no bottle, nothing to pour");
+    const list = choicesFor(newTalk(q), bottle(), seeded(1));
+    assert.equal(list[0]!.kind, "pour", "the bottle comes first");
+    assert.equal(find(list, "pour").length, 1);
+    assert.equal(list[list.length - 1]!.kind, "bye", "goodbye still comes last");
+    assert.ok(list[0]!.text.trim() && !/[{}]/.test(list[0]!.text));
+    assert.equal(canPour(newTalk(q), bottle()), true);
+    assert.equal(canPour(newTalk(q), bottle({ tier: W.minTier - 1 })), false, "she is not fond enough yet");
+    assert.equal(canPour(newTalk(q), bottle({ jealous: true, rival: "Jaina" })), false, "she is jealous");
+    assert.equal(canPour(newTalk(q), bottle({ bottles: 0 })), false);
+  });
+
+  it("holds the bottle back while she waits for your answer to her question", () => {
+    const q: QueenKey = "ysera";
+    const t = newTalk(q);
+    t.asked = herAsks()[0]!;
+    assert.ok(choicesFor(t, bottle(), seeded(2)).every((c) => c.kind === "reply"));
+    t.asked = null;
+    assert.equal(choicesFor(t, bottle(), seeded(2))[0]!.kind, "pour");
+  });
+
+  it("pours: affection outside the day's limit, a bottle used, then deeper things to ask for a few sips", () => {
+    for (const q of QUEEN_KEYS) {
+      const rand = seeded(5 + QUEEN_KEYS.indexOf(q));
+      const t = newTalk(q);
+      const c = bottle();
+      const pour = choicesFor(t, c, rand)[0]!;
+      const r = replyTo(t, pour, c, rand);
+      assert.equal(r.poured, true, q);
+      assert.equal(r.free, true);
+      assert.equal(r.affection, W.pour);
+      assert.equal(t.wine, W.sips);
+      assert.equal(r.lines.length, 1);
+      assert.ok(r.lines[0]!.trim() && !/[{}]/.test(r.lines[0]!), `${q}: "${r.lines[0]}"`);
+      const asked: string[] = [];
+      for (let sip = 1; sip <= W.sips; sip++) {
+        const list = choicesFor(t, c, rand);
+        assert.equal(find(list, "exotic").length, W.choices, `${q}: sip ${sip} offers ${W.choices} deeper things`);
+        assert.equal(list.length, W.choices + 1, "only those, and goodbye");
+        assert.equal(list[list.length - 1]!.kind, "bye");
+        assert.equal(find(list, "pour").length, 0, "the bottle is open already");
+        for (const x of list) assert.ok(x.text.trim() && !/[{}]/.test(x.text), `${q}: "${x.text}"`);
+        const ask = find(list, "exotic")[0]!;
+        asked.push(ask.topic!);
+        const s = replyTo(t, ask, c, rand);
+        assert.equal(s.free, true);
+        assert.equal(s.poured, false);
+        assert.equal(s.affection, W.sipAffection);
+        assert.equal(t.wine, W.sips - sip);
+        assert.equal(s.lines.length, sip === W.sips ? 2 : 1, `${q}: the last sip empties the bottle, and she says so`);
+        for (const line of s.lines) assert.ok(line.trim() && !/[{}]|undefined|null|NaN/.test(line), `${q}: "${line}"`);
+      }
+      assert.equal(new Set(asked).size, W.sips, `${q}: each deeper thing is asked once while others are left`);
+      // The usual choices return; the bottle is not poured twice in a talk.
+      const after = choicesFor(t, c, rand);
+      assert.ok(find(after, "topic").length > 0, `${q}: the usual topics are back`);
+      assert.equal(find(after, "exotic").length, 0);
+      assert.equal(find(after, "pour").length, 0, `${q}: once a talk`);
+      assert.equal(canPour(newTalk(q), c), true, "but a new talk can pour another");
+    }
+  });
+
+  it("adds no line of her own and asks nothing back over the wine, even where the dice would", () => {
+    const q: QueenKey = "sylvanas";
+    const zero = () => 0;
+    const t = newTalk(q);
+    const c = bottle();
+    const r = replyTo(t, choicesFor(t, c, zero)[0]!, c, zero);
+    assert.equal(r.lines.length, 1);
+    assert.equal(t.asked, null);
+    const s = replyTo(t, find(choicesFor(t, c, zero), "exotic")[0]!, c, zero);
+    assert.equal(s.lines.length, 1);
+    assert.equal(t.asked, null);
+  });
+
+  it("goodbye ends the talk over the wine as it does any other", () => {
+    const q: QueenKey = "valeera";
+    const rand = seeded(9);
+    const t = newTalk(q);
+    const c = bottle();
+    replyTo(t, choicesFor(t, c, rand)[0]!, c, rand);
+    const bye = choicesFor(t, c, rand).find((x) => x.kind === "bye")!;
+    assert.equal(replyTo(t, bye, c, rand).ended, true);
+  });
+
+  it("keeps the bottles in a save, read defensively", () => {
+    const save = newSave();
+    assert.equal(save.wine, W.start);
+    save.wine = 3;
+    save.wineShared.jaina = 2;
+    const back = newSave();
+    loadTalk(back, JSON.parse(JSON.stringify(save)));
+    assert.equal(back.wine, 3);
+    assert.equal(back.wineShared.jaina, 2);
+    const old = newSave();
+    loadTalk(old, {});
+    assert.equal(old.wine, W.start, "a save from before the wine");
+    assert.equal(old.wineShared.ysera, 0);
+    loadTalk(old, { wine: 999, wineShared: { jaina: -3, ysera: "x", tyrande: 7.9 } });
+    assert.equal(old.wine, W.max, "never more than the bag holds");
+    assert.deepEqual([old.wineShared.jaina, old.wineShared.ysera, old.wineShared.tyrande], [0, 0, 7]);
+    loadTalk(old, { wine: -5 });
+    assert.equal(old.wine, 0);
+    loadTalk(old, { wine: "lots" });
+    assert.equal(old.wine, W.start);
+  });
+});
+
+describe("the talk screen: opening up over the wine, on a date night", () => {
+  it("says something deeper in her own voice, never the same thing twice, until there is no more", () => {
+    for (const q of QUEEN_KEYS) {
+      const rand = seeded(21 + QUEEN_KEYS.indexOf(q));
+      const c = ctx({ tier: 3 });
+      const told: string[] = [];
+      const lines: string[] = [];
+      for (let i = 0; i < 100; i++) {
+        const line = opensUp(q, told, c, rand);
+        if (line === null) break;
+        assert.ok(line.trim() && !/[{}]|undefined|null|NaN/.test(line), `${q}: "${line}"`);
+        lines.push(line);
+      }
+      assert.ok(lines.length >= 12, `${q}: at least a dozen before it runs out (${lines.length})`);
+      assert.equal(told.length, lines.length, "each one said is remembered");
+      assert.equal(new Set(told).size, told.length, `${q}: no answer twice`);
+      assert.equal(opensUp(q, told, c, rand), null, `${q}: and then nothing more`);
+    }
+  });
+
+  it("is her voice, not the same for every queen", () => {
+    const a = new Set<string>();
+    const b = new Set<string>();
+    for (let i = 0; i < 30; i++) {
+      const line = (q: QueenKey, set: Set<string>) => set.add(opensUp(q, [], ctx({ tier: 4 }), seeded(100 + i)) ?? "");
+      line("sylvanas", a);
+      line("eltharia", b);
+    }
+    assert.ok([...a].every((l) => l.trim()) && [...b].every((l) => l.trim()));
+    assert.notDeepEqual([...a].sort(), [...b].sort(), "the same words, dressed differently for each queen");
   });
 });

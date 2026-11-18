@@ -64,6 +64,13 @@ import {
 } from "@/game/repBubble";
 import { voiceEngines, voiceHere, voiceList, type VoiceInfo } from "@/game/voice";
 import {
+  prepareVoiceRaw,
+  subscribeVoiceRaw,
+  voiceBytesFor,
+  voiceRawKey,
+  voiceRawLine,
+} from "@/game/voiceRaw";
+import {
   finalKind,
   finalPath,
   startStereo,
@@ -131,6 +138,7 @@ import {
   phraseBytes,
   soundOf,
   soundRate,
+  type VoiceRaw,
   phrasesOf,
   cleanPhrase,
   rawSamples,
@@ -293,6 +301,16 @@ function useEmitter(text: string, settings: RehearseSettings) {
     if (canvas.current) drawPicture(canvas.current, text, { rgb, gray, bits });
   }, [text, rgb, gray, bits]);
 
+  // The robot voices as raw bytes: made for this phrase while the sound asks for them, and taken in when ready.
+  const [, voicesIn] = useState(0);
+  useEffect(() => subscribeVoiceRaw(() => voicesIn((n) => n + 1)), []);
+  const voiceKey = settings.voiceRaw !== "off" && settings.voice ? voiceRawKey(text, settings) : "";
+  useEffect(() => {
+    if (voiceKey && settings.sound && text) prepareVoiceRaw(text, settings);
+    // The key stands for the text and every heard layer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceKey, settings.voiceRaw, settings.sound]);
+
   const halt = () => {
     window.clearTimeout(timer.current);
     if (canvas.current) canvas.current.style.visibility = "hidden";
@@ -311,6 +329,7 @@ function useEmitter(text: string, settings: RehearseSettings) {
   };
 
   const signal = (ctx: AudioContext) => {
+    const voices = settings.voiceRaw !== "off" && settings.voice ? voiceBytesFor(text, settings) : null;
     const key = JSON.stringify([
       ctx.sampleRate,
       settings.signalMs,
@@ -321,10 +340,12 @@ function useEmitter(text: string, settings: RehearseSettings) {
       settings.plays,
       settings.topSpeed,
       text,
+      settings.voiceRaw,
+      voices?.tag ?? "",
     ]);
     if (made.current?.key !== key) {
       const rate = soundRate(ctx.sampleRate, settings);
-      const data = soundOf(text, rate, settings);
+      const data = soundOf(text, rate, { ...settings, voiceBytes: voices?.bytes ?? null });
       const buf = ctx.createBuffer(1, data.length, rate);
       buf.copyToChannel(data, 0);
       made.current = { key, buf };
@@ -576,6 +597,22 @@ function Ask({ text, title, info }: { text: string; title?: string; info: React.
  * one rep of the whole phrase; hold it to keep its sound and picture on. Each
  * phrase keeps its own count; reset one and the phrase stays.
  */
+/** How the phrase's voices as raw binary stand: being made by the phone, in, or why not. */
+function VoiceRawNote({ text, set }: { text: string; set: RehearseSettings }) {
+  const [, again] = useState(0);
+  useEffect(() => subscribeVoiceRaw(() => again((n) => n + 1)), []);
+  const line = voiceRawLine(text, set);
+  if (!line) return null;
+  return (
+    <p
+      className={`text-[0.65rem] leading-snug ${line.bad ? "text-danger" : "text-muted"}`}
+      role="status"
+    >
+      {line.text}
+    </p>
+  );
+}
+
 export function RehearseTab() {
   const lines = useGame((s) => s.lines);
   const texts = useGame((s) => s.texts);
@@ -686,36 +723,14 @@ export function RehearseTab() {
   }, [gateAt, batchWait]);
 
   // Nonstop: the current phrase's sound all the time (on after the tab closes too, with Background on).
+  // It is given the whole settings: the robot voices as raw binary come from their layers, and playing
+  // again with the same ones changes nothing.
   const phraseText = activeText;
-  const { nonstop, sound, signalMs, amp, rawRate, mode, plays, topSpeed, encoding, paused } = set;
+  const { nonstop, sound, paused } = set;
   useEffect(() => {
-    if (nonstop && sound && phraseText && !paused) {
-      playNonstop(phraseText, {
-        signalMs,
-        amp,
-        rawRate,
-        mode,
-        plays,
-        topSpeed,
-        encoding,
-      });
-    } else {
-      playNonstop(null);
-    }
-  }, [
-    nonstop,
-    sound,
-    phraseText,
-    signalMs,
-    amp,
-    rawRate,
-    mode,
-    plays,
-    topSpeed,
-    encoding,
-    paused,
-    set.ttsRate,
-  ]);
+    if (nonstop && sound && phraseText && !paused) playNonstop(phraseText, set);
+    else playNonstop(null);
+  }, [nonstop, sound, phraseText, paused, set]);
   // The robot voice: the current phrase said, over and over (on after the tab closes too, with Background on).
   const [voiceNote, setVoiceNote] = useState("");
   const voiceKey = JSON.stringify([
@@ -1945,7 +1960,7 @@ export function RehearseTab() {
           <fieldset disabled={locked} className="min-w-0">
             <div className="mt-2">
               <Toggle
-                label={`Nonstop: its sound all the time${mode === "cycle" ? " (rising cycle)" : ""}`}
+                label={`Nonstop: its sound all the time${set.mode === "cycle" ? " (rising cycle)" : ""}`}
                 on={nonstop}
                 flip={() => setOpt({ nonstop: !nonstop, sound: true })}
               />
@@ -2179,6 +2194,36 @@ export function RehearseTab() {
               </button>
             ))}
           </div>
+          <p className="pt-1 text-[0.65rem] text-muted">
+            The robot voices as raw binary too (every layer and copy mixed as one, its bytes read as samples):
+          </p>
+          <div
+            className="grid grid-cols-4 gap-1"
+            role="radiogroup"
+            aria-label="The robot voices as raw binary"
+          >
+            {(
+              [
+                ["off", "Off"],
+                ["bits", "Raw bits"],
+                ["bytes", "Raw bytes"],
+                ["both", "Both, mixed"],
+              ] as [VoiceRaw, string][]
+            ).map(([e, label]) => (
+              <button
+                key={e}
+                type="button"
+                role="radio"
+                aria-checked={set.voiceRaw === e}
+                data-on={set.voiceRaw === e}
+                className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+                onClick={() => setOpt({ voiceRaw: e })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <VoiceRawNote text={activeText} set={set} />
           {set.mode === "cycle" && (
             <>
               <Num

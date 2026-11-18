@@ -46,6 +46,19 @@ export type SoundMode = "steady" | "cycle";
 export type SoundEncoding = "u8" | "pcm32" | "both";
 export const SOUND_ENCODINGS: SoundEncoding[] = ["u8", "pcm32", "both"];
 
+/**
+ * The robot voices as raw binary too: every heard layer and copy saying the phrase,
+ * mixed as one, its audio's own bytes (the mix's float samples as they are in memory,
+ * nothing re-encoded: no PCM, that is for the text) read as raw samples like the
+ * phrase's own bytes, then mixed into its sound. Read as raw bytes (each byte a
+ * sample), as raw bits (each bit a sample, 1 up and 0 down), or both mixed. "off":
+ * the sound is the phrase's own bytes alone, as it was.
+ */
+export type VoiceRaw = "off" | "bits" | "bytes" | "both";
+export const VOICE_RAWS: VoiceRaw[] = ["off", "bits", "bytes", "both"];
+/** What 1.0.129 saved, read as it is now (it had PCM ways to read the voices; they are the raw bytes now). */
+const VOICE_RAW_BEFORE: Record<string, VoiceRaw> = { u8: "bytes", pcm16: "bytes", pcm32: "bytes", all: "both" };
+
 export interface RehearseSettings {
   /** The phrase's sound on a tap. */
   sound: boolean;
@@ -57,6 +70,8 @@ export interface RehearseSettings {
   rawRate: number;
   /** The bytes as 8-bit samples, 32-bit samples, or both. */
   encoding: SoundEncoding;
+  /** The robot voices' mix as raw bytes too, mixed into the sound (see VoiceRaw). */
+  voiceRaw: VoiceRaw;
   /** Steady or a rising cycle, its plays and its top speed. */
   mode: SoundMode;
   plays: number;
@@ -292,6 +307,7 @@ export function defaultSettings(): RehearseSettings {
     amp: 0.9,
     rawRate: 8000,
     encoding: "u8",
+    voiceRaw: "off",
     mode: "steady",
     plays: 9,
     topSpeed: 9,
@@ -435,6 +451,9 @@ export function loadRehearse(data: unknown): RehearseState {
   u.rawRate = clampRawRate(num(t.rawRate, u.rawRate));
   if (SOUND_ENCODINGS.includes(t.encoding as SoundEncoding))
     u.encoding = t.encoding as SoundEncoding;
+  if (VOICE_RAWS.includes(t.voiceRaw as VoiceRaw)) u.voiceRaw = t.voiceRaw as VoiceRaw;
+  else if (typeof t.voiceRaw === "string" && t.voiceRaw in VOICE_RAW_BEFORE)
+    u.voiceRaw = VOICE_RAW_BEFORE[t.voiceRaw]!;
   if (t.mode === "steady" || t.mode === "cycle") u.mode = t.mode;
   u.plays = clampPlays(num(t.plays, u.plays));
   u.topSpeed = clampTopSpeed(num(t.topSpeed, u.topSpeed));
@@ -630,6 +649,9 @@ export function phraseBytes(text: string): Uint8Array {
   return new TextEncoder().encode(text.trim() || "·");
 }
 
+/** The most bytes read bit by bit (a bit a sample: 8 floats a byte), the first of a long sound. */
+export const MAX_BIT_BYTES = 262_144;
+
 /**
  * The bytes as raw samples, -1 to 1, around their own middle (their average
  * taken off, so the wave swings both ways). 8-bit: each byte a sample; bytes all
@@ -640,8 +662,17 @@ export function phraseBytes(text: string): Uint8Array {
  */
 export function rawSamples(
   bytes: Uint8Array,
-  encoding: Exclude<SoundEncoding, "both"> = "u8",
+  encoding: Exclude<SoundEncoding, "both"> | "bits" = "u8",
 ): Float32Array<ArrayBuffer> {
+  if (encoding === "bits") {
+    // Each bit a sample, the first bit of a byte first: 1 up and 0 down, centred. Long ones are read to a limit.
+    const n = Math.min(bytes.length, MAX_BIT_BYTES);
+    const raw = new Float32Array(n * 8);
+    for (let i = 0; i < n; i++) for (let k = 0; k < 8; k++) raw[i * 8 + k] = (bytes[i]! >> (7 - k)) & 1 ? 1 : -1;
+    const mean = raw.reduce((m, x) => m + x, 0) / Math.max(1, raw.length);
+    for (let i = 0; i < raw.length; i++) raw[i] = raw[i]! - mean;
+    return raw.length ? raw : new Float32Array(8);
+  }
   if (encoding === "pcm32") {
     const n = Math.ceil(bytes.length / 4);
     const padded = new Uint8Array(n * 4);
@@ -684,37 +715,25 @@ export function signalFit(
   return { naturalMs, speed, plays: (signalMs * speed) / naturalMs };
 }
 
+/** The pieces a sound's voices come in: raw bytes of the robot voices, and how they are read. */
+export type VoiceOpts = { voiceRaw?: VoiceRaw; voiceBytes?: Uint8Array | null };
+
 /**
- * The phrase's sound at a sample rate, signalMs long: its raw samples, repeated
- * or sped up to fit (and `faster` times faster again, pitch and pace together),
- * then raised (or lowered) so the loudest point is amp. Past half the sample
- * rate a sound cannot go higher: faster still folds back down (aliasing).
+ * Raw samples fitted to a sound signalMs long at a sample rate: repeated or sped up
+ * to fit (and `faster` times faster again, pitch and pace together), then raised (or
+ * lowered) so the loudest point is amp. Past half the sample rate a sound cannot go
+ * higher: faster still folds back down (aliasing).
  */
-export function phraseSignal(
-  text: string,
+export function fitRaw(
+  raw: Float32Array,
   rate: number,
-  opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate"> & { encoding?: SoundEncoding },
+  opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate">,
   faster = 1,
 ): Float32Array<ArrayBuffer> {
-  const enc = opts.encoding ?? "u8";
-  if (enc === "both") {
-    // Each at the same peak, mixed, then the mix to the peak asked for.
-    const a = phraseSignal(text, rate, { ...opts, encoding: "u8", amp: 1 }, faster);
-    const b = phraseSignal(text, rate, { ...opts, encoding: "pcm32", amp: 1 }, faster);
-    let peak = 0;
-    for (let i = 0; i < a.length; i++) {
-      a[i] = a[i]! + (b[i] ?? 0);
-      peak = Math.max(peak, Math.abs(a[i]!));
-    }
-    const gain = peak > 0 ? opts.amp / peak : 0;
-    for (let i = 0; i < a.length; i++) a[i] = a[i]! * gain;
-    return a;
-  }
-  const raw = rawSamples(phraseBytes(text), enc);
   const len = raw.length;
   const { speed } = signalFit(len, opts.rawRate, opts.signalMs);
   const out = new Float32Array(Math.max(1, Math.round((rate * opts.signalMs) / 1000)));
-  // Raw samples a sample of the output: past the end it starts the phrase again.
+  // Raw samples a sample of the output: past the end it starts again.
   const stride = (opts.rawRate * speed * Math.max(1e-6, faster)) / rate;
   let peak = 0;
   for (let i = 0; i < out.length; i++) {
@@ -730,6 +749,86 @@ export function phraseSignal(
   const gain = peak > 0 ? opts.amp / peak : 0;
   for (let i = 0; i < out.length; i++) out[i] = out[i]! * gain;
   return out;
+}
+
+/** Signals at one peak, mixed, then the mix brought to the peak asked for. */
+function mixSignals(parts: Float32Array<ArrayBuffer>[], amp: number): Float32Array<ArrayBuffer> {
+  const out = parts[0]!;
+  let peak = 0;
+  for (let i = 0; i < out.length; i++) {
+    let v = out[i]!;
+    for (let k = 1; k < parts.length; k++) v += parts[k]![i] ?? 0;
+    out[i] = v;
+    peak = Math.max(peak, Math.abs(v));
+  }
+  const gain = peak > 0 ? amp / peak : 0;
+  for (let i = 0; i < out.length; i++) out[i] = out[i]! * gain;
+  return out;
+}
+
+/** The ways the robot voices' bytes are read as samples, for a VoiceRaw choice (none for "off"). */
+export function voiceReadings(mode: VoiceRaw | undefined): ("u8" | "bits")[] {
+  return mode === "both" ? ["bits", "u8"] : mode === "bits" ? ["bits"] : mode === "bytes" ? ["u8"] : [];
+}
+
+/**
+ * The robot voices as a sound: their raw bytes read as samples, each way asked for
+ * (raw bytes, raw bits; both mixed at one peak), fitted like the phrase's own.
+ */
+export function voicesSignal(
+  bytes: Uint8Array,
+  mode: VoiceRaw,
+  rate: number,
+  opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate">,
+  faster = 1,
+): Float32Array<ArrayBuffer> {
+  const readings = voiceReadings(mode);
+  const parts = readings.map((r) =>
+    fitRaw(rawSamples(bytes, r), rate, { ...opts, amp: 1 }, faster),
+  );
+  if (!parts.length) return new Float32Array(Math.max(1, Math.round((rate * opts.signalMs) / 1000)));
+  return mixSignals(parts, opts.amp);
+}
+
+/**
+ * The robot voices' mix as raw binary: its samples' own bytes, as they are in
+ * memory (32-bit floats, little-endian), nothing re-encoded and nothing raised or
+ * lowered. A sample that is not a number is 0.
+ */
+export function mixBytes(samples: Float32Array): Uint8Array {
+  const out = new Uint8Array(samples.length * 4);
+  const view = new DataView(out.buffer);
+  for (let i = 0; i < samples.length; i++) {
+    const v = samples[i]!;
+    view.setFloat32(i * 4, Number.isFinite(v) ? v : 0, true);
+  }
+  return out;
+}
+
+/**
+ * The phrase's sound at a sample rate, signalMs long: its raw samples (see fitRaw),
+ * and, with the robot voices' bytes given and a voiceRaw asked for, their sound
+ * mixed in (each at the same peak, then the mix brought to amp).
+ */
+export function phraseSignal(
+  text: string,
+  rate: number,
+  opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate"> & { encoding?: SoundEncoding } & VoiceOpts,
+  faster = 1,
+): Float32Array<ArrayBuffer> {
+  if (opts.voiceBytes && voiceReadings(opts.voiceRaw).length) {
+    const own = phraseSignal(text, rate, { ...opts, voiceBytes: null, amp: 1 }, faster);
+    const voices = voicesSignal(opts.voiceBytes, opts.voiceRaw!, rate, { ...opts, amp: 1 }, faster);
+    return mixSignals([own, voices], opts.amp);
+  }
+  const enc = opts.encoding ?? "u8";
+  if (enc === "both") {
+    // Each at the same peak, mixed, then the mix to the peak asked for.
+    const a = phraseSignal(text, rate, { ...opts, encoding: "u8", amp: 1 }, faster);
+    const b = phraseSignal(text, rate, { ...opts, encoding: "pcm32", amp: 1 }, faster);
+    return mixSignals([a, b], opts.amp);
+  }
+  return fitRaw(rawSamples(phraseBytes(text), enc), rate, opts, faster);
 }
 
 /** A rising cycle's speeds: plays of them, evenly from x1 to topSpeed. */
@@ -749,7 +848,7 @@ export function cycleSignal(
   rate: number,
   opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate" | "plays" | "topSpeed"> & {
     encoding?: SoundEncoding;
-  },
+  } & VoiceOpts,
 ): Float32Array<ArrayBuffer> {
   const speeds = cycleSpeeds(opts.plays, opts.topSpeed);
   const each = Math.max(1, Math.min(opts.signalMs, MAX_CYCLE_MS / speeds.length));
@@ -766,7 +865,7 @@ export function cycleSignal(
 export type SoundOpts = Pick<
   RehearseSettings,
   "signalMs" | "amp" | "rawRate" | "mode" | "plays" | "topSpeed"
-> & { encoding?: SoundEncoding };
+> & { encoding?: SoundEncoding } & VoiceOpts;
 
 /** How long the sound as the settings shape it lasts (ms): one play, or a whole cycle. */
 export function soundMs(opts: SoundOpts): number {

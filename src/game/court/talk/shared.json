@@ -791,7 +791,7 @@
     ]
   },
   "ask": {
-    "_about": "Other things you can say in the talk screen. more: a follow-up on the topic just talked about. bond: about a sister, friend or rival of hers ({other}). wish: asking for today's wish. memory: what you have recited for her. feeling: how she is. bye: your goodbye. {queen} is her name.",
+    "_about": "Other things you can say in the talk screen. more: a follow-up on the topic just talked about. bond: about a sister, friend or rival of hers ({other}). wish: asking for today's wish. memory: what you have recited for her. feeling: how she is. bye: your goodbye. pour: what you say to pour her crystal wine (the exotic conversation). {queen} is her name.",
     "more": [
       "Tell me more.",
       "Go on.",
@@ -838,6 +838,14 @@
       "I have phrases to recite. For you, of course.",
       "Don't miss me too much.",
       "Duty calls. I'd rather stay."
+    ],
+    "pour": [
+      "I brought something rare. Crystal wine. Share it with me, {queen}?",
+      "Will you sit and drink a glass of crystal wine with me?",
+      "A bottle of crystal wine, {queen}, saved for a night like this.",
+      "I earned this one text at a time. Crystal wine. For you.",
+      "May I pour you something? It glows.",
+      "Let's make this a proper evening. Crystal wine?"
     ]
   },
   "answers": {
@@ -955,7 +963,133 @@
       "The door stays open for you.",
       "Until tomorrow. I'll hold you to it.",
       "Leave if you must. Think of me if you can."
+    ],
+    "pour": [
+      "Crystal wine? You've been busy, {pet}. Pour. Slowly.",
+      "Oh, that's rare. And it glows. Pour, and don't stop me if I get honest.",
+      "You remembered how I like to be spoiled. Fill my glass.",
+      "A very good bottle. Tonight we may say things we'd regret saying sober.",
+      "Here, by the light. Pour, and tell me whatever you like.",
+      "Well. That changes the evening completely. Sit closer."
+    ],
+    "empty": [
+      "The bottle is empty, but the evening isn't. Remember this.",
+      "Last drop, {pet}. I'll be warm about this for days.",
+      "Empty already. That went quickly. I'll be thinking of it {time}.",
+      "That was the end of the bottle. Not of me being glad you came.",
+      "We've drunk it dry. Well. Another text, another bottle."
     ]
+  },
+  "exotic": {
+    "_about": "The exotic conversation: what you can ask while a bottle of crystal wine is open (the talk screen), and what any queen answers in her own voice (after you recite a phrase for her; each answer must stand alone, since on a date night she also says them by herself between the phrases). Topics like topics, but deeper and more intimate. Each exchange is worth court.wine.sipAffection.",
+    "secret": {
+      "ask": ["Tell me a secret nobody knows.", "What have you never told anyone?", "Is there something you only tell the dark?"],
+      "answer": [
+        "I count the days between your visits. I have never admitted that, not even to myself.",
+        "There's a door in my hall I've never opened. I think I'm waiting for the right company.",
+        "I practise your name when I'm alone, {pet}. Quietly, so the walls don't learn it.",
+        "Once I wished to be ordinary for one night. This is that night."
+      ]
+    },
+    "dream": {
+      "ask": ["What do you dream about?", "Do you remember your dreams?", "What do you see when you sleep?"],
+      "answer": [
+        "I keep dreaming of a long stair that ends in warm light. Lately someone is waiting at the top. You, I think.",
+        "I dream of water, mostly, and a bell I can never find. I wake up humming it.",
+        "I dream of flying low over somewhere I've never been. It always feels like coming home.",
+        "I dream that I forget how to speak and you answer for me. I wake up smiling."
+      ]
+    },
+    "world": {
+      "ask": ["If we could go anywhere, where?", "Where would you take me if the Court didn't exist?", "Show me somewhere you've never shown anyone."],
+      "answer": [
+        "I'd take you somewhere with no walls and a very large sky, and nothing to recite but our own words.",
+        "I'd take you to a shore at dusk where the sand is warm and the tide carries lanterns. You'd hate it. You'd stay all night.",
+        "I'd walk you down the old road past {place}, at dawn, before anyone is up.",
+        "I'd go anywhere at all, if you'd hold my hand on the way."
+      ]
+    },
+    "legend": {
+      "ask": ["Tell me a legend of your people.", "What's the oldest story you know?", "Is there an old tale about us?"],
+      "answer": [
+        "They say a crystal falls once a century, and whoever drinks its light speaks only truth until dawn. I am not saying it's tonight.",
+        "There's a story of a queen who traded her crown for a single song. Nobody agrees whether she regretted it.",
+        "There was a lantern that never went out, because someone always came to light it again. I think about that lantern.",
+        "Before the Court, the stars were taught their places one at a time. The last one refused. It is still wandering. I like that one best."
+      ]
+    },
+    "almost": {
+      "ask": ["What would you be if you weren't a queen?", "Who were you before the crown?", "Do you ever wish you were someone else?"],
+      "answer": [
+        "If I weren't a queen I'd be a lighthouse keeper, I think. Very far from everyone, with someone who knew to climb the stairs.",
+        "Some nights I think I'd have liked to be a singer in a bad tavern, loved by six people. It would have been enough.",
+        "Sometimes I wish I could walk through the market unrecognised. I'd buy you something foolish.",
+        "I'd want exactly this, {pet}, only with fewer eyes on me."
+      ]
+    },
+    "night": {
+      "ask": ["What would a perfect night look like?", "Describe your ideal evening.", "How would you spend a night with nothing owed?"],
+      "answer": [
+        "My perfect night is a warm room, no clocks, and you reciting badly on purpose just to hear me laugh.",
+        "My perfect night is a walk with no destination and a promise to stop only when we've run out of things to say. We never would.",
+        "I'd ask for something small tonight: a candle, your voice, the rest of the world gone quiet.",
+        "My perfect night has a window and a long view, and nobody who needs me for anything."
+      ]
+    },
+    "weakness": {
+      "ask": ["What is your weakness?", "What could undo you?", "Is there anything that can break you?"],
+      "answer": [
+        "My weakness is kindness, offered without a price. It undoes me every time. Be careful with that.",
+        "What undoes me is being seen exactly as I am, and having you stay anyway. You're doing it now, which is a problem.",
+        "A quiet voice in the dark saying my name as if it were ordinary: that undoes me.",
+        "The thought that this ends. Pour me another before I say more."
+      ]
+    },
+    "first": {
+      "ask": ["When did you first notice me?", "What did you think when we first met?", "Do you remember our first meeting?"],
+      "answer": [
+        "I noticed you the day you tripped over a phrase and recovered with such dignity that I decided to keep watching.",
+        "I noticed you when you looked at {place} like it was worth looking at. Nobody does that.",
+        "I thought: another one who will recite once and vanish. I was gloriously wrong.",
+        "Honestly? When we met I thought you were lost. Then you stayed. That was the moment."
+      ]
+    },
+    "song": {
+      "ask": ["Sing me something of yours.", "Is there a song you'd sing for me?", "What does your people's music sound like?"],
+      "answer": [
+        "My people's songs have no words, only a rise and a fall, like a breath held and let go. I'll hum one, {pet}. Don't laugh.",
+        "We have a lullaby we sing to stubborn children. You qualify.",
+        "We have a tune for leaving and a tune for coming back. I only know the second one now.",
+        "We sing to the tide so it remembers its way home. Tonight I'll sing to you."
+      ]
+    },
+    "promise": {
+      "ask": ["Make me a promise.", "What would you promise me?", "Will you remember tonight?"],
+      "answer": [
+        "I promise I will never be the reason you stop trying. The rest I'll keep quiet.",
+        "I promise that whatever I become, you'll be the one allowed to tell me I've gone too far.",
+        "I'll remember every word of tonight, {pet}. I never forget a thing said over crystal.",
+        "I promise I'll be here {time} too. And the time after."
+      ]
+    },
+    "crystal": {
+      "ask": ["What is crystal wine, really?", "Why does it taste like starlight?", "Where does the wine come from?"],
+      "answer": [
+        "Crystal wine is frost-grapes pressed under a moon that hasn't set. The light stays in the glass. So do the memories.",
+        "Nobody agrees what crystal wine is. The old ones say it's captured daybreak. I say it's whatever you were feeling when you poured.",
+        "Crystal wine loosens the tongue and warms the stairs of the heart. It is also very good.",
+        "Crystal wine was a gift from someone who wanted to be remembered. It worked."
+      ]
+    },
+    "closeness": {
+      "ask": ["Do you trust me?", "How close is too close?", "Would you let me stay?"],
+      "answer": [
+        "I trust you more than I've trusted anyone in a very long while. That frightens me, and I'm pouring anyway.",
+        "With you there's no such thing as too close. Only the length of a pause.",
+        "Stay as long as the bottle lasts. We'll discuss the rest in the morning.",
+        "Closer, {pet}. If you're going to be dangerous, be it from here."
+      ]
+    }
   },
   "herAsks": {
     "_about": "Things she asks you in the middle of a talk (the usual placeholders), each with your possible answers, one per tone (two to five of sweet, bold, witty, humble, honest; no placeholders). She takes your answer as she takes that tone.",

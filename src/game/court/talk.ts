@@ -83,10 +83,12 @@ export interface SharedTalk {
   reacts?: Record<string, string[]>;
   /** Your apologies when she is jealous, by tone. */
   sorry?: Record<string, string[]>;
-  /** Other things you can say there (more, bond, wish, memory, feeling, bye). */
+  /** Other things you can say there (more, bond, wish, memory, feeling, bye, pour). */
   ask?: Record<string, string[]>;
-  /** Her answers to those: lists (more, bye, byeWarm), or lists by feeling or by how she takes it (feeling, sorry). */
+  /** Her answers to those: lists (more, bye, byeWarm, pour, empty), or lists by feeling or by how she takes it (feeling, sorry). */
   answers?: Record<string, string[] | Record<string, string[]>>;
+  /** The exotic conversation, while crystal wine is open: topics like the others, but deeper, and answers any queen gives in her own voice. */
+  exotic?: Record<string, Topic>;
   /** Things she asks you, each with your answers, one per tone. */
   herAsks?: { list: HerAsk[] };
 }
@@ -243,6 +245,7 @@ export const ASK_FILLS: Record<string, string[]> = {
   memory: ["queen"],
   feeling: ["queen"],
   bye: ["queen"],
+  pour: ["queen"],
 };
 export const TONE_FILLS = ["queen"];
 /** An apology (and her answer to it) also knows who she is jealous of. */
@@ -314,17 +317,25 @@ export function sorryLines(tone: string): string[] {
   return [...(SHARED.sorry?.[tone] ?? [])];
 }
 
-/** Other things you can say in the talk screen (more, bond, wish, memory, feeling, bye). */
+/** Other things you can say in the talk screen (more, bond, wish, memory, feeling, bye, pour). */
 export function askLines(kind: string): string[] {
   return [...(SHARED.ask?.[kind] ?? [])];
 }
 
-/** Her answers there: a plain list (more, bye, byeWarm), or one of a kind's lists (feeling by how she feels, sorry by how she takes it). */
+/** Her answers there: a plain list (more, bye, byeWarm, pour, empty), or one of a kind's lists (feeling by how she feels, sorry by how she takes it). */
 export function answerLines(kind: string, sub?: string): string[] {
   const a = SHARED.answers?.[kind];
   if (Array.isArray(a)) return [...a];
   if (!a || sub === undefined) return [];
   return [...(a[sub] ?? [])];
+}
+
+/** The exotic conversation's topics (what you ask while crystal wine is open, and the answers); notes starting with "_" are left out. */
+export function exoticTopics(): Record<string, Topic> {
+  const out: Record<string, Topic> = {};
+  for (const [k, t] of Object.entries(SHARED.exotic ?? {}))
+    if (!k.startsWith("_") && t && Array.isArray(t.ask) && Array.isArray(t.answer)) out[k] = t;
+  return out;
 }
 
 /** The things she may ask you. */

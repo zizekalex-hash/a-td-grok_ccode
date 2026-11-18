@@ -11,6 +11,8 @@ import {
   type TdCreepKind,
   type TdCreepSpec,
   type TdCoreStage,
+  type TdFelPerkKey,
+  type TdFelPerkSpec,
   type TdPerkKey,
   type TdPerkSpec,
   type TdTowerKey,
@@ -83,14 +85,163 @@ export function isWake(key: TowerKey): boolean {
   return TOWERS[key]?.wake === true;
 }
 
+/** Build-menu order of the fel set (paid in dark energy), one for each tower above. */
+export const FEL_TOWER_KEYS: TowerKey[] = [
+  "cinder",
+  "hex",
+  "blight",
+  "siphon",
+  "wrath",
+  "rift",
+  "pact",
+  "maw",
+  "eclipse",
+  "oblivion",
+];
+
+/** A fel tower: built, upgraded and specialized with dark energy, not O/I. */
+export function isFel(key: TowerKey): boolean {
+  return TOWERS[key]?.fel === true;
+}
+
 /** What a tower is paid in. */
-export type Currency = "gold" | "flux" | "atp";
+export type Currency = "gold" | "flux" | "atp" | "de";
 export function currencyOf(key: TowerKey): Currency {
-  return isVoid(key) ? "flux" : isWake(key) ? "atp" : "gold";
+  return isVoid(key) ? "flux" : isWake(key) ? "atp" : isFel(key) ? "de" : "gold";
 }
 
 /** A currency's short name, for prices and messages. */
-export const CURRENCY_NAME: Record<Currency, string> = { gold: "O/I", flux: "flux", atp: "ATP" };
+export const CURRENCY_NAME: Record<Currency, string> = {
+  gold: "O/I",
+  flux: "flux",
+  atp: "ATP",
+  de: "DE",
+};
+
+// ---- The altar: dark energy, made by sacrifice ----
+
+const DE = TD.de;
+
+/** The currencies dark energy is traded for. */
+export type Tradable = "gold" | "flux" | "atp";
+export const TRADABLE: Tradable[] = ["gold", "flux", "atp"];
+
+/** What `de` dark energy costs in a currency, whole units, less with Barter. */
+export function tradePrice(from: Tradable, de: number, fp: FelPerks = noFelPerks()): number {
+  return Math.ceil(Math.max(0, de) * DE.cost[from] * barter(fp) - 1e-9);
+}
+
+/** How much dark energy `amount` of a currency buys (whole DE only). */
+export function tradeYield(from: Tradable, amount: number, fp: FelPerks = noFelPerks()): number {
+  return Math.max(0, Math.floor((amount + 1e-9) / (DE.cost[from] * barter(fp))));
+}
+
+/**
+ * The dark energy a tower is worth when sacrificed: what was put into it, at the
+ * offering rate (and the altar's trade rate, so Barter helps), more with Devour;
+ * none for a fel tower.
+ */
+export function sacrificeValue(key: TowerKey, invested: number, fp: FelPerks = noFelPerks()): number {
+  const money = currencyOf(key);
+  if (money === "de") return 0;
+  return Math.floor(
+    (Math.max(0, invested) / (DE.cost[money] * barter(fp))) * DE.offering * devour(fp) + 1e-9,
+  );
+}
+
+/** The dark energy for sacrificing `lives` lives. */
+export function lifeValue(lives: number): number {
+  return Math.max(0, Math.floor(lives)) * DE.life;
+}
+
+// ---- Fel perks: endless upgrades bought with dark energy ----
+
+const FEL = TD.fel;
+export type FelPerkKey = TdFelPerkKey;
+export type FelPerkSpec = TdFelPerkSpec;
+export type FelPerks = Record<FelPerkKey, number>;
+export const FEL_PERK_KEYS: FelPerkKey[] = ["power", "haste", "reach", "tithe", "barter", "devour"];
+export const FEL_PERKS: Record<FelPerkKey, FelPerkSpec> = FEL.perks;
+
+export function noFelPerks(): FelPerks {
+  return { power: 0, haste: 0, reach: 0, tithe: 0, barter: 0, devour: 0 };
+}
+
+/** Price of the next level of a fel perk, in DE: baseCost, then growth times the one before. */
+export function felPerkCost(key: FelPerkKey, level: number): number {
+  const spec = FEL_PERKS[key];
+  return Math.round(spec.baseCost * spec.growth ** Math.max(0, Math.floor(level)));
+}
+
+/** A perk with a limit that has reached it (a max of 0 is no limit). */
+export function felPerkMaxed(key: FelPerkKey, level: number): boolean {
+  const max = FEL_PERKS[key].max;
+  return max > 0 && level >= max;
+}
+
+/** Hellfire: what fel towers' damage and burn are multiplied by, level on top of level. */
+export function felPower(fp: FelPerks): number {
+  return (1 + FEL_PERKS.power.amount) ** Math.max(0, fp.power);
+}
+
+/** Cinderwind: what fel towers' fire rate is multiplied by. */
+export function felHaste(fp: FelPerks): number {
+  return (1 + FEL_PERKS.haste.amount) ** Math.max(0, fp.haste);
+}
+
+/** Abyssal reach: cells of range added to fel towers that fire. */
+export function felReach(fp: FelPerks): number {
+  return FEL_PERKS.reach.amount * Math.max(0, fp.reach);
+}
+
+/** Soul tithe: DE a cleared wave pays. */
+export function felTithe(fp: FelPerks, wave: number): number {
+  return Math.round(FEL_PERKS.tithe.amount * Math.max(0, fp.tithe) * Math.max(0, wave));
+}
+
+/** Barter: what the altar's trades cost, as a share of the usual (never under a fifth). */
+export function barter(fp: FelPerks): number {
+  return Math.max(0.2, 1 - FEL_PERKS.barter.amount * Math.max(0, fp.barter));
+}
+
+/** Devour: what sacrificing a tower gives, as a multiple of the usual. */
+export function devour(fp: FelPerks): number {
+  return 1 + FEL_PERKS.devour.amount * Math.max(0, fp.devour);
+}
+
+/** What the fel set's own numbers are multiplied by before any perk (td.fel.damage, burn). */
+export const FEL_BASE = { damage: FEL.damage, burn: FEL.burn };
+
+/**
+ * The fel super bosses that close wave n, if it is one of theirs: from
+ * td.fel.supers.from, every supers.every waves, the kinds in turn, one more for
+ * every extraEvery waves.
+ */
+export function supersFor(wave: number): CreepKind[] {
+  const S = FEL.supers;
+  const kinds = S.kinds.filter(isCreepKind);
+  if (!kinds.length || S.every <= 0 || wave < S.from || (wave - S.from) % S.every !== 0) return [];
+  const count = 1 + (S.extraEvery > 0 ? Math.floor(wave / S.extraEvery) : 0);
+  const first = Math.floor((wave - S.from) / S.every);
+  return Array.from({ length: count }, (_, i) => kinds[(first + i) % kinds.length] as CreepKind);
+}
+
+/** The first wave after `after` that brings fel super bosses, and which. */
+export function nextSuper(after: number): { wave: number; kinds: CreepKind[] } {
+  const S = FEL.supers;
+  const every = Math.max(1, S.every);
+  const wave =
+    after < S.from ? S.from : S.from + (Math.floor((Math.max(0, after) - S.from) / every) + 1) * every;
+  return { wave, kinds: supersFor(wave) };
+}
+
+/** Dark energy slaying a creep of this kind at a wave pays (the fel super bosses), more with Soul tithe. */
+export function deReward(kind: CreepKind, wave: number, fp: FelPerks = noFelPerks()): number {
+  const de = CREEPS[kind]?.de ?? 0;
+  if (!(de > 0)) return 0;
+  const grown = de * (1 + FEL.deScale * Math.max(0, wave)) * (1 + FEL.bossTithe * Math.max(0, fp.tithe));
+  return Math.max(1, Math.round(grown));
+}
 
 /** Build-menu order. */
 export const TOWER_KEYS: TowerKey[] = [
@@ -272,6 +423,7 @@ export function towerStats(
   path = -1,
   ascend = -1,
   voidPerks: VoidPerks = noVoidPerks(),
+  felPerks: FelPerks = noFelPerks(),
 ): TowerStats {
   const base = baseStats(key, level, perks);
   // Void towers also take the void perks: Dark energy (damage) and Event horizon (range).
@@ -280,6 +432,14 @@ export function towerStats(
     base.damage *= power;
     base.burn *= power;
     if (base.range > 0 && base.rate > 0) base.range += VOID_PERKS.reach.amount * voidPerks.reach;
+  }
+  // Fel towers hit harder to begin with (td.fel), and take the fel perks: Hellfire (damage), Cinderwind (rate), Abyssal reach (range).
+  if (isFel(key)) {
+    const hellfire = felPower(felPerks);
+    base.damage *= FEL_BASE.damage * hellfire;
+    base.burn *= FEL_BASE.burn * hellfire;
+    base.rate *= felHaste(felPerks);
+    if (base.range > 0 && base.rate > 0) base.range += felReach(felPerks);
   }
   const p = path >= 0 ? pathsOf(key)[path] : undefined;
   const a = ascend >= 0 ? ascensionsOf(key)[ascend] : undefined;
@@ -539,7 +699,7 @@ export function waveSpec(wave: number): WaveSpec {
     const pack = CREEPS[pick].swarm ? Math.max(1, w.swarmSize) : 1;
     for (let i = 0; i < pack && kinds.length < count; i++) kinds.push(pick);
   }
-  kinds.push(...bossesFor(n));
+  kinds.push(...bossesFor(n), ...supersFor(n));
   const k = n - 1;
   return {
     wave: n,

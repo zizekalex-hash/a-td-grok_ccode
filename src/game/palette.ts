@@ -9,6 +9,8 @@ export const PAL = {
   gaba: "#c084fc",
   vlpo: "#f0abfc",
   pressure: "#e8c872",
+  /** Dark energy (the fel set's currency). */
+  fel: "#b8ff2e",
 } as const;
 
 export const FONT = '"Share Tech Mono", ui-monospace, monospace';

@@ -6,7 +6,10 @@
  * sister, friend or rival of hers. Each queen loves one tone, likes one and
  * dislikes one (court.talk.tastes), so the same line lands differently with
  * each. She sometimes adds a line of her own, or asks you something back. When
- * she is jealous the tones are apologies.
+ * she is jealous the tones are apologies. A bottle of crystal wine, poured once
+ * a talk, opens an exotic conversation: for a few exchanges what you can ask
+ * turns to deeper things, each worth a little affection outside the day's limit
+ * (the game answers each only after a phrase has been recited for her).
  *
  * The words live in the talk pack (talk/shared.json and each queen's file).
  * Pure: randomness is passed in. No path aliases (tests).
@@ -19,6 +22,7 @@ import {
   answerLines,
   askLines,
   bondTalkLines,
+  exoticTopics,
   herAsks,
   pickupLines,
   reactLines,
@@ -28,6 +32,8 @@ import {
   type HerAsk,
 } from "./talk.ts";
 import { TOPICS, VOICES } from "./voices.ts";
+import { cleanVoice } from "./hervoice.ts";
+import { loadLife } from "./life.ts";
 
 const C = CONFIG.court;
 const T = C.talk;
@@ -65,6 +71,8 @@ export type ChoiceKind =
   | "wish"
   | "memory"
   | "feeling"
+  | "pour"
+  | "exotic"
   | "bye";
 
 export interface Choice {
@@ -96,6 +104,8 @@ export interface Talk {
   done: string[];
   /** An apology has eased her jealousy in this talk. */
   soothed: boolean;
+  /** Sips left of the crystal wine poured in this talk (0: no bottle is open). */
+  wine: number;
 }
 
 /** What a conversation knows of the moment. */
@@ -113,6 +123,8 @@ export interface TalkContext {
   wish: { count: number; skill: string } | null;
   /** Passes recited for her. */
   passes: number;
+  /** Bottles of crystal wine you carry. */
+  bottles: number;
 }
 
 export interface Reply {
@@ -128,6 +140,10 @@ export interface Reply {
   toldWish: boolean;
   soothed: boolean;
   ended: boolean;
+  /** The exchange counts outside the day's limit (the wine's). */
+  free: boolean;
+  /** A bottle was poured: one less in the bag. */
+  poured: boolean;
 }
 
 export function newTalk(queen: QueenKey): Talk {
@@ -142,6 +158,7 @@ export function newTalk(queen: QueenKey): Talk {
     askedAll: [],
     done: [],
     soothed: false,
+    wine: 0,
   };
 }
 
@@ -196,10 +213,67 @@ function nextTones(t: Talk, n: number, rand: () => number): Tone[] {
   return out;
 }
 
+/** The exotic answers to a topic that she can give now and has not given in this talk. */
+function exoticUntold(t: Talk, topic: string, fill: Fill): string[] {
+  return ready(exoticTopics()[topic]?.answer ?? [], fill).filter((a) => !t.told.includes(a));
+}
+
+/** The bottle can be poured now: you carry one, she is fond enough and not jealous, and it is not poured yet in this talk. */
+export function canPour(t: Talk, ctx: TalkContext): boolean {
+  return (
+    ctx.bottles > 0 &&
+    ctx.tier >= C.wine.minTier &&
+    !ctx.jealous &&
+    t.wine === 0 &&
+    !t.done.includes("pour")
+  );
+}
+
+/** While a bottle is open: deeper things to ask (the ones not asked yet in this talk first), and goodbye. */
+function exoticChoices(t: Talk, fill: Fill, rand: () => number): Choice[] {
+  const all = exoticTopics();
+  const able = Object.keys(all).filter(
+    (k) => ready(all[k]!.ask, fill).length > 0 && exoticUntold(t, k, fill).length > 0,
+  );
+  const fresh = able.filter((k) => !t.done.includes(`exotic:${k}`));
+  const out: Choice[] = [];
+  for (const k of some(fresh.length ? fresh : able, Math.max(1, Math.floor(C.wine.choices)), rand)) {
+    const ask = pick(ready(all[k]!.ask, fill), rand);
+    if (ask) out.push({ id: `exotic:${k}`, kind: "exotic", text: ask, topic: k });
+  }
+  if (!out.length) return out;
+  const bye = pick(ready(askLines("bye"), fill), rand);
+  out.push({ id: "bye", kind: "bye", text: bye ?? "Goodbye for now." });
+  return out;
+}
+
+/**
+ * Something deeper she says by herself over the wine, with no question asked (on a
+ * date night, between the phrases you recite): an answer from the exotic topics, in
+ * her own voice. `told` holds the answers already said, as they are written in the
+ * pack (not as filled, since her pet name for you changes), and this one is added to
+ * it. Null when none is left.
+ */
+export function opensUp(q: QueenKey, told: string[], ctx: TalkContext, rand: () => number): string | null {
+  const fill = fills(q, ctx, rand);
+  // A topic at random (each equally likely), then an answer of it not said yet that can be filled in now.
+  const topics = Object.values(exoticTopics())
+    .map((topic) => topic.answer.filter((raw) => !told.includes(raw) && fillAll(raw, fill) !== null))
+    .filter((raws) => raws.length > 0);
+  const raws = pick(topics, rand);
+  const raw = raws ? pick(raws, rand) : undefined;
+  const line = raw ? fillAll(raw, fill) : null;
+  if (!raw || !line) return null;
+  told.push(raw);
+  return dress(q, line, rand, ctx.tier, fill);
+}
+
 /**
  * What you can say now. Her question, when she has asked one: your answers to
- * it. Else topics (or "tell me more" on the last one), lines in a tone
- * (apologies while she is jealous), one of the rarer questions, and goodbye.
+ * it. While a bottle of crystal wine is open: deeper things to ask. Else topics
+ * (or "tell me more" on the last one), lines in a tone (apologies while she is
+ * jealous), one of the rarer questions, and goodbye; and the bottle, first,
+ * while you have one to pour.
  */
 export function choicesFor(t: Talk, ctx: TalkContext, rand: () => number): Choice[] {
   const q = t.queen;
@@ -211,6 +285,12 @@ export function choicesFor(t: Talk, ctx: TalkContext, rand: () => number): Choic
         out.push({ id: `reply:${tone}`, kind: "reply", text, tone: tone as Tone });
     if (out.length) return out;
     t.asked = null;
+  }
+  // A bottle is open: the exotic conversation (with no exotic words in the pack, the bottle is spent).
+  if (t.wine > 0) {
+    const exotic = exoticChoices(t, fill, rand);
+    if (exotic.length) return exotic;
+    t.wine = 0;
   }
   // Topics: fresh ones first; a follow-up on the last one takes the first place.
   const able = Object.keys(TOPICS).filter(
@@ -264,6 +344,11 @@ export function choicesFor(t: Talk, ctx: TalkContext, rand: () => number): Choic
   if (special) out.push(special);
   const bye = pick(ready(askLines("bye"), fill), rand);
   out.push({ id: "bye", kind: "bye", text: bye ?? "Goodbye for now." });
+  // The bottle comes first.
+  if (canPour(t, ctx)) {
+    const pour = pick(ready(askLines("pour"), fill), rand);
+    if (pour) out.unshift({ id: "pour", kind: "pour", text: pour });
+  }
   return out;
 }
 
@@ -292,6 +377,8 @@ export function replyTo(t: Talk, c: Choice, ctx: TalkContext, rand: () => number
     toldWish: false,
     soothed: false,
     ended: false,
+    free: false,
+    poured: false,
   };
   t.turns += 1;
   const wasAsked = t.asked;
@@ -335,6 +422,34 @@ export function replyTo(t: Talk, c: Choice, ctx: TalkContext, rand: () => number
     const pool = ready(kind ? bondTalkLines(kind) : [], { ...fill, other: C.queens[c.other].name });
     out.lines.push(say(pick(pool, rand) ?? "..."));
     out.affection = T.affection.topic;
+  } else if (c.kind === "pour") {
+    // The bottle is poured: she is glad of it, and what you can ask turns to deeper things.
+    t.done.push("pour");
+    t.wine = Math.max(1, Math.floor(C.wine.sips));
+    out.lines.push(say(pick(ready(answerLines("pour"), fill), rand) ?? "..."));
+    out.affection = C.wine.pour;
+    out.mood = moodFor("loved", ctx.tier);
+    out.free = true;
+    out.poured = true;
+  } else if (c.kind === "exotic") {
+    // A sip, and something she would not say sober; the last sip empties the bottle.
+    const topic = c.topic ?? "";
+    t.done.push(`exotic:${topic}`);
+    const core =
+      pick(exoticUntold(t, topic, fill), rand) ??
+      pick(ready(exoticTopics()[topic]?.answer ?? [], fill), rand) ??
+      pick(ready(VOICES[q].talk, fill), rand) ??
+      "...";
+    t.told.push(core);
+    out.lines.push(say(core));
+    out.affection = C.wine.sipAffection;
+    out.mood = moodFor("loved", ctx.tier);
+    out.free = true;
+    t.wine = Math.max(0, t.wine - 1);
+    if (t.wine === 0) {
+      const last = pick(ready(answerLines("empty"), fill), rand);
+      if (last) out.lines.push(say(last));
+    }
   } else if (c.kind === "wish") {
     t.done.push("wish");
     if (ctx.wish) {
@@ -356,8 +471,8 @@ export function replyTo(t: Talk, c: Choice, ctx: TalkContext, rand: () => number
     out.affection = T.affection.topic;
   }
 
-  // Not after her own question, nor while she is angry: now and then a line of her own, or a question back.
-  if (!wasAsked && !ctx.jealous && out.taste !== "disliked") {
+  // Not after her own question, nor while she is angry, nor over the wine: now and then a line of her own, or a question back.
+  if (!wasAsked && !ctx.jealous && out.taste !== "disliked" && !out.free) {
     if (rand() < T.moreChance) {
       const own = ready(VOICES[q].talk, fill).filter((l) => !t.told.includes(l) && !out.lines.includes(l));
       const extra = pick(own, rand);
@@ -408,8 +523,33 @@ export function loadTalk(save: CourtSave, data: unknown) {
     const n = count[q];
     save.talked.count[q] = typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
   }
+  save.near = d.near !== false;
+  save.source = typeof d.source === "string" && d.source.length <= 200 ? d.source : "";
+  const wine = d.wine;
+  save.wine =
+    typeof wine === "number" && Number.isFinite(wine)
+      ? Math.max(0, Math.min(CONFIG.court.wine.max, Math.floor(wine)))
+      : CONFIG.court.wine.start;
+  const shared = rec(d.wineShared);
+  for (const q of QUEEN_KEYS) {
+    const n = shared[q];
+    save.wineShared[q] = typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.min(1_000_000, Math.floor(n))) : 0;
+  }
+  save.textRounds = {};
+  for (const [key, n] of Object.entries(rec(d.textRounds)).slice(0, 500))
+    if (key.length <= 200 && typeof n === "number" && Number.isFinite(n) && n >= 1)
+      save.textRounds[key] = Math.min(1_000_000, Math.floor(n));
+  save.life = loadLife(d.life, QUEEN_KEYS);
   const sound = rec(d.sound);
-  save.sound = { phrase: sound.phrase !== false, lines: sound.lines !== false };
+  const voices = rec(sound.voices);
+  save.sound = {
+    phrase: sound.phrase !== false,
+    lines: sound.lines !== false,
+    voices: Object.fromEntries(QUEEN_KEYS.map((q) => [q, cleanVoice(voices[q])])) as Record<
+      QueenKey,
+      string
+    >,
+  };
 }
 
 /** Exchanges with her that still add affection today. */

@@ -11,12 +11,14 @@ import { cancelNarration, narrate } from "@/game/narrator";
 import { DISPLAY, FONT, PAL } from "@/game/palette";
 import { getGame, setActiveGame, type GameBase } from "@/game/registry";
 import { readPhrase, type Cursor } from "@/game/reader";
+import { WriteDeck } from "./writer.ts";
 import { setSpeech, useGame, type TdView } from "@/game/store";
 import {
   addRep,
   armReps,
   build,
   buyPerk,
+  buyFelPerk,
   buyVoidPerk,
   summonRift,
   castSpell,
@@ -25,8 +27,14 @@ import {
   createGame,
   cycleTargeting,
   pending,
+  sacrifice,
+  sacrificeableLives,
+  sacrificeFor,
+  sacrificeLives,
   sell,
   sendWave,
+  trade,
+  tradeAll,
   setAuto,
   step,
   towerAt,
@@ -68,9 +76,13 @@ import {
   CURRENCY_NAME,
   currencyOf,
   fluxPerRep,
+  isFel,
   isVoid,
   isWake,
+  nextSuper,
   repGold,
+  tradeYield,
+  type Tradable,
   summonCost,
   summonReward,
   TOWER_KEYS,
@@ -82,6 +94,7 @@ import {
   type PerkKey,
   type SpellKey,
   type TowerKey,
+  type FelPerkKey,
   type VoidPerkKey,
 } from "./economy.ts";
 import { restore, serialize, summarize } from "./save.ts";
@@ -185,6 +198,9 @@ export class TdGame implements GameBase {
   private floaters: Floater[] = [];
   private banner = "";
   private bannerLife = 0;
+  /** What is written on screen comes from the loaded text, dealt phrase by phrase (see write). */
+  private lineDeck = new WriteDeck();
+  private bannerDeck = new WriteDeck();
   private cell = 40;
   private ox = 0;
   private oy = 0;
@@ -299,7 +315,7 @@ export class TdGame implements GameBase {
     this.spellFx = [];
     this.bannerLife = 0;
     this.lowTold = false;
-    this.message = "Build, then call the first wave. Call the next one early for bonus O/I.";
+    this.message = this.write("Build, then call the first wave. Call the next one early for bonus O/I.");
     useGame.setState({ phase: "battle", tomeOpen: false, paused: false, drawer: false });
     this.say("engage", true);
     this.pushView(true);
@@ -324,7 +340,7 @@ export class TdGame implements GameBase {
     this.save.map = run.map.key;
     this.save.difficulty = run.difficulty;
     this.persist();
-    this.message = `Back on wave ${run.wave}. Call the next wave when ready.`;
+    this.message = this.write(`Back on wave ${run.wave}. Call the next wave when ready.`);
     useGame.setState({
       tdMap: run.map.key,
       tdDifficulty: run.difficulty,
@@ -404,6 +420,14 @@ export class TdGame implements GameBase {
   say(mood: Mood, force = false) {
     if (!force && this.time - this.saidAt < 3.2) return;
     this.saidAt = this.time;
+    // Written from the text alone: a phrase of it, and nothing sent to a model.
+    if (CONFIG.td.write.only) {
+      const phrase = this.write(mood);
+      if (phrase && phrase !== mood) {
+        setSpeech(QUEEN, phrase);
+        return;
+      }
+    }
     const council = pickCouncilLine(mood, useGame.getState().hud.speaker);
     setSpeech(council ? council.speaker : QUEEN, council ? council.text : pickLine(mood));
     narrate(
@@ -428,7 +452,7 @@ export class TdGame implements GameBase {
     if (!this.selected) return this.note("Tap a free cell first.");
     const r = build(this.sim, key, this.selected.col, this.selected.row);
     if (r.ok) sfx.ready();
-    this.note(r.ok ? `${TOWERS[key].name} raised.` : r.reason);
+    this.note(r.ok ? this.write(`${TOWERS[key].name} raised.`) : r.reason);
   }
 
   tdUpgrade() {
@@ -437,7 +461,7 @@ export class TdGame implements GameBase {
     if (r.ok) sfx.ready();
     const t = towerAt(this.sim, this.selected.col, this.selected.row);
     this.note(
-      r.ok && t ? `${TOWERS[t.key].name} is level ${t.level}.` : r.ok ? "Upgraded." : r.reason,
+      r.ok ? this.write(t ? `${TOWERS[t.key].name} is level ${t.level}.` : "Upgraded.") : r.reason,
     );
   }
 
@@ -447,7 +471,7 @@ export class TdGame implements GameBase {
     const r = upgradeMax(this.sim, this.selected.col, this.selected.row);
     if (r.ok) sfx.ready();
     const t = towerAt(this.sim, this.selected.col, this.selected.row);
-    this.note(r.ok && t ? `${TOWERS[t.key].name} up ${r.levels} level${r.levels === 1 ? "" : "s"}, to ${t.level}.` : r.ok ? "" : r.reason);
+    this.note(r.ok && t ? this.write(`${TOWERS[t.key].name} up ${r.levels} level${r.levels === 1 ? "" : "s"}, to ${t.level}.`) : r.ok ? "" : r.reason);
   }
 
   tdSell() {
@@ -456,14 +480,60 @@ export class TdGame implements GameBase {
     const undo = t ? undoable(this.sim, t) : false;
     const r = sell(this.sim, this.selected.col, this.selected.row);
     const unit = t ? CURRENCY_NAME[currencyOf(t.key)] : "O/I";
-    this.note(r.ok ? (undo ? `Build undone: every ${unit} back.` : "Tower sold.") : r.reason);
+    this.note(r.ok ? this.write(undo ? `Build undone: every ${unit} back.` : "Tower sold.") : r.reason);
+  }
+
+  /** Sacrifices the selected tower for dark energy (more than selling it). */
+  tdSacrifice() {
+    if (!this.selected) return;
+    const t = towerAt(this.sim, this.selected.col, this.selected.row);
+    const name = t ? TOWERS[t.key].name : "Tower";
+    const r = sacrifice(this.sim, this.selected.col, this.selected.row);
+    if (r.ok) {
+      sfx.bless();
+      this.selected = null;
+    }
+    this.note(r.ok ? this.write(`${name} sacrificed: +${r.de} DE.`) : r.reason);
+    this.drainEvents();
+    this.saveRun();
+    this.pushView(true);
+  }
+
+  /** Trades `de` dark energy for O/I, flux or ATP (the altar). */
+  tdTrade(from: Tradable, de: number) {
+    const r = trade(this.sim, from, de);
+    if (r.ok) sfx.ready();
+    this.note(r.ok ? this.write(`+${Math.floor(de)} DE.`) : r.reason);
+    this.drainEvents();
+    this.saveRun();
+    this.pushView(true);
+  }
+
+  /** Trades as much as buys dark energy. */
+  tdTradeAll(from: Tradable) {
+    const r = tradeAll(this.sim, from);
+    if (r.ok) sfx.ready();
+    this.note(r.ok ? this.write(`+${r.de} DE.`) : r.reason);
+    this.drainEvents();
+    this.saveRun();
+    this.pushView(true);
+  }
+
+  /** Sacrifices lives for dark energy (never the last). */
+  tdSacrificeLives(n: number) {
+    const r = sacrificeLives(this.sim, n);
+    if (r.ok) sfx.leak();
+    this.note(r.ok ? this.write(`${n} ${n === 1 ? "life" : "lives"} given: +${r.de} DE.`) : r.reason);
+    this.drainEvents();
+    this.saveRun();
+    this.pushView(true);
   }
 
   tdTarget() {
     if (!this.selected) return;
     const r = cycleTargeting(this.sim, this.selected.col, this.selected.row);
     const t = towerAt(this.sim, this.selected.col, this.selected.row);
-    this.note(r.ok && t ? `Now aiming at the ${targetCopy(t.targeting)}.` : r.ok ? "" : r.reason);
+    this.note(r.ok && t ? this.write(`Now aiming at the ${targetCopy(t.targeting)}.`) : r.ok ? "" : r.reason);
   }
 
   /** Calls the next wave, even while others are still coming. */
@@ -477,12 +547,12 @@ export class TdGame implements GameBase {
 
   tdToggleAuto() {
     setAuto(this.sim, !this.sim.auto);
-    this.note(this.sim.auto ? "Auto: the next wave comes once the last has spawned." : "Auto off.");
+    this.note(this.write(this.sim.auto ? "Auto: the next wave comes once the last has spawned." : "Auto off."));
   }
 
   tdCycleSpeed() {
     this.speed = this.speed >= 3 ? 1 : this.speed + 1;
-    this.note(`Speed ${this.speed}×`);
+    this.note(this.write(`Speed ${this.speed}×`));
   }
 
   /** Takes one of the selected tower's two paths. */
@@ -491,7 +561,7 @@ export class TdGame implements GameBase {
     const r = choosePath(this.sim, this.selected.col, this.selected.row, path);
     const t = towerAt(this.sim, this.selected.col, this.selected.row);
     if (r.ok) sfx.bless();
-    this.note(r.ok && t ? `${TOWERS[t.key].name} takes the path of ${pathsOf(t.key)[path]?.name}.` : r.ok ? "" : r.reason);
+    this.note(r.ok && t ? this.write(`${TOWERS[t.key].name} takes the path of ${pathsOf(t.key)[path]?.name}.`) : r.ok ? "" : r.reason);
   }
 
   /** Takes one of the selected tower's two Ascensions. */
@@ -501,10 +571,10 @@ export class TdGame implements GameBase {
     const t = towerAt(this.sim, this.selected.col, this.selected.row);
     if (r.ok) {
       sfx.bless();
-      this.banner = `ASCENSION · ${(ascensionsOf(t!.key)[index]?.name ?? "").toUpperCase()}`;
+      this.banner = this.write(`ASCENSION · ${(ascensionsOf(t!.key)[index]?.name ?? "").toUpperCase()}`, true).toUpperCase();
       this.bannerLife = 2.2;
     }
-    this.note(r.ok && t ? `${TOWERS[t.key].name} ascends: ${ascensionsOf(t.key)[index]?.name}.` : r.ok ? "" : r.reason);
+    this.note(r.ok && t ? this.write(`${TOWERS[t.key].name} ascends: ${ascensionsOf(t.key)[index]?.name}.`) : r.ok ? "" : r.reason);
   }
 
   tdSpell(key: SpellKey) {
@@ -519,7 +589,7 @@ export class TdGame implements GameBase {
   tdBuyPerk(key: PerkKey) {
     const r = buyPerk(this.sim, key);
     if (r.ok) sfx.ready();
-    this.note(r.ok ? `${CONFIG.td.perks[key].name} to level ${this.sim.perks[key]}.` : r.reason);
+    this.note(r.ok ? this.write(`${CONFIG.td.perks[key].name} to level ${this.sim.perks[key]}.`) : r.reason);
   }
 
   /** Reps done in the rep window, not yet written into the Recitation drill: per phrase, count and time. */
@@ -548,7 +618,7 @@ export class TdGame implements GameBase {
     t.last = now;
     this.repTally.set(phraseId, t);
     if (t.count >= 100) this.tdFlushReps();
-    this.message = `${n} rep${n > 1 ? "s" : ""} done: +${r.flux ?? 0} flux${r.gold ? ` +${r.gold} O/I` : ""}.`;
+    this.message = this.write(`${n} rep${n > 1 ? "s" : ""} done: +${r.flux ?? 0} flux${r.gold ? ` +${r.gold} O/I` : ""}.`);
     this.saveRun();
     this.pushView(true);
     return true;
@@ -587,13 +657,20 @@ export class TdGame implements GameBase {
 
   tdSummon() {
     const r = summonRift(this.sim);
-    this.note(r.ok ? "A Rift Titan tears through. Slay it for flux." : r.reason);
+    this.note(r.ok ? this.write("A Rift Titan tears through. Slay it for flux.") : r.reason);
+    this.saveRun();
+  }
+
+  /** Buys the next level of an endless fel upgrade, with dark energy. */
+  tdBuyFelPerk(key: FelPerkKey) {
+    const r = buyFelPerk(this.sim, key);
+    this.note(r.ok ? this.write(`${CONFIG.td.fel.perks[key].name}: level ${this.sim.felPerks[key]}.`) : r.reason);
     this.saveRun();
   }
 
   tdBuyVoidPerk(key: VoidPerkKey) {
     const r = buyVoidPerk(this.sim, key);
-    this.note(r.ok ? `${CONFIG.td.void.perks[key].name}: level ${this.sim.voidPerks[key]}.` : r.reason);
+    this.note(r.ok ? this.write(`${CONFIG.td.void.perks[key].name}: level ${this.sim.voidPerks[key]}.`) : r.reason);
     this.saveRun();
   }
 
@@ -640,6 +717,26 @@ export class TdGame implements GameBase {
     const boards = boardCount(this.sim.map);
     if (boards < 2) return;
     this.tdSetView(this.view + 1 >= boards ? -1 : this.view + 1);
+  }
+
+  /**
+   * What is written on screen for something that happened (td.write): the next
+   * phrase of the loaded text, shuffled, every phrase before any comes again; the
+   * game's own words, `own`, only when td.write.only is off or the text has none.
+   * Nothing when there is nothing to say.
+   */
+  private write(own: string, banner = false): string {
+    if (!own) return "";
+    const W = CONFIG.td.write;
+    if (!W.only) return own;
+    const { lines } = useGame.getState();
+    const deck = banner ? this.bannerDeck : this.lineDeck;
+    return deck.next(lines, banner ? W.bannerWords : W.lineWords) ?? own;
+  }
+
+  /** A number floating up: just the number (td.write.only), or with the game's words. */
+  private figure(own: string, plain: string): string {
+    return CONFIG.td.write.only ? plain : own;
   }
 
   private note(message: string) {
@@ -774,12 +871,13 @@ export class TdGame implements GameBase {
     const core = { x: this.sim.map.core[0] + 0.5, y: this.sim.map.core[1] + 0.5 };
     for (const e of events) {
       if (e.type === "waveSent") {
-        if (e.bonus > 0) this.float(0.5, 0.3, `+${e.bonus} early`, PAL.gold);
+        if (e.bonus > 0) this.float(0.5, 0.3, this.figure(`+${e.bonus} early`, `+${e.bonus}`), PAL.gold);
         if (!e.auto) this.say("wave", true);
         this.saveRun();
       } else if (e.type === "waveCleared") {
         const total = e.bonus + e.income + e.interest;
-        this.float(core.x, core.y - 0.6, `Wave ${e.wave} · +${total}${e.atp ? ` · +${e.atp} ATP` : ""}`, PAL.gold);
+        const gains = `+${total}${e.atp ? ` · +${e.atp} ATP` : ""}${e.de ? ` · +${e.de} DE` : ""}`;
+        this.float(core.x, core.y - 0.6, this.figure(`Wave ${e.wave} · ${gains}`, gains), PAL.gold);
         sfx.ready();
         this.recordBest();
         this.saveRun();
@@ -793,17 +891,28 @@ export class TdGame implements GameBase {
           this.say("leak");
         }
       } else if (e.type === "bossSpawned") {
-        this.banner = `BOSS · ${CREEPS[e.kind].name.toUpperCase()}`;
+        this.banner = this.write(`BOSS · ${CREEPS[e.kind].name.toUpperCase()}`, true).toUpperCase();
         this.bannerLife = 2.4;
       } else if (e.type === "bossKilled") {
         sfx.kill(true);
-        this.float(core.x, core.y + 0.6, `${CREEPS[e.kind].name} down · +${e.gold}${e.atp ? ` · +${e.atp} ATP` : ""}`, PAL.gold);
+        const loot = `+${e.gold}${e.atp ? ` · +${e.atp} ATP` : ""}${e.de ? ` · +${e.de} DE` : ""}`;
+        this.float(core.x, core.y + 0.6, this.figure(`${CREEPS[e.kind].name} down · ${loot}`, loot), PAL.gold);
+        if (e.de > 0) {
+          this.banner = this.write(`FEL BOSS SLAIN · +${e.de} DE`, true).toUpperCase();
+          this.bannerLife = 2.6;
+        }
         this.say("kill", true);
+      } else if (e.type === "altar") {
+        this.float(core.x, core.y - 1.2, `+${e.de} DE`, PAL.fel);
+        if (e.what === "life") {
+          this.banner = this.write(`A LIFE GIVEN · +${e.de} DE`, true).toUpperCase();
+          this.bannerLife = 1.8;
+        }
       } else if (e.type === "coreRaised") {
-        this.message = e.stage ? `The core is ${e.stage}: level ${e.level}.` : `The core is level ${e.level}.`;
+        this.message = this.write(e.stage ? `The core is ${e.stage}: level ${e.level}.` : `The core is level ${e.level}.`);
         if (e.stage) {
           sfx.bless();
-          this.banner = `CORE · ${e.stage.toUpperCase()}`;
+          this.banner = this.write(`CORE · ${e.stage.toUpperCase()}`, true).toUpperCase();
           this.bannerLife = 2.2;
         }
       } else if (e.type === "spell") {
@@ -811,7 +920,7 @@ export class TdGame implements GameBase {
         // Stillness lingers as long as its slow; the storm is a flash.
         const life = e.key === "still" ? Math.min(4, spec.cooldown) : 1.4;
         this.spellFx.push({ key: e.key, text: e.text, life, total: life });
-        this.banner = `${spec.name.toUpperCase()} · ${e.hit} HIT`;
+        this.banner = this.write(`${spec.name.toUpperCase()} · ${e.hit} HIT`, true).toUpperCase();
         this.bannerLife = 1.8;
         if (e.key === "storm") sfx.kill(true);
         else sfx.bless();
@@ -819,13 +928,13 @@ export class TdGame implements GameBase {
         const times = e.count > 1 ? `×${e.count} ` : "";
         this.float(core.x, core.y - 0.9, `${times}+${e.flux} flux${e.gold ? ` +${e.gold}` : ""}`, PAL.violet);
       } else if (e.type === "riftSummoned") {
-        this.banner = "RIFT TITAN SUMMONED";
+        this.banner = this.write("RIFT TITAN SUMMONED", true).toUpperCase();
         this.bannerLife = 2.4;
         sfx.bless();
       } else if (e.type === "riftKilled") {
         sfx.kill(true);
-        this.float(core.x, core.y + 0.9, `Rift slain · +${e.flux} flux`, PAL.violet);
-        this.banner = `+${e.flux} FLUX · +${Math.round(e.boost * 100)}% A REP`;
+        this.float(core.x, core.y + 0.9, this.figure(`Rift slain · +${e.flux} flux`, `+${e.flux} flux`), PAL.violet);
+        this.banner = this.write(`+${e.flux} FLUX · +${Math.round(e.boost * 100)}% A REP`, true).toUpperCase();
         this.bannerLife = 2.4;
         this.saveRun();
       } else if (e.type === "over") {
@@ -840,7 +949,7 @@ export class TdGame implements GameBase {
     this.clearRun();
     sfx.over();
     useGame.setState({ phase: "over", paused: false, drawer: false });
-    this.message = `The core fell during wave ${this.sim.wave}, after ${this.sim.cleared} cleared.`;
+    this.message = this.write(`The core fell during wave ${this.sim.wave}, after ${this.sim.cleared} cleared.`);
     this.say("over", true);
     this.pushView(true);
   }
@@ -906,6 +1015,7 @@ export class TdGame implements GameBase {
             dealt: tower.dealt,
             kills: tower.kills,
             currency: currencyOf(tower.key),
+            sacrifice: sacrificeFor(sim, tower),
           }
         : null,
       perks: { ...sim.perks },
@@ -924,6 +1034,17 @@ export class TdGame implements GameBase {
       summonCost: summonCost(sim.wave),
       summonReward: summonReward(sim.wave),
       atp: sim.atp,
+      de: sim.de,
+      felPerks: { ...sim.felPerks },
+      nextSuper: nextSuper(sim.wave),
+      altar: {
+        can: {
+          gold: tradeYield("gold", sim.gold, sim.felPerks),
+          flux: tradeYield("flux", sim.flux, sim.felPerks),
+          atp: tradeYield("atp", sim.atp, sim.felPerks),
+        },
+        lives: sacrificeableLives(sim),
+      },
       core: {
         level: core.level,
         stage: core.stage.name,
@@ -1260,6 +1381,34 @@ export class TdGame implements GameBase {
         ctx.arc(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad, Math.max(1.5, s * 0.05), 0, Math.PI * 2);
         ctx.fillStyle = color;
         ctx.fill();
+      } else if (isFel(t.key)) {
+        // The fel set: a dark diamond with a ring of sparks, burning green from inside.
+        const cx = x + s / 2;
+        const cy = y + s / 2;
+        const rad = s / 2 - pad * 0.4;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - rad);
+        ctx.lineTo(cx + rad, cy);
+        ctx.lineTo(cx, cy + rad);
+        ctx.lineTo(cx - rad, cy);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(2, 10, 4, 0.94)";
+        ctx.fill();
+        ctx.globalAlpha = 0.16 + (this.reduce ? 0 : Math.sin(this.time * 3 + t.id) * 0.07);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = t.level >= MAX_TOWER_LEVEL ? 2.4 : 1.6;
+        ctx.stroke();
+        const a = this.time * 2.2 + t.id;
+        for (let i = 0; i < 2; i++) {
+          const b = a + i * Math.PI;
+          ctx.beginPath();
+          ctx.arc(cx + Math.cos(b) * rad * 0.62, cy + Math.sin(b) * rad * 0.62, Math.max(1.2, s * 0.04), 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+        }
       } else if (isWake(t.key)) {
         // The wake set: a six-sided ring, like the molecules it is named for, lit from inside.
         const cx = x + s / 2;
@@ -1651,22 +1800,48 @@ export class TdGame implements GameBase {
   }
 
   private drawBanner(ctx: CanvasRenderingContext2D) {
-    if (this.bannerLife <= 0) return;
-    const size = Math.max(12, Math.min(22, this.cell * 0.5));
+    if (this.bannerLife <= 0 || !this.banner) return;
     ctx.globalAlpha = Math.max(0, Math.min(1, this.bannerLife));
-    this.font(ctx, `700 ${size}px ${DISPLAY}`);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    // A phrase of the text is wrapped to the board, and smaller if it needs more than three rows.
+    const maxW = this.vis.w * 0.9;
+    let size = Math.max(12, Math.min(22, this.cell * 0.5));
+    let rows: string[] = [];
+    for (;;) {
+      this.font(ctx, `700 ${size}px ${DISPLAY}`);
+      rows = wrapRows(this.banner, maxW, (s) => ctx.measureText(s).width);
+      if (rows.length <= 3 || size <= 9) break;
+      size -= 1;
+    }
     // Mid-board, a little above the middle, clear of the gate where bosses enter.
     const x = this.vis.x + this.vis.w / 2;
-    const y = this.vis.y + this.vis.h * 0.37;
+    const rowH = size * 1.3;
+    const y0 = this.vis.y + this.vis.h * 0.37 - ((rows.length - 1) * rowH) / 2;
     ctx.lineWidth = 4;
     ctx.strokeStyle = "rgba(2, 0, 5, 0.85)";
-    ctx.strokeText(this.banner, x, y);
     ctx.fillStyle = PAL.gold;
-    ctx.fillText(this.banner, x, y);
+    rows.forEach((row, i) => {
+      ctx.strokeText(row, x, y0 + i * rowH);
+      ctx.fillText(row, x, y0 + i * rowH);
+    });
     ctx.globalAlpha = 1;
   }
+}
+
+/** Words in rows no wider than maxWidth (a word wider than that has a row to itself). */
+export function wrapRows(text: string, maxWidth: number, width: (s: string) => number): string[] {
+  const rows: string[] = [];
+  let row = "";
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const next = row ? `${row} ${word}` : word;
+    if (row && width(next) > maxWidth) {
+      rows.push(row);
+      row = word;
+    } else row = next;
+  }
+  if (row) rows.push(row);
+  return rows;
 }
 
 /** Words for each targeting rule. */

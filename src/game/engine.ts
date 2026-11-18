@@ -194,6 +194,7 @@ function clampSettings(input: Settings): Settings {
     uiScale: Math.round(num("uiScale", input.uiScale)),
     fpsCap: Math.round(num("fpsCap", input.fpsCap)),
     renderScale: Math.round(num("renderScale", input.renderScale)),
+    shaderArt: Math.round(num("shaderArt", input.shaderArt)),
     phraseEvery: Math.round(num("phraseEvery", input.phraseEvery)),
     phrasePauseMs: Math.round(num("phrasePauseMs", input.phrasePauseMs)),
     textPauseMs: Math.round(num("textPauseMs", input.textPauseMs)),

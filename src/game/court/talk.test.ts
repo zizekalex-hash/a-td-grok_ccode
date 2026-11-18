@@ -153,6 +153,7 @@ describe("talk pack", () => {
         "sorry",
         "ask",
         "answers",
+        "exotic",
         "herAsks",
       ],
       problems,
@@ -228,14 +229,29 @@ describe("talk pack", () => {
     for (const line of s.ask?.bond ?? [])
       if (!line.includes("{other}")) problems.push(`shared.json ask.bond: needs {other}: "${line}"`);
     // And her answers to them.
-    extra("shared.json answers", s.answers ?? {}, ["more", "feeling", "sorry", "bye", "byeWarm"], problems);
-    for (const kind of ["more", "bye", "byeWarm"]) check(`shared.json answers.${kind}`, s.answers?.[kind], BASE_FILLS, problems);
+    extra(
+      "shared.json answers",
+      s.answers ?? {},
+      ["more", "feeling", "sorry", "bye", "byeWarm", "pour", "empty"],
+      problems,
+    );
+    for (const kind of ["more", "bye", "byeWarm", "pour", "empty"])
+      check(`shared.json answers.${kind}`, s.answers?.[kind], BASE_FILLS, problems);
     const feeling = (s.answers?.feeling ?? {}) as Record<string, string[]>;
     extra("shared.json answers.feeling", feeling, FEELING_KEYS, problems);
     for (const k of FEELING_KEYS) check(`shared.json answers.feeling.${k}`, feeling[k], BASE_FILLS, problems);
     const sorry = (s.answers?.sorry ?? {}) as Record<string, string[]>;
     extra("shared.json answers.sorry", sorry, TASTE_KEYS, problems);
     for (const k of TASTE_KEYS) check(`shared.json answers.sorry.${k}`, sorry[k], [...BASE_FILLS, "rival"], problems);
+    // The exotic conversation (while crystal wine is open): topics like the others, at least as many as can be asked in a bottle.
+    const exotic = Object.entries(s.exotic ?? {}).filter(([k]) => !k.startsWith("_"));
+    if (exotic.length < C.wine.sips + C.wine.choices)
+      problems.push(`shared.json exotic: needs at least ${C.wine.sips + C.wine.choices} topics, so a bottle never runs out of new ones`);
+    for (const [name, topic] of exotic) {
+      extra(`shared.json exotic.${name}`, topic, ["ask", "answer"], problems);
+      check(`shared.json exotic.${name}.ask`, topic.ask, ASK_FILLS.more!, problems);
+      check(`shared.json exotic.${name}.answer`, topic.answer, BASE_FILLS, problems);
+    }
     // Her questions: an ask, and two to five answers of yours, each in a tone.
     const list = s.herAsks?.list ?? [];
     if (!list.length) problems.push("shared.json herAsks.list: should have at least one question");

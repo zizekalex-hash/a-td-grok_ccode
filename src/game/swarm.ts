@@ -106,7 +106,7 @@ const failed = new Set<string>();
 const queue: SwarmNeed[] = [];
 let active = 0;
 /** At most this many sayings asked of the phone at once (the main voice's go first). */
-const ASKS = 2;
+const ASKS = 4;
 let peakSince = 0;
 /** The worker has mixed a piece already (started, it answers at once). */
 let warm = false;
@@ -120,12 +120,19 @@ const hidden = () => typeof document !== "undefined" && document.hidden;
  */
 const aheadOf = (s: Stream) => {
   const want = now?.aheadSec ?? 4;
-  if (s === "phrase") return Math.max(0.5, Math.min(want, hidden() ? 4 : 1.5));
-  return hidden() ? Math.max(want, 10) : want;
+  if (s === "phrase") return Math.max(0.5, Math.min(want, hidden() ? 20 : 1.5));
+  // Minimized or the screen off: a minute ahead, so it plays on though the page wakes rarely.
+  return hidden() ? Math.max(want, 60) : want;
 };
 /** Its pieces: longer the further ahead (fewer messages), at most 2 s. */
 const pieceOf = (s: Stream) =>
-  s === "phrase" ? (hidden() ? 1 : 0.25) : Math.max(0.5, Math.min(2, aheadOf("text") / 6));
+  s === "phrase"
+    ? hidden()
+      ? 4
+      : 0.25
+    : hidden()
+      ? 6
+      : Math.max(0.5, Math.min(2, aheadOf("text") / 6));
 
 function fadeOut(o: Out | undefined) {
   if (!o || !ctx) return;

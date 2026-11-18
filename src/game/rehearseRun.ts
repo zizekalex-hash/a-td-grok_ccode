@@ -14,8 +14,10 @@ import { saveConfirmed } from "@/game/textFiles";
 import { levelForXp, repXp } from "@/game/recite";
 import { logRehearse, readReps, writeReps, wordsOf } from "@/game/reps";
 import { useGame } from "@/game/store";
-import { browserSay, voiceFile, voiceHere } from "@/game/voice";
+import { browserSay, voiceFile, voiceHere, voiceList, type VoiceInfo } from "@/game/voice";
+import { ownVoice, VOICE_REHEARSE } from "@/game/court/hervoice";
 import { swarmPlay, swarmStats, type SwarmPlay } from "@/game/swarm";
+import { prepareVoiceRaw, subscribeVoiceRaw, voiceBytesFor } from "@/game/voiceRaw";
 import { soundLog } from "@/game/soundLog";
 import {
   fileLoop,
@@ -122,7 +124,7 @@ export function rehearseUpdate(fn: (s: RehearseState) => RehearseState) {
   for (const f of subs) f();
   // Another sample rate: every sound again, fresh, at it.
   if (next.settings.ttsRate !== before.settings.ttsRate) applyRate(next.settings.ttsRate);
-  // The Court sounding its phrase meanwhile: as Rehearse is set now (paused, played again, another voice).
+  // The Court sounding its phrase meanwhile: as Rehearse is set now (another voice, Repeats, a layer).
   if (next.settings !== before.settings) courtAgain();
   // Background turned on or off while it plays: the app kept running, or let rest.
   keep();
@@ -151,14 +153,25 @@ export function rehearseUpdate(fn: (s: RehearseState) => RehearseState) {
  * Already checked as it is now: nothing to do.
  */
 function autoCheck(key: string) {
+  checkText(key, "read through");
+}
+
+/**
+ * A text checked as done (the Court recited every phrase of it, or it was read
+ * through): marked checked as the Read tab marks it (✓ there and here), and its
+ * confirmed copy saved. Gives back whether it was newly checked (false: it was
+ * already checked as it is now, or is not in the library).
+ */
+export function checkText(key: string, how = "read through", toast = true): boolean {
   const t = rehearseLibrary().find((x) => x.key === key);
-  if (!t) return;
+  if (!t) return false;
   const reader = readReader();
-  if (checkState(reader, t.name, t.lines, t.folder) === "checked") return;
+  if (checkState(reader, t.name, t.lines, t.folder) === "checked") return false;
   writeReader(markChecked(reader, t.name, t.lines, Date.now(), t.folder));
   window.dispatchEvent(new Event(READER_CHANGED));
-  flashToast(`“${t.name}” read through: checked ✓`);
+  if (toast) flashToast(`“${t.name}” ${how}: checked ✓`);
   void saveConfirmed(t.name, t.lines, t.folder, true);
+  return true;
 }
 
 /** Sent when the Read tab's state (its checks) changed away from it: read it again. */
@@ -381,6 +394,8 @@ let loop: PhraseLoop | null = null;
 let wav: FileLoop | null = null;
 /** What plays now: the Nonstop phrase, and the .wav's address. */
 let loopText = "";
+/** The settings the Nonstop phrase was last given, so it can be given again when its voices are in. */
+let loopSound: RehearseSettings | null = null;
 let wavUrl = "";
 let alive = false;
 /** Whether the tab is open (it plays the sound itself then). */
@@ -434,15 +449,39 @@ async function askOnce() {
   await askUnrestricted();
 }
 
+/**
+ * The sound with the phrase's robot voices as raw binary in it (Sound tab, "The robot
+ * voices as raw binary too"), once the phone has said the phrase for each voice (voiceRaw.ts):
+ * till then the sound is the phrase's own bytes alone, and it takes the voices in
+ * the moment they are ready. It takes the whole settings (the voice layers are in
+ * them), never a part of them: a part cannot say which voices to make.
+ */
+function withVoices(text: string, set: RehearseSettings): LoopSound {
+  if (set.voiceRaw === "off" || !set.voice) return set;
+  const v = voiceBytesFor(text, set);
+  if (!v) {
+    prepareVoiceRaw(text, set);
+    return set;
+  }
+  return { ...set, voiceBytes: v.bytes, voiceTag: v.tag };
+}
+
+/** A phrase's voices came in (or could not): the Nonstop phrase takes them. */
+subscribeVoiceRaw(() => {
+  if (loop && loopText && loopSound) loop.play(loopText, withVoices(loopText, loopSound));
+});
+
 /** The phrase's sound all the time (null: off). */
-export function playNonstop(text: string | null, sound?: LoopSound) {
+export function playNonstop(text: string | null, set?: RehearseSettings) {
   loop ??= phraseLoop();
-  if (text && sound) {
-    loop.play(text, sound);
+  if (text && set) {
+    loop.play(text, withVoices(text, set));
     loopText = text;
+    loopSound = set;
   } else {
     loop.stop();
     loopText = "";
+    loopSound = null;
   }
   keep();
 }
@@ -628,13 +667,19 @@ const sayOf = (set: RehearseSettings, l: VoiceLayer) => ({
  * What the background mix plays: every heard voice but the main one, each
  * layer saying the phrase or (whole texts) reading the whole text by itself.
  */
-function swarmOf(st: RehearseState, text: string, heard: HeardLayer[]): SwarmPlay | null {
+function swarmOf(
+  st: RehearseState,
+  text: string,
+  heard: HeardLayer[],
+  court?: CourtText,
+): SwarmPlay | null {
   const set = st.settings;
-  const texts = st.view === "texts";
-  const t = texts ? currentText(st, rehearseLibrary()) : undefined;
-  const units = t ? readUnits(t.lines).map((u) => u.text) : [];
+  // A Court recite from one text reads it as a whole text, wherever Rehearse is.
+  const texts = court ? true : st.view === "texts";
+  const t = !court && texts ? currentText(st, rehearseLibrary()) : undefined;
+  const units = court ? court.units : t ? readUnits(t.lines).map((u) => u.text) : [];
   const phrases = texts && units.length ? units : [text];
-  const phrase = texts && t ? textAt(st, t.key, units.length) : 0;
+  const phrase = court ? Math.max(0, court.at) : texts && t ? textAt(st, t.key, units.length) : 0;
   // Layers with the same voice share their sayings.
   const voiceKeys: string[] = [];
   const voiceOf = (l: VoiceLayer) => {
@@ -656,7 +701,8 @@ function swarmOf(st: RehearseState, text: string, heard: HeardLayer[]): SwarmPla
       voices: vs.map((v) => ({ at: v.at, speed: v.speed, gain: v.gain })),
       mode,
       loop: h.layer.voiceLoop,
-      gapSec: h.layer.voiceGapMs / 1000,
+      // The silence between is the main voice's (to take it in): the background has none.
+      gapSec: 0,
       reverse: h.layer.voiceReverse,
       robot: h.layer.voiceRobot,
       robotHz: h.layer.voiceRobotHz,
@@ -665,7 +711,11 @@ function swarmOf(st: RehearseState, text: string, heard: HeardLayer[]): SwarmPla
     });
   }
   if (!layers.phrase.length && !layers.text.length) return null;
-  const list = texts && t ? `text:${t.key}:${hash(t.lines.join("\n"))}` : `phrase:${text}`;
+  const list = court
+    ? `court:${court.mark}`
+    : texts && t
+      ? `text:${t.key}:${hash(t.lines.join("\n"))}`
+      : `phrase:${text}`;
   return {
     key: JSON.stringify([layers, voiceKeys, set.voiceEngine, set.ttsRate]),
     list,
@@ -832,9 +882,14 @@ export function readerSound(text: string | null) {
 /** With the tab closed: what the state asks for (after the window, or the reader, moved it on). */
 async function playClosed() {
   const s = rehearseState();
-  if (!s.settings.background) return;
-  // The Court has the players while a phrase is recited there: Rehearse's own sound waits.
+  // The Court has the players while a phrase is recited there; and on its screen
+  // Rehearse's own texts are not sounded at all: what the tab was playing stops.
   if (courtHas) return;
+  if (courtShown) {
+    stopRehearseSound();
+    return;
+  }
+  if (!s.settings.background) return;
   const ask = ++playing;
   const a = activeOf(s, rehearseLibrary());
   const set = s.settings;
@@ -862,10 +917,35 @@ async function playClosed() {
 
 /** The Court has the players: the phrase recited there sounds, and Rehearse's own sound waits. */
 let courtHas = false;
+/** The Court is on screen: Rehearse's own texts are not sounded meanwhile (see courtScreen). */
+let courtShown = false;
 let courtAsk = 0;
-/** What the Court sounds now: its phrase and the pass it is at (sounded again when Rehearse's settings change). */
+/** What the Court sounds now: its phrase, its phrase's number, whose voice says it and the text it is from (sounded again when Rehearse's settings change). */
 let courtText = "";
 let courtTag = "";
+let courtHer: CourtVoice | undefined;
+let courtWhole: CourtText | undefined;
+
+/**
+ * The text a Court recite is from, for the voices set to read a whole text:
+ * its phrases, the one being recited among them (-1 when it is not one of them)
+ * and a name for the text as it is (the same text again goes on as it is).
+ */
+export interface CourtText {
+  units: string[];
+  at: number;
+  mark: string;
+}
+
+/**
+ * The Court is on its screen (true) or has left it (false). On it only the Court
+ * sounds: Rehearse's own texts are never started there, not by the tab closing,
+ * nor by a setting changed, nor when a recite ends; what plays while the Court
+ * recites is the recite's phrase (courtSound), and it stops with the recite.
+ */
+export function courtScreen(on: boolean) {
+  courtShown = on;
+}
 /** The main voice saying the Court's phrase (its background is the shared mix, as Rehearse's). */
 let courtMain: VoicePlayer | null = null;
 let courtBrowser: (() => void) | null = null;
@@ -875,8 +955,46 @@ let courtTapUntil = 0;
 let courtTapTimer = 0;
 /** A queen's line said aloud, once: its own player (or the browser's voice). */
 let sayPlayer: VoicePlayer | null = null;
+/** The other voices of the layer saying her line with her (Rehearse's own voice, as its copies are). */
+let sayCopies: VoicePlayer | null = null;
 let sayBrowser: (() => void) | null = null;
 let sayAsk = 0;
+
+/**
+ * A queen's own voice: her pitch and pace (each multiplies Rehearse's), and
+ * which of the phone's voices is hers: a name, "" for one picked for her (by
+ * her slot among the queens), "=" for the voice Rehearse is set to.
+ */
+export interface CourtVoice {
+  pitch: number;
+  rate: number;
+  voice?: string;
+  slot?: number;
+}
+
+/** The phone's voices for Rehearse's engine, asked for once an engine. */
+let herVoices: { engine: string; list: Promise<VoiceInfo[]> } | null = null;
+
+/** The voices a queen can be given: those of the engine Rehearse is set to. */
+export function courtVoiceList(): Promise<VoiceInfo[]> {
+  const engine = rehearseState().settings.voiceEngine;
+  if (herVoices?.engine !== engine) herVoices = { engine, list: voiceList(engine).catch(() => []) };
+  return herVoices.list;
+}
+
+/** How a queen says it: her own voice (or Rehearse's layer's), at her pitch and pace. */
+async function herSay(set: RehearseSettings, layer: VoiceLayer, her: CourtVoice) {
+  let name = layer.voiceName;
+  if (her.voice && her.voice !== VOICE_REHEARSE) name = her.voice;
+  else if (her.voice !== VOICE_REHEARSE)
+    name = ownVoice(await courtVoiceList(), her.slot ?? 0, layer.voiceName) || layer.voiceName;
+  return {
+    ...set,
+    voiceName: name,
+    voiceRate: clampVoiceRate(layer.voiceRate * her.rate),
+    voicePitch: clampVoicePitch(layer.voicePitch * her.pitch),
+  };
+}
 
 /** Every voice saying the Court's phrase stops (the main voice, the others, the browser's). */
 function stopCourtVoices() {
@@ -894,6 +1012,7 @@ function courtQuiet() {
   sayAsk += 1;
   stopCourtVoices();
   sayPlayer?.stop();
+  sayCopies?.stop();
   sayBrowser?.();
   sayBrowser = null;
   window.clearTimeout(courtTapTimer);
@@ -901,25 +1020,26 @@ function courtQuiet() {
   courtHas = false;
 }
 
-/** Rehearse's settings changed while the Court sounds its phrase (paused, played again, another voice): as set now. */
+/** Rehearse's settings changed while the Court sounds its phrase (another voice, Repeats, a layer): as set now. */
 function courtAgain() {
-  if (courtHas && courtText) void courtSound(courtText, courtTag);
+  if (courtHas && courtText) void courtSound(courtText, courtTag, courtHer, courtWhole);
 }
 
-/** How many times a pass the main voice says the Court's phrase, as Rehearse is set, in words. */
+/** How many times a phrase the main voice says the Court's phrase, as Rehearse is set, in words. */
 function mainSays(set: RehearseSettings, loop: boolean): string {
-  if (set.voiceRepeats === 1) return "the main voice once a pass";
-  if (set.voiceRepeats > 1) return `the main voice ${set.voiceRepeats} times a pass`;
-  return loop ? "over and over" : "once a pass";
+  if (set.voiceRepeats === 1) return "the main voice once a phrase";
+  if (set.voiceRepeats > 1) return `the main voice ${set.voiceRepeats} times a phrase`;
+  return loop ? "over and over" : "once a phrase";
 }
 
 /** What of Rehearse's sound the Court would use now, in a few words (for its screens). */
 export function courtSoundNote(): string {
   const set = rehearseState().settings;
-  if (set.paused) return "Rehearse's sound is paused (Play all sound, there, starts it again)";
   const parts: string[] = [];
   if (set.sound)
-    parts.push(set.nonstop ? "the phrase's sound, all the time" : "the phrase's sound on a tap");
+    parts.push(
+      `${set.nonstop ? "the phrase's sound, all the time" : "the phrase's sound on a tap"}${set.voiceRaw !== "off" && set.voice ? ", with the robot voices mixed in as raw binary" : ""}`,
+    );
   if (set.voice) {
     const heard = heardVoices(set);
     if (heard.length) {
@@ -971,29 +1091,44 @@ function courtBrowserSay(
 }
 
 /**
- * The phrase being recited in the Court (null: none) sounds as Rehearse is set.
- * Its bytes sound all the time while it is up, when Rehearse's Sound and Nonstop
- * are on (with Nonstop off it sounds on each tap: courtTapSound). The robot
- * voice says it, when Rehearse's Robot voice is on, as on a single phrase
+ * The phrase being recited in the Court (null: none) sounds as Rehearse is set,
+ * its sound settings, never its texts. It plays by itself while the recite is up
+ * (Rehearse's Pause all sound is Rehearse's own: the Court starts when you
+ * recite and stops when you stop), and stops with the recite: Rehearse's own text
+ * does not take over after it. Its bytes sound all the time, when Rehearse's
+ * Sound and Nonstop are on (with Nonstop off, on each tap: courtTapSound). The
+ * robot voice says it, when Rehearse's Robot voice is on, as on a single phrase
  * there: every layer heard, with its voices (stacked layers multiplied, as many
- * live as the sample rate allows) and its shape; the main voice says it Repeats
- * times and then waits (0: over and over), and here a pass is the tap: each new
- * `tag` (a pass) has it say it again. A layer not said over and over is said
- * once a pass. Pause all sound, there, quiets it here too. Rehearse's own sound
- * waits meanwhile, and comes back after, if it plays on in the background.
+ * live as the sample rate allows) and its shape. `tag` names the phrase, not
+ * the pass: the same phrase again (its next pass) goes on as it is, the voices
+ * looping through it, and only the next phrase says it all again; the main voice
+ * says it Repeats times (0: over and over) and then waits for the next phrase.
+ * With `whole` (a recite from one text), the layers set to read a whole text read
+ * that text round and round, never stopped by the phrase moving on, till the
+ * recite is over. Recited for a queen (`her`), the main voice is her own, at her
+ * pitch and pace; every other voice stays as Rehearse has it.
  */
-export async function courtSound(text: string | null, tag = ""): Promise<void> {
+export async function courtSound(
+  text: string | null,
+  tag = "",
+  her?: CourtVoice,
+  whole?: CourtText,
+): Promise<void> {
   const set = rehearseState().settings;
   const ask = ++courtAsk;
   courtText = text ?? "";
   courtTag = text ? tag : "";
+  courtHer = text ? her : undefined;
+  courtWhole = text ? whole : undefined;
   if (!text) {
     stopCourtVoices();
     if (!courtHas) return;
     courtHas = false;
     if (Date.now() >= courtTapUntil) playNonstop(null);
-    // Rehearse's own sound again (its tab, if open, plays it itself).
-    if (!open && set.background) void playClosed();
+    // Rehearse's own text does not take over: its voice, files and loops stay stopped.
+    void playWav(null);
+    void playTts(null);
+    void playVoice(null);
     return;
   }
   if (open) return;
@@ -1005,9 +1140,9 @@ export async function courtSound(text: string | null, tag = ""): Promise<void> {
     stopVoices();
     stopRenderPlay();
   }
-  if (set.sound && set.nonstop && !set.paused) playNonstop(text, set);
+  if (set.sound && set.nonstop) playNonstop(text, set);
   else if (Date.now() >= courtTapUntil) playNonstop(null);
-  const heard = set.voice && !set.paused ? heardVoices(set) : [];
+  const heard = set.voice ? heardVoices(set) : [];
   if (!heard.length) {
     stopCourtVoices();
     return;
@@ -1016,25 +1151,29 @@ export async function courtSound(text: string | null, tag = ""): Promise<void> {
   if (ask !== courtAsk) return;
   if (!where) return;
   const main = heard[0]!;
-  // Over and over by itself: a new pass changes nothing. Else each pass says it again.
+  // Over and over by itself: nothing changes it. Else it says it again for each new phrase.
   const mainTag = set.voiceRepeats === 0 && main.layer.voiceLoop ? "" : tag;
+  // Whose voice the main voice is: the queen's you recite for, or Rehearse's own.
+  const says = her ? await herSay(set, main.layer, her) : sayOf(set, main.layer);
+  if (ask !== courtAsk) return;
   if (where === "browser") {
-    courtBrowserSay(text, { ...set, ...main.layer }, set.voiceRepeats, mainTag);
+    courtBrowserSay(text, { ...set, ...main.layer, ...says }, set.voiceRepeats, mainTag);
     return;
   }
   try {
     // The background (every voice but the main one), mixed into one as in Rehearse: its
-    // layers say the Court's phrase; a layer not said over and over, again each pass.
+    // layers say the Court's phrase (a layer not said over and over, again for each new
+    // phrase); those set to read a whole text read the recite's text, if it is from one.
     const once = heard.some((h) => !h.layer.voiceLoop);
-    const bg = swarmOf({ ...rehearseState(), view: "phrases" }, text, heard);
-    queueSwarm(bg && { ...bg, list: `court:${text}${once ? `:${tag}` : ""}` });
+    const bg = swarmOf({ ...rehearseState(), view: "phrases" }, text, heard, whole);
+    queueSwarm(bg && (whole ? bg : { ...bg, list: `court:${text}${once ? `:${tag}` : ""}` }));
     const mainAt = mainVoiceOf(heard);
     courtMain ??= voicePlayer();
     if (!mainAt) {
       courtMain.stop();
       return;
     }
-    const url = await voiceFile(text, sayOf(set, main.layer));
+    const url = await voiceFile(text, says);
     if (ask !== courtAsk) return;
     await courtMain.play(url, voiceShapeOf(main.layer), {
       voices: [mainAt],
@@ -1052,7 +1191,7 @@ export async function courtSound(text: string | null, tag = ""): Promise<void> {
  */
 export function courtTapSound(text: string) {
   const set = rehearseState().settings;
-  if (open || !text || !set.sound || set.nonstop || set.paused) return;
+  if (open || !text || !set.sound || set.nonstop) return;
   const ms = Math.min(3000, Math.max(120, set.signalMs));
   playNonstop(text, set);
   courtTapUntil = Date.now() + ms;
@@ -1061,37 +1200,29 @@ export function courtTapSound(text: string) {
     courtTapUntil = 0;
     // Unless Nonstop has been turned on meanwhile, the burst is over.
     const now = rehearseState().settings;
-    if (!(courtHas && now.sound && now.nonstop && !now.paused)) playNonstop(null);
+    if (!(courtHas && now.sound && now.nonstop)) playNonstop(null);
   }, ms);
 }
 
 /**
- * A queen's line said aloud, once, in Rehearse's robot voice: the layer of its
- * main voice, with its shape and its voices (at most `most` of them, the
- * nearest first, so her words stay words), at her own pitch and pace (each
- * multiplies Rehearse's). Nothing when Rehearse's Robot voice is off or every
- * sound is paused there.
+ * A queen's line said aloud, once: the main voice is her own (hervoice.ts), at
+ * her pitch and pace; the other voices of that layer say it with her as
+ * Rehearse has them (its voice, its copies, its shape), all of them, or at most
+ * `most` in all when that is above 0. Nothing when Rehearse's Robot voice is
+ * off.
  */
-export async function courtSay(
-  text: string,
-  her: { pitch: number; rate: number },
-  most = 12,
-): Promise<void> {
+export async function courtSay(text: string, her: CourtVoice, most = 0): Promise<void> {
   const set = rehearseState().settings;
   const ask = ++sayAsk;
-  if (open || !text || !set.voice || set.paused) return;
+  if (open || !text || !set.voice) return;
   const heard = heardVoices(set);
   const main = heard[0];
   if (!main) return;
   const layer = main.layer;
   const where = await voiceHere();
   if (ask !== sayAsk || !where) return;
-  const says = {
-    ...set,
-    voiceName: layer.voiceName,
-    voiceRate: clampVoiceRate(layer.voiceRate * her.rate),
-    voicePitch: clampVoicePitch(layer.voicePitch * her.pitch),
-  };
+  const says = await herSay(set, layer, her);
+  if (ask !== sayAsk) return;
   if (where === "browser") {
     sayBrowser?.();
     sayBrowser = browserSay(text, {
@@ -1103,18 +1234,29 @@ export async function courtSay(
     return;
   }
   try {
-    const url = await voiceFile(text, says);
-    if (ask !== sayAsk) return;
+    const voices = most > 0 ? main.voices.slice(0, Math.floor(most)) : main.voices;
+    const copies = voices.slice(1);
     sayPlayer ??= voicePlayer();
-    const voices = main.voices.slice(0, Math.max(1, Math.floor(most)));
-    await sayPlayer.play(url, voiceShapeOf(layer), {
-      voices,
-      times: 1,
-      // Her own voice as she says it; its copies reversed, if the layer is.
-      reverse: layer.voiceReverse,
-      mainForward: true,
-      tag: String(ask),
-    });
+    sayCopies ??= voicePlayer();
+    if (!copies.length) sayCopies.stop();
+    const [url, plain] = await Promise.all([
+      voiceFile(text, says),
+      copies.length ? voiceFile(text, sayOf(set, layer)) : Promise.resolve(""),
+    ]);
+    if (ask !== sayAsk) return;
+    const shape = voiceShapeOf(layer);
+    const plays = [sayPlayer.play(url, shape, { voices: voices.slice(0, 1), times: 1, tag: String(ask) })];
+    // The copies: Rehearse's own voice, reversed if the layer is.
+    if (copies.length)
+      plays.push(
+        sayCopies.play(plain, shape, {
+          voices: copies,
+          times: 1,
+          reverse: layer.voiceReverse,
+          tag: String(ask),
+        }),
+      );
+    await Promise.all(plays);
   } catch {
     /* no voice for this line */
   }
@@ -1124,6 +1266,7 @@ export async function courtSay(
 export function courtHush() {
   sayAsk += 1;
   sayPlayer?.stop();
+  sayCopies?.stop();
   sayBrowser?.();
   sayBrowser = null;
 }

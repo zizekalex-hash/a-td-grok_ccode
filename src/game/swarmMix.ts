@@ -76,6 +76,10 @@ interface Voice {
   /** Through (said once, not over and over). */
   done: boolean;
   waiting: boolean;
+  /** Its last saying (played again meanwhile while the next is not made yet: it never waits). */
+  last: TtsSource | null;
+  /** Saying a stand-in now: when it is over, it is still on the same phrase. */
+  filler: boolean;
 }
 
 /** A sine of hz at rate from frame `from`, turned on a step at a time. */
@@ -125,6 +129,8 @@ export function createSwarm(
 ): Swarm {
   let at = from;
   let wants: SwarmNeed[] = [];
+  /** Each voice's last saying, for its copies that have none yet. */
+  const lastOf = new Map<number, TtsSource>();
   const voices: Voice[] = [];
   layers.forEach((l, li) => {
     for (const v of l.voices) {
@@ -142,6 +148,8 @@ export function createSwarm(
         end: 0,
         done: phrases <= 0,
         waiting: false,
+        last: null,
+        filler: false,
       });
     }
   });
@@ -151,6 +159,10 @@ export function createSwarm(
     const l = layers[v.layer]!;
     v.start = v.end + Math.max(0, Math.round((l.gapSec * rate) / v.speed));
     v.src = null;
+    if (v.filler) {
+      v.filler = false;
+      return;
+    }
     if (l.mode === "text") {
       v.phrase += 1;
       if (v.phrase >= phrases) {
@@ -176,15 +188,26 @@ export function createSwarm(
             if (v.start >= b) break;
             if (v.start > j) j = v.start;
             const l = layers[v.layer]!;
-            const s = source(l.voice, v.phrase);
+            let s = source(l.voice, v.phrase);
+            v.filler = false;
             if (!s || !s.length || !(s.rate > 0)) {
-              // Not here yet: it waits, and starts as soon as it is (from the next piece).
-              v.waiting = true;
+              // Not made yet: asked for, and meanwhile it never waits: it says again what it
+              // (or a voice like it) said last, and comes to this phrase as soon as it is made.
               const k = `${l.voice}|${v.phrase}`;
               const w = need.get(k);
               if (!w || j < w.at) need.set(k, { voice: l.voice, phrase: v.phrase, at: j });
-              v.start = b;
-              break;
+              const stand = v.last ?? lastOf.get(l.voice) ?? null;
+              if (!stand) {
+                // Nothing said at all yet (the very start): from the next piece.
+                v.waiting = true;
+                v.start = b;
+                break;
+              }
+              s = stand;
+              v.filler = true;
+            } else {
+              v.last = s;
+              lastOf.set(l.voice, s);
             }
             v.waiting = false;
             v.src = l.reverse ? reverseOf(s) : s;

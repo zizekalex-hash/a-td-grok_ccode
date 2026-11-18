@@ -81,3 +81,92 @@ export function progressOf(
   for (const u of units) if (used.has(hashOf(u))) done += 1;
   return { done, total: units.length };
 }
+
+// ---- Texts recited through: counted phrase by phrase, confirmed when every one is done ----
+
+/** A text of the library, with its phrases and how many of them have been recited this round. */
+export interface DeckText {
+  key: string;
+  name: string;
+  folder?: string;
+  units: string[];
+  /** The short names of its phrases (a phrase is counted by its name). */
+  hashes: Set<string>;
+  /** Phrases of it recited so far this round. */
+  done: number;
+}
+
+/** How many of a text's phrases are in `done`. */
+export function countDone(t: Pick<DeckText, "hashes">, done: ReadonlySet<string>): number {
+  let n = 0;
+  for (const h of t.hashes) if (done.has(h)) n += 1;
+  return n;
+}
+
+/** Each text's phrases, and how many are done already (a round carried over from before counts). */
+export function deckTexts(
+  texts: readonly { key: string; name: string; folder?: string; lines: string[] }[],
+  min: number,
+  done: ReadonlySet<string>,
+): DeckText[] {
+  return texts.map((t) => {
+    const units = phraseUnits([t.lines], min);
+    const hashes = new Set(units.map(hashOf));
+    const one: DeckText = { key: t.key, name: t.name, units, hashes, done: 0 };
+    if (t.folder) one.folder = t.folder;
+    one.done = countDone(one, done);
+    return one;
+  });
+}
+
+/**
+ * A phrase recited all through: counted (in `done`, changed in place) towards every
+ * text it is in. A text whose every phrase is now done is finished: it is
+ * returned, and cleared from `done` so a fresh round of it begins.
+ */
+export function reciteDone(texts: DeckText[], done: Set<string>, phrase: string): DeckText[] {
+  const h = hashOf(phrase);
+  const had = done.has(h);
+  done.add(h);
+  const finished: DeckText[] = [];
+  for (const t of texts) {
+    if (!t.hashes.has(h)) continue;
+    if (!had) t.done += 1;
+    if (t.hashes.size > 0 && t.done >= t.hashes.size) finished.push(t);
+  }
+  if (finished.length) clearTexts(texts, done, finished);
+  return finished;
+}
+
+/** Takes the given texts' phrases out of `done` (a fresh round of them), and counts the others again. */
+export function clearTexts(texts: DeckText[], done: Set<string>, cleared: readonly DeckText[]) {
+  for (const t of cleared) for (const h of t.hashes) done.delete(h);
+  // A phrase two texts share is cleared for both: their counts are worked out again.
+  for (const t of texts) t.done = countDone(t, done);
+}
+
+/**
+ * The next phrase to recite: at random among those not done yet, and (while
+ * others remain) not one of `avoid`, the last few that came (a skipped one does
+ * not come straight back). Null with no phrases at all.
+ */
+export function pickFresh(
+  units: readonly string[],
+  done: ReadonlySet<string>,
+  rand: () => number,
+  avoid: readonly string[] = [],
+): string | null {
+  const left = units.filter((u) => !done.has(hashOf(u)));
+  const pool = left.length ? left : [...units];
+  if (!pool.length) return null;
+  const fresh = pool.filter((u) => !avoid.includes(u));
+  const from = fresh.length ? fresh : pool;
+  return from[Math.min(from.length - 1, Math.floor(rand() * from.length))]!;
+}
+
+/** Percent done, whole numbers, never 100 until it is. */
+export function percentOf(done: number, total: number): number {
+  if (total <= 0) return 0;
+  const p = Math.floor((done / total) * 100);
+  return done >= total ? 100 : Math.min(99, p);
+}

@@ -67,7 +67,17 @@ export type TdTowerKey =
   | "daybreak"
   | "serotonin"
   | "dopamine"
-  | "histamine";
+  | "histamine"
+  | "cinder"
+  | "hex"
+  | "blight"
+  | "siphon"
+  | "wrath"
+  | "rift"
+  | "pact"
+  | "maw"
+  | "eclipse"
+  | "oblivion";
 
 export type TdCreepKind =
   | "adenosine"
@@ -91,11 +101,16 @@ export type TdCreepKind =
   | "debt"
   | "hypnos"
   | "morpheus"
-  | "nyx";
+  | "nyx"
+  | "nightterror"
+  | "nightmare"
+  | "insomnia";
 
 export type TdPerkKey = "damage" | "rate" | "range" | "interest" | "lives" | "thrift";
 /** Upgrades bought with flux. */
 export type TdVoidPerkKey = "yield" | "power" | "reach" | "tithe";
+/** Upgrades bought with dark energy, most of them without a limit (see td.fel._about). */
+export type TdFelPerkKey = "power" | "haste" | "reach" | "tithe" | "barter" | "devour";
 
 export interface TdTowerSpec {
   name: string;
@@ -140,6 +155,8 @@ export interface TdTowerSpec {
   shred?: number;
   /** A wake tower: built, upgraded and specialized with ATP (td.atp), not O/I. */
   wake?: boolean;
+  /** A fel tower: built, upgraded and specialized with dark energy (td.de), not O/I. */
+  fel?: boolean;
   /** More creeps it fires at in one volley (1 = two creeps at once). */
   multi?: number;
   /** Seconds a hit stops the creep dead. Bosses resist like a slow. */
@@ -239,6 +256,8 @@ export interface TdCreepSpec {
   summonCount?: number;
   /** ATP it drops when slain (the dream set and every boss). */
   atp?: number;
+  /** Dark energy it pays when slain, growing td.fel.deScale a wave (the fel super bosses). */
+  de?: number;
   /** Most of its full life one hit can take (0.12 = 12%). Burns are not capped. */
   ward?: number;
   /** Sprints: every dashEvery seconds, dashTime seconds at dashSpeed times its pace. */
@@ -264,6 +283,17 @@ export interface TdCreepSpec {
 }
 
 /** A stage the wake core reaches at a level: what it adds to the core from then on. */
+/** An endless upgrade for the fel set, bought with dark energy: level n costs baseCost times growth to the n. */
+export interface TdFelPerkSpec {
+  name: string;
+  copy: string;
+  /** Most levels; 0 for no limit. */
+  max: number;
+  baseCost: number;
+  growth: number;
+  amount: number;
+}
+
 export interface TdCoreStage {
   level: number;
   name: string;
@@ -501,6 +531,12 @@ export interface CourtLook {
   /** gown, corset, scales, regal, void, robe, coat, armor or leather; and an adornment in her hair. */
   outfit?: string;
   adorn?: string;
+  /** full (winged liner and long lashes; when left out) or none (a plain lid). */
+  lashes?: string;
+  /** The whole figure's build: feminine (when left out) or masculine. */
+  body?: string;
+  /** Sliders from -1 to 1 that reshape her (see court.atelier._about); 0, or left out, is as drawn. */
+  shape?: Record<string, number>;
 }
 
 export interface CourtQueenSpec {
@@ -543,6 +579,8 @@ export interface GameConfig {
     uiScale: number;
     fpsCap: number;
     renderScale: number;
+    /** How strongly the shader pictures show, 0 to 100 (0 draws none). */
+    shaderArt: number;
     phraseEvery: number;
     phrasePauseMs: number;
     textPauseMs: number;
@@ -564,6 +602,7 @@ export interface GameConfig {
     | "uiScale"
     | "fpsCap"
     | "renderScale"
+    | "shaderArt"
     | "phraseEvery"
     | "phrasePauseMs"
     | "textPauseMs"
@@ -693,6 +732,33 @@ export interface GameConfig {
     };
     /** ATP, the third currency: what a run starts with (see td.atp._about). */
     atp: { start: number };
+    /** Dark energy, the fourth currency: made by sacrifice and trade (see td.de._about). */
+    de: {
+      start: number;
+      /** What one DE costs in each of the other currencies. */
+      cost: { gold: number; flux: number; atp: number };
+      /** The share of what was put into a tower that sacrificing it gives back, in DE. */
+      offering: number;
+      /** DE for each life sacrificed, and the lives that can never be sacrificed. */
+      life: number;
+      minLives: number;
+      /** The amounts of DE the altar's buttons trade at a time. */
+      trade: number[];
+    };
+    /** What the game writes on screen: phrases of the loaded text only, or its own words (see td.write._about). */
+    write: { only: boolean; lineWords: number; bannerWords: number };
+    /** What DE buys besides fel towers, and how fights earn it: fel perks and the super bosses (see td.fel._about). */
+    fel: {
+      /** Multiply every fel tower's own damage and burn. */
+      damage: number;
+      burn: number;
+      /** DE a super boss pays grows by this share of its base for every wave. */
+      deScale: number;
+      /** Every level of Soul tithe adds this share to what a super boss pays. */
+      bossTithe: number;
+      supers: { from: number; every: number; extraEvery: number; kinds: string[] };
+      perks: Record<TdFelPerkKey, TdFelPerkSpec>;
+    };
     /** The wake core's levels, bought with ATP (see td.core._about). */
     core: {
       cost: number;
@@ -769,6 +835,29 @@ export interface GameConfig {
     /** Phrases in a round of reciting, before the round is complete. */
     phrasesPerRound: number;
     /** Day and night on the map, by the device's clock (see court.night._about). */
+    /** A life of her own: what queens do by themselves, and how they choose (see court.life._about). */
+    life: {
+      enabled: boolean;
+      think: number[];
+      speed: number;
+      weights: Record<string, number>;
+      moods: Record<string, Record<string, number>>;
+      night: Record<string, number>;
+      nightFrom: number;
+      nightTo: number;
+      homesick: number;
+      tierBoost: number;
+      visitAfter: number;
+      callAfter: number;
+      radius: number;
+      radiusEvery: number;
+      radiusMax: number;
+      stay: Record<string, number[]>;
+      doing: Record<string, string[]>;
+      marks: Record<string, string>;
+    };
+    /** How the map is seen: near or far, and how tall people stand on it (see court.view._about). */
+    view: { nearZoom: number; figure: number };
     night: { enabled: boolean; darkness: number };
     /** The current phrase flashing in the middle of the recite screen (see court.flash._about). */
     flash: { enabled: boolean; everyMs: number; lifeMs: number; size: number; opacity: number };
@@ -822,6 +911,34 @@ export interface GameConfig {
     };
     /** How the queens' portraits are drawn (see court.portraits._about). */
     portraits: { style: string };
+    /** Looks changed by hand: how far each shape slider moves, the swatches, and your own look (see court.atelier._about). */
+    atelier: {
+      shape: Record<string, number>;
+      random: number;
+      palettes: {
+        skin: string[];
+        hair: string[];
+        eyes: string[];
+        lips: string[];
+        horns: string[];
+        accent: string[];
+        bg: string[][];
+      };
+      you: { name: string; look: CourtLook };
+    };
+    /** Crystal wine, earned by reciting a text through: the exotic conversation and the date night (see court.wine._about). */
+    wine: {
+      start: number;
+      max: number;
+      minPhrases: number;
+      minTier: number;
+      pour: number;
+      sips: number;
+      sipPhrases: number;
+      sipAffection: number;
+      choices: number;
+      dateMult: number;
+    };
     /** Talking with a queen face to face: tones, tastes and what an exchange is worth (see court.talk._about). */
     talk: {
       perDay: number;

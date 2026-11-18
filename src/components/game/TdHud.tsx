@@ -22,6 +22,7 @@ import {
   Repeat,
   Settings2,
   Shield,
+  Skull,
   Sparkles,
   Swords,
   Trash2,
@@ -64,6 +65,21 @@ import {
   VOID_TOWER_KEYS,
   voidPerkCost,
   WAKE_TOWER_KEYS,
+  FEL_TOWER_KEYS,
+  FEL_PERK_KEYS,
+  FEL_PERKS,
+  felPerkCost,
+  felPerkMaxed,
+  felPower,
+  felHaste,
+  felReach,
+  felTithe,
+  barter,
+  devour,
+  TRADABLE,
+  tradePrice,
+  type FelPerkKey,
+  type Tradable,
   ascensionsOf,
   pathsOf,
   TOWERS,
@@ -101,19 +117,20 @@ function short(n: number): string {
   return String(v);
 }
 
-type BuildTab = "towers" | "void" | "wake";
+type BuildTab = "towers" | "void" | "wake" | "fel";
 /** The build menu's tab and its info switch, kept while the game is open, so the next cell opens on the same set. */
 const buildMenu: { tab: BuildTab; info: boolean } = { tab: "towers", info: false };
 
 /**
  * Every tower, one tap to raise on the selected cell: the towers (O/I), the void
- * set (flux), or the wake set (ATP). With the info switch on, a tap shows what
+ * set (flux), the wake set (ATP) or the fel set (dark energy). With the info switch on, a tap shows what
  * the tower does first, with a button to build it.
  */
 function BuildGrid() {
   const gold = useGame((s) => s.tdView.gold);
   const flux = useGame((s) => s.tdView.flux);
   const atp = useGame((s) => s.tdView.atp);
+  const de = useGame((s) => s.tdView.de);
   const perks = useGame((s) => s.tdView.perks);
   const [tab, setTabState] = useState<BuildTab>(buildMenu.tab);
   const [info, setInfoState] = useState(buildMenu.info);
@@ -123,18 +140,25 @@ function BuildGrid() {
     setTabState(next);
     setShown(null);
   };
-  const keys = tab === "void" ? VOID_TOWER_KEYS : tab === "wake" ? WAKE_TOWER_KEYS : TOWER_KEYS;
-  const money = tab === "void" ? flux : tab === "wake" ? atp : gold;
-  const unit = tab === "void" ? "flux" : tab === "wake" ? "ATP" : "O/I";
-  const mark = tab === "void" ? " ◆" : tab === "wake" ? " ✦" : "";
+  const keys =
+    tab === "void"
+      ? VOID_TOWER_KEYS
+      : tab === "wake"
+        ? WAKE_TOWER_KEYS
+        : tab === "fel"
+          ? FEL_TOWER_KEYS
+          : TOWER_KEYS;
+  const money = tab === "void" ? flux : tab === "wake" ? atp : tab === "fel" ? de : gold;
+  const unit = tab === "void" ? "flux" : tab === "wake" ? "ATP" : tab === "fel" ? "DE" : "O/I";
+  const mark = tab === "void" ? " ◆" : tab === "wake" ? " ✦" : tab === "fel" ? " ☠" : "";
   // Names fit a button only when the whole set's are short; otherwise the set shows its short forms, as on the board.
   const byName = keys.every((key) => TOWERS[key].name.length <= 7);
   const spec = shown ? TOWERS[shown] : null;
   return (
     <div>
     {/* A tower's card takes the whole panel: the tabs come back with the list. */}
-    <div className={`mb-1.5 grid-cols-[1fr_1fr_1fr_auto] gap-1.5 ${spec ? "hidden" : "grid"}`}>
-      <div className="col-span-3 grid grid-cols-3 gap-1.5" role="tablist" aria-label="Tower sets">
+    <div className={`mb-1.5 grid-cols-[1fr_auto] gap-1.5 ${spec ? "hidden" : "grid"}`}>
+      <div className="grid grid-cols-4 gap-1.5 max-[420px]:[&_svg]:hidden" role="tablist" aria-label="Tower sets">
         <button
           type="button"
           role="tab"
@@ -167,6 +191,17 @@ function BuildGrid() {
           aria-label={`The wake set, paid in ATP: ${Math.floor(atp)} ATP`}
         >
           <Flame className="size-3.5 shrink-0" aria-hidden /> Wake {short(atp)}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "fel"}
+          data-on={tab === "fel"}
+          className="btn btn-tab"
+          onClick={() => setTab("fel")}
+          aria-label={`The fel set, paid in dark energy: ${Math.floor(de)} DE`}
+        >
+          <Skull className="size-3.5 shrink-0" aria-hidden /> Fel {short(de)}
         </button>
       </div>
       <button
@@ -261,13 +296,16 @@ function TowerPanel() {
   const flux = useGame((s) => s.tdView.flux);
   const perks = useGame((s) => s.tdView.perks);
   const voidPerks = useGame((s) => s.tdView.voidPerks);
+  const felPerks = useGame((s) => s.tdView.felPerks);
   const atp = useGame((s) => s.tdView.atp);
+  const de = useGame((s) => s.tdView.de);
   if (!tower) return null;
-  // A void tower is paid in flux and a wake tower in ATP: every price below is in the tower's currency.
-  const money = tower.currency === "flux" ? flux : tower.currency === "atp" ? atp : gold;
+  // A void tower is paid in flux, a wake tower in ATP and a fel tower in dark energy: every price below is in the tower's currency.
+  const money =
+    tower.currency === "flux" ? flux : tower.currency === "atp" ? atp : tower.currency === "de" ? de : gold;
   const unit = CURRENCY_NAME[tower.currency];
   const spec = TOWERS[tower.key];
-  const stats = towerStats(tower.key, tower.level, perks, tower.path, tower.ascend, voidPerks);
+  const stats = towerStats(tower.key, tower.level, perks, tower.path, tower.ascend, voidPerks, felPerks);
   const paths = pathsOf(tower.key);
   const path = paths[tower.path];
   const ascensions = ascensionsOf(tower.key);
@@ -344,7 +382,9 @@ function TowerPanel() {
           ))}
         </div>
       )}
-      <div className="mt-2 grid grid-cols-4 gap-1.5">
+      <div
+        className={`mt-2 grid gap-1.5 ${tower.sacrifice > 0 ? "grid-cols-5 [&_svg]:hidden" : "grid-cols-4"}`}
+      >
         <button
           type="button"
           className="btn flex-col gap-0 px-1"
@@ -388,6 +428,21 @@ function TowerPanel() {
             {fires ? TARGET_LABEL[tower.targeting] : "none"}
           </span>
         </button>
+        {tower.sacrifice > 0 && (
+          <button
+            type="button"
+            className="btn flex-col gap-0 px-1 text-de"
+            onClick={() => game()?.tdSacrifice()}
+            aria-label={`Sacrifice for ${tower.sacrifice} dark energy (selling gives ${tower.sellValue} ${unit})`}
+            title="Take the tower away for dark energy: more than selling it"
+          >
+            <span className="flex items-center gap-1">
+              <Skull className="size-3.5" aria-hidden />
+              Offer
+            </span>
+            <span className="text-[0.6rem] tracking-normal">+{tower.sacrifice} DE</span>
+          </button>
+        )}
         <button
           type="button"
           className="btn flex-col gap-0 px-1"
@@ -532,10 +587,263 @@ function PerkSheet({ onClose }: { onClose: () => void }) {
             <CorePanel />
           </div>
           <VoidPerks />
+          <AltarPanel />
+          <FelPerks />
           <div className="rounded-md border border-cyan/30 p-2 sm:col-span-2">
             <p className="font-display text-xs text-fg">This run</p>
             <DamageReport />
           </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+const TRADE_NAME: Record<Tradable, string> = { gold: "O/I", flux: "flux", atp: "ATP" };
+
+/**
+ * The altar: dark energy is never earned, it is made. Trade O/I, flux or ATP for
+ * it; give lives for it (never the last); a tower is given from its own panel
+ * (Offer). It builds the fel set, the build menu's Fel tab.
+ */
+function AltarPanel({ compact = false, lean = false }: { compact?: boolean; lean?: boolean }) {
+  const v = useGame((s) => s.tdView);
+  const D = CONFIG.td.de;
+  const have: Record<Tradable, number> = { gold: v.gold, flux: v.flux, atp: v.atp };
+  // What one DE costs now, after Barter.
+  const each = (from: Tradable) => +(D.cost[from] * barter(v.felPerks)).toFixed(2);
+  return (
+    <div className={`rounded-md border border-de/50 p-2 ${compact ? "" : "sm:col-span-2"}`}>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="font-display text-xs tracking-[0.14em] text-de">{lean ? "THE ALTAR" : "THE ALTAR · DARK ENERGY"}</p>
+        <p className="font-display text-xs text-de">☠ {Math.floor(v.de)} DE</p>
+      </div>
+      {!lean && (
+        <p className="mt-1 mb-2 text-xs leading-snug text-muted">
+          Dark energy is made: trade for it, give lives, sacrifice a tower (its Offer button: {Math.round(D.offering * devour(v.felPerks) * 100)}% of
+          what was put into it comes back as DE, more than selling gives), or slay a fel super boss. It
+          builds the fel set (the build menu&apos;s Fel tab) and buys the endless fel upgrades below.
+        </p>
+      )}
+      <div className="grid gap-1.5">
+        {TRADABLE.map((from) => (
+          <div key={from} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-1.5">
+            <p className="min-w-0 text-xs leading-tight text-fg">
+              {TRADE_NAME[from]} → DE
+              <span className="block text-[0.65rem] text-muted">
+                {each(from)} {TRADE_NAME[from]} each · you have {short(have[from])}
+              </span>
+            </p>
+            {D.trade.map((n) => (
+              <button
+                key={n}
+                type="button"
+                className="btn btn-tab"
+                disabled={have[from] < tradePrice(from, n, v.felPerks)}
+                onClick={() => game()?.tdTrade(from, n)}
+                aria-label={`Trade ${tradePrice(from, n, v.felPerks)} ${TRADE_NAME[from]} for ${n} dark energy`}
+              >
+                +{n}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="btn btn-tab"
+              disabled={v.altar.can[from] < 1}
+              onClick={() => game()?.tdTradeAll(from)}
+              aria-label={`Trade all: ${v.altar.can[from]} dark energy for ${short(tradePrice(from, v.altar.can[from], v.felPerks))} ${TRADE_NAME[from]}`}
+            >
+              Max{v.altar.can[from] > 0 ? ` ${short(v.altar.can[from])}` : ""}
+            </button>
+          </div>
+        ))}
+        <div className="grid grid-cols-[1fr_auto_auto] items-center gap-1.5">
+          <p className="min-w-0 text-xs leading-tight text-fg">
+            Lives → DE
+            <span className="block text-[0.65rem] text-muted">
+              {D.life} DE each · {v.altar.lives} can go (never the last)
+            </span>
+          </p>
+          {[1, 3].map((n) => (
+            <button
+              key={n}
+              type="button"
+              className="btn btn-tab text-danger"
+              disabled={v.altar.lives < n}
+              onClick={() => game()?.tdSacrificeLives(n)}
+              aria-label={`Give ${n} ${n === 1 ? "life" : "lives"} for ${n * D.life} dark energy`}
+            >
+              <Heart className="size-3 shrink-0" aria-hidden /> {n} · +{n * D.life}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** What a fel perk does now, for its row. */
+function felNow(key: FelPerkKey, fp: Record<FelPerkKey, number>, wave: number): string {
+  if (fp[key] <= 0) return "not bought yet";
+  if (key === "power") return `now ×${felPower(fp).toFixed(2)} damage`;
+  if (key === "haste") return `now ×${felHaste(fp).toFixed(2)} fire rate`;
+  if (key === "reach") return `now +${felReach(fp).toFixed(2)} cells`;
+  if (key === "tithe") return `now +${felTithe(fp, wave)} DE a wave at wave ${wave}`;
+  if (key === "barter") return `now ${Math.round((1 - barter(fp)) * 100)}% off trades`;
+  return `now +${Math.round((devour(fp) - 1) * 100)}% from offerings`;
+}
+
+/** What a fel perk adds a level, in a few words, for the narrow list on the core. */
+function felShort(key: FelPerkKey): string {
+  const a = FEL_PERKS[key].amount;
+  if (key === "power") return `+${Math.round(a * 100)}% damage`;
+  if (key === "haste") return `+${Math.round(a * 100)}% fire rate`;
+  if (key === "reach") return `+${a} cells`;
+  if (key === "tithe") return `${a} DE × wave, a wave`;
+  if (key === "barter") return `${Math.round(a * 100)}% off trades`;
+  return `+${Math.round(a * 100)}% from offerings`;
+}
+
+/**
+ * The endless fel upgrades: bought with dark energy, each level dearer than the
+ * last, most with no limit; and the fel super bosses, which pay dark energy.
+ * `lean` is the short form for the core's panel: one line a perk.
+ */
+function FelPerks({ compact = false, lean = false }: { compact?: boolean; lean?: boolean }) {
+  const v = useGame((s) => s.tdView);
+  const next = v.nextSuper;
+  return (
+    <div className={`rounded-md border border-de/50 p-2 ${compact ? "" : "sm:col-span-2"}`}>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="font-display text-xs tracking-[0.14em] text-de">{lean ? "THE PYRE" : "THE PYRE · FEL UPGRADES"}</p>
+        <p className="font-display text-xs text-de">☠ {Math.floor(v.de)} DE</p>
+      </div>
+      {!lean && (
+        <p className="mt-1 mb-2 text-xs leading-snug text-muted">
+          Endless: each level costs more than the last, and Hellfire has no limit. Next fel super boss: wave{" "}
+          {next.wave}
+          {next.kinds.length ? ` (${next.kinds.map((k) => CREEPS[k].name).join(", ")})` : ""}: it pays dark energy.
+        </p>
+      )}
+      <div className={`grid gap-1.5 ${lean ? "mt-1.5" : ""}`}>
+        {FEL_PERK_KEYS.map((key) => {
+          const spec = FEL_PERKS[key];
+          const level = v.felPerks[key];
+          const maxed = felPerkMaxed(key, level);
+          const cost = felPerkCost(key, level);
+          return (
+            <div key={key} className="grid grid-cols-[1fr_auto] items-center gap-1.5">
+              <p className="min-w-0 text-xs leading-tight text-fg">
+                {spec.name}{" "}
+                <span className="text-muted">
+                  Lv {level}
+                  {spec.max > 0 ? `/${spec.max}` : ""}
+                </span>
+                <span className="block text-[0.65rem] text-muted">
+                  {lean
+                    ? level > 0
+                      ? felNow(key, v.felPerks, v.wave)
+                      : `${felShort(key)} a level`
+                    : `${spec.copy} (${felNow(key, v.felPerks, v.wave)})`}
+                </span>
+              </p>
+              <button
+                type="button"
+                className="btn btn-tab whitespace-nowrap"
+                disabled={maxed || v.de < cost}
+                onClick={() => game()?.tdBuyFelPerk(key)}
+                aria-label={maxed ? `${spec.name} is at its limit` : `Buy ${spec.name} level ${level + 1} for ${cost} dark energy`}
+              >
+                {maxed ? "Max" : `${short(cost)} DE`}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {lean && (
+        <p className="mt-1.5 text-[0.65rem] leading-snug text-muted">
+          Next fel super boss (it pays DE): wave {next.wave}
+          {next.kinds.length ? `, ${next.kinds.map((k) => CREEPS[k].name).join(", ")}` : ""}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** The whole fel side in one place: the altar that makes dark energy and the upgrades it buys. */
+function FelPanel() {
+  return (
+    <div className="grid gap-2">
+      <FelPerks compact lean />
+      <AltarPanel compact lean />
+    </div>
+  );
+}
+
+/** What was last open on the core's panel, so tapping the core again finds it there. */
+const coreMenu: { tab: "core" | "fel" } = { tab: "core" };
+
+/**
+ * The center circle, tapped: the wake core's levels (ATP) and, beside them, the
+ * fel side (the altar and the endless fel upgrades), so neither needs the Library.
+ */
+function CoreSheet() {
+  const de = useGame((s) => s.tdView.de);
+  const atp = useGame((s) => s.tdView.atp);
+  const [tab, setTabState] = useState<"core" | "fel">(coreMenu.tab);
+  const setTab = (next: "core" | "fel") => {
+    coreMenu.tab = next;
+    setTabState(next);
+  };
+  return (
+    <div>
+      <div className="mb-1.5 grid grid-cols-2 gap-1.5" role="tablist" aria-label="The core">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "core"}
+          data-on={tab === "core"}
+          className="btn btn-tab"
+          onClick={() => setTab("core")}
+          aria-label={`The wake core, raised with ATP: ${Math.floor(atp)} ATP`}
+        >
+          <Flame className="size-3.5 shrink-0" aria-hidden /> Core {short(atp)}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "fel"}
+          data-on={tab === "fel"}
+          className="btn btn-tab"
+          onClick={() => setTab("fel")}
+          aria-label={`The fel side: the altar and the fel upgrades, dark energy ${Math.floor(de)}`}
+        >
+          <Skull className="size-3.5 shrink-0" aria-hidden /> Fel {short(de)}
+        </button>
+      </div>
+      {tab === "core" ? <CorePanel /> : <FelPanel />}
+    </div>
+  );
+}
+
+/** The altar as a sheet of its own, from the ☠ at the top. */
+function AltarSheet({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <section
+        className="glass pointer-events-auto flex max-h-[70dvh] w-full max-w-xl flex-col"
+        role="dialog"
+        aria-label="The altar"
+      >
+        <header className="flex items-center justify-between gap-3 border-b border-de/40 px-3 py-2">
+          <h2 className="font-display text-sm tracking-[0.16em] text-de">THE ALTAR</h2>
+          <button type="button" className="btn" onClick={onClose} aria-label="Close the altar">
+            <X className="size-4" aria-hidden />
+          </button>
+        </header>
+        <div className="grid min-h-0 flex-1 gap-2 overflow-y-auto p-3">
+          <AltarPanel compact />
+          <FelPerks compact />
         </div>
       </section>
     </div>
@@ -1230,6 +1538,7 @@ export function TdHud() {
   const footerRef = useRef<HTMLElement>(null);
   useChromeInsets(headerRef, footerRef);
   const [perksOpen, setPerksOpen] = useState(false);
+  const [altarOpen, setAltarOpen] = useState(false);
   const [repsOpen, setRepsOpen] = useState(false);
   const [repUi, setRepUi] = useState<RepUi>(startRepUi);
   const [arranging, setArranging] = useState(false);
@@ -1251,12 +1560,13 @@ export function TdHud() {
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-between p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       <header ref={headerRef} className="pointer-events-auto">
-        <div className="glass flex items-center justify-between gap-2 px-3 py-2 font-display text-xs tracking-wider whitespace-nowrap">
+        {/* Five counts and the wave in one row: on a narrow phone the currencies keep their colours and lose their icons. */}
+        <div className="glass flex items-center justify-between gap-2 px-3 py-2 font-display text-xs tracking-wider whitespace-nowrap max-[420px]:gap-1 max-[420px]:px-2 max-[420px]:[&_svg.cur]:hidden">
           <span
             className="flex items-center gap-1 text-gold"
             aria-label={`${Math.floor(v.gold)} O/I`}
           >
-            <Coins className="size-3.5" aria-hidden /> {short(v.gold)}
+            <Coins className="cur size-3.5" aria-hidden /> {short(v.gold)}
           </span>
           <button
             type="button"
@@ -1266,7 +1576,7 @@ export function TdHud() {
             onClick={() => setRepsOpen((o) => !o)}
             aria-label={`${Math.floor(v.flux)} flux. ${repsOpen ? "Close" : "Open"} the rep window`}
           >
-            <Atom className="size-3.5" aria-hidden /> {short(v.flux)}
+            <Atom className="cur size-3.5" aria-hidden /> {short(v.flux)}
           </button>
           <button
             type="button"
@@ -1276,7 +1586,17 @@ export function TdHud() {
             onClick={() => game()?.tdSelectCore()}
             aria-label={`${Math.floor(v.atp)} ATP. The core is level ${v.core.level}: open it`}
           >
-            <Flame className="size-3.5" aria-hidden /> {short(v.atp)}
+            <Flame className="cur size-3.5" aria-hidden /> {short(v.atp)}
+          </button>
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded border border-de/50 px-1.5 py-0.5 text-de data-[on=true]:bg-de/20"
+            data-on={altarOpen}
+            aria-pressed={altarOpen}
+            onClick={() => setAltarOpen((o) => !o)}
+            aria-label={`${Math.floor(v.de)} dark energy. ${altarOpen ? "Close" : "Open"} the altar`}
+          >
+            <Skull className="cur size-3.5" aria-hidden /> {short(v.de)}
           </button>
           <span
             className="flex items-center gap-1 text-danger"
@@ -1284,7 +1604,11 @@ export function TdHud() {
           >
             <Heart className="size-3.5" aria-hidden /> {short(v.lives)}
           </span>
-          <span className="text-cyan">WAVE {String(v.wave).padStart(2, "0")}</span>
+          <span className="text-cyan">
+            <span className="max-[420px]:hidden">WAVE </span>
+            <span className="hidden max-[420px]:inline">W</span>
+            {String(v.wave).padStart(2, "0")}
+          </span>
           <span className="hidden text-fg sm:inline">{short(v.kills)} down</span>
         </div>
         <div
@@ -1342,17 +1666,18 @@ export function TdHud() {
         <div className="glass h-[11.25rem] overflow-y-auto p-2">
           {v.canBuild && <BuildGrid />}
           {v.tower && <TowerPanel />}
-          {!v.canBuild && !v.tower && v.coreSelected && <CorePanel />}
+          {!v.canBuild && !v.tower && v.coreSelected && <CoreSheet />}
           {!v.canBuild && !v.tower && !v.coreSelected && (
             <p className="p-1 text-sm leading-relaxed text-muted">
               {v.selected
                 ? "The lane takes no towers. Pick a free cell."
-                : "Tap a free cell to raise a tower from one of three sets (O/I, flux, ATP), a tower to upgrade it, or the core to raise it. Waves never end: call the next one early for bonus O/I, even while one is running, and they stack."}
+                : "Tap a free cell to raise a tower from one of four sets (O/I, flux, ATP, dark energy), a tower to upgrade it, or the core to raise it. Waves never end: call the next one early for bonus O/I, even while one is running, and they stack."}
             </p>
           )}
         </div>
 
-        <p className="mt-1.5 min-h-4 text-center text-xs text-gold" role="status">
+        {/* A phrase of the text, two rows at most: a fixed height, so the board does not jump as it changes. */}
+        <p className="mt-1.5 h-8 overflow-hidden text-center text-xs leading-4 text-gold" role="status">
           {v.message}
         </p>
 
@@ -1424,6 +1749,7 @@ export function TdHud() {
       </footer>
 
       {perksOpen && <PerkSheet onClose={() => setPerksOpen(false)} />}
+      {altarOpen && <AltarSheet onClose={() => setAltarOpen(false)} />}
       {repUi.tap.on && <RepTapButton ui={repUi} change={changeRepUi} arranging={arranging} />}
       {repUi.tap.on && repUi.tap.twin && (
         <RepTapButton ui={repUi} change={changeRepUi} arranging={arranging} mirror />

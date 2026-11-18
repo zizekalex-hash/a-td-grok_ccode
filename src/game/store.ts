@@ -11,6 +11,7 @@ import type {
   PerkKey,
   SpellKey,
   TowerKey,
+  FelPerkKey,
   VoidPerkKey,
 } from "@/game/td/economy";
 import type { RunSummary } from "@/game/td/save";
@@ -59,6 +60,8 @@ export type Settings = {
   fpsCap: number;
   /** Share of the screen's pixel density the game draws at (percent). Lower is lighter and softer. */
   renderScale: number;
+  /** How strongly the flowing shader pictures show behind the Court's screens and the title (0: none). */
+  shaderArt: number;
   /** Tower defense and auto chess: the first shot or attack and every Nth after it carry a phrase. */
   phraseEvery: number;
   /** Least time between two phrases on shots (ms). */
@@ -163,8 +166,10 @@ export type TdView = {
     /** Damage dealt and creeps finished so far. */
     dealt: number;
     kills: number;
-    /** What it is paid in: O/I, flux for a void tower, ATP for a wake tower. */
+    /** What it is paid in: O/I, flux for a void tower, ATP for a wake tower, dark energy for a fel tower. */
     currency: Currency;
+    /** Dark energy sacrificing it gives now (0 for a fel tower, or one with too little in it). */
+    sacrifice: number;
   } | null;
   difficulty: DifficultyKey;
   /** Seconds until each spell is ready. */
@@ -190,6 +195,17 @@ export type TdView = {
   summonReward: number;
   /** ATP, the third currency. */
   atp: number;
+  /** Dark energy, the fourth currency, the endless fel upgrades it bought, and the altar that makes it. */
+  de: number;
+  felPerks: Record<FelPerkKey, number>;
+  /** The next wave to bring fel super bosses, and which. */
+  nextSuper: { wave: number; kinds: CreepKind[] };
+  altar: {
+    /** The whole DE each currency buys now. */
+    can: { gold: number; flux: number; atp: number };
+    /** Lives that can be sacrificed now (never the last). */
+    lives: number;
+  };
   /** The wake core: its level and stage, what the next level costs, and what it does now. */
   core: {
     level: number;
@@ -267,6 +283,8 @@ export type CourtPanel =
   | { kind: "queen"; queen: QueenKey }
   /** Face to face with a queen: the talk screen. */
   | { kind: "talk"; queen: QueenKey }
+  /** The Atelier: a look changed by hand (a queen's, or your own); from: the sheet it was opened on. */
+  | { kind: "atelier"; who: QueenKey | "you"; from: "queen" | "queens" }
   | { kind: "shop" }
   | { kind: "skills" }
   | { kind: "queens" }
@@ -295,6 +313,8 @@ export type CourtTalkView = {
   /** What you can say now; a tone's taste is known once you have tried the tone on her. */
   choices: { id: string; kind: string; text: string; tone?: string; taste?: string | null }[];
   ended: boolean;
+  /** Sips left of the crystal wine poured in this talk (0: no bottle is open). */
+  wine: number;
   /** Exchanges with her that still add affection today, of how many a day. */
   left: number;
   perDay: number;
@@ -310,6 +330,10 @@ export type CourtSessionView = {
   /** A second queen watching, when two walk with you. */
   also: QueenKey | null;
   date: boolean;
+  /** A date night: crystal wine was poured for it. */
+  wine: boolean;
+  /** A deeper question over the wine waits on this recite: the talk comes back with her answer when it is through. */
+  toast: boolean;
   phrase: string;
   words: string[];
   /** The lit word, the pass it is in (0-based), how far through the pass (0 to 1). */
@@ -350,7 +374,10 @@ export type CourtView = {
   /** Queens out on the map looking for you. */
   out: QueenKey[];
   /** How far through your texts' phrases the Court has come in this round of them. */
-  deck: { done: number; total: number };
+  /** How far through the recite's text (or all of them) the recites are: phrases recited through, and the percent. */
+  deck: { done: number; total: number; percent: number; name: string; rounds: number };
+  /** Each text a recite can draw from, with its progress: "" is all of them. */
+  sources: { key: string; label: string; done: number; total: number; rounds: number }[];
   /** A queen with you who asks to be fed a set of reps, and when she gives up (ms). */
   hungry: {
     queen: QueenKey;
@@ -367,8 +394,14 @@ export type CourtView = {
   /** The latest line: a queen's, or yours; and how many more wait behind it (a tap on it shows the next). */
   line: { speaker: string; text: string; color: string; queen?: QueenKey } | null;
   lineMore: number;
+  /** Rehearse is up over the Court (its Sound button): the Court's clock is held. */
+  away: boolean;
+  /** The recite's sound was paused by hand (it starts by itself again with the next recite). */
+  soundMuted: boolean;
   /** The talk screen: what has been said, her lines still to come, and what you can say now. */
   talk: CourtTalkView | null;
+  /** What the queen whose sheet is open is doing by herself now (life.ts); "" for nothing to say. */
+  lifeNote: string;
   /** Where you stand, if at a place, and the region you are in. */
   at: PlaceKey | null;
   region: string;
@@ -522,6 +555,10 @@ export const useGame = create<State>(() => ({
     summonCost: CONFIG.td.void.summonGold,
     summonReward: CONFIG.td.void.summonFlux,
     atp: 0,
+    de: 0,
+    felPerks: { power: 0, haste: 0, reach: 0, tithe: 0, barter: 0, devour: 0 },
+    nextSuper: { wave: CONFIG.td.fel.supers.from, kinds: [] },
+    altar: { can: { gold: 0, flux: 0, atp: 0 }, lives: 0 },
     core: {
       level: 1,
       stage: "",

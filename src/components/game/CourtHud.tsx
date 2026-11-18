@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  Brush,
   Coins,
   Crown,
   Droplets,
@@ -12,6 +13,7 @@ import {
   Minus,
   Newspaper,
   Plus,
+  RotateCcw,
   ScrollText,
   Shuffle,
   SkipForward,
@@ -19,7 +21,7 @@ import {
   Store,
   Trophy,
   Volume2,
-  VolumeX,
+  Wine,
   X,
 } from "lucide-react";
 import { MenuButton } from "@/components/game/BattleButtons";
@@ -49,7 +51,20 @@ import {
   type SkillKey,
   bonusReward,
 } from "@/game/court/rules";
-import { canBlink, placeBanner, queenAir, queenPortrait } from "@/game/court/portrait";
+import {
+  canBlink,
+  lookOf,
+  placeBanner,
+  queenAir,
+  queenPortrait,
+  youPortrait,
+} from "@/game/court/portrait";
+import { Atelier } from "@/components/game/Atelier";
+import { SoundButton } from "@/components/game/CourtSound";
+import { ShaderBackdrop } from "@/components/game/ShaderBackdrop";
+import { elementLook, queenLook } from "@/game/shaderart";
+import { KeyButton } from "@/components/game/CourtKey";
+import { useLooks } from "@/components/game/useLooks";
 import {
   BOND_NAME,
   bondsOf,
@@ -74,7 +89,8 @@ import {
 import { getGame } from "@/game/registry";
 import { useGame, type CourtTalkEntry, type CourtView } from "@/game/store";
 import { TONE_NAME, type Tone } from "@/game/court/converse";
-import { courtSoundNote } from "@/game/rehearseRun";
+import { courtSoundNote, courtVoiceList, rehearseState } from "@/game/rehearseRun";
+import type { VoiceInfo } from "@/game/voice";
 
 const C = CONFIG.court;
 
@@ -125,6 +141,7 @@ function LivePortrait({
   className?: string;
   style?: React.CSSProperties;
 }) {
+  useLooks();
   if (prefersStill()) {
     return (
       <img
@@ -152,7 +169,7 @@ function LivePortrait({
         className={layer}
         draggable={false}
       />
-      {canBlink(C.queens[q].look, mood) && (
+      {canBlink(lookOf(q), mood) && (
         <img
           src={queenPortrait(q, { mood, tier, air: false, blink: true })}
           alt=""
@@ -166,12 +183,28 @@ function LivePortrait({
   );
 }
 
+/** Your own portrait, small and round, as your look in the Atelier has you. */
+function YouAvatar({ size }: { size: number }) {
+  useLooks();
+  return (
+    <img
+      src={youPortrait()}
+      alt="You"
+      width={size}
+      height={size}
+      className="shrink-0 rounded-full"
+      draggable={false}
+    />
+  );
+}
+
 /**
  * A queen's portrait, round, with a soft glow in her colour: in her mood now (or
  * the one given), with her tier's jewels. Large ones move; small ones stay still.
  */
 function QueenAvatar({ q, size, mood }: { q: QueenKey; size: number; mood?: Mood }) {
   const v = useCourt();
+  useLooks();
   const spec = C.queens[q];
   const m = mood ?? v?.moods[q] ?? "smile";
   const tier = v ? tierOf(v.save.affection[q]).index : 1;
@@ -795,6 +828,68 @@ function GallerySheet({ v }: { v: CourtView }) {
   );
 }
 
+/**
+ * Her own voice: which of the phone's voices is hers. In the Court it is the
+ * main voice (it says the phrase you recite for her, and her lines); the
+ * background voices stay as Rehearse has them. The speaker lets you hear it.
+ */
+function HerVoice({ q, v }: { q: QueenKey; v: CourtView }) {
+  const [list, setList] = useState<VoiceInfo[]>([]);
+  useEffect(() => {
+    let live = true;
+    void courtVoiceList().then((l) => {
+      if (live) setList(l.filter((x, i) => l.findIndex((y) => y.name === x.name) === i));
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const now = v.save.sound.voices[q] ?? "";
+  const known = now === "" || now === "=" || list.some((x) => x.name === now);
+  const name = C.queens[q].name;
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-2">
+        <label
+          htmlFor={`voice-${q}`}
+          className="shrink-0 font-display text-[0.65rem] tracking-[0.14em] text-muted uppercase"
+        >
+          Her voice
+        </label>
+        <select
+          id={`voice-${q}`}
+          className="min-w-0 flex-1 rounded-md border border-cyan/40 bg-black/60 px-2 py-1.5 font-mono text-xs text-fg"
+          value={now}
+          onChange={(e) => game()?.courtVoice(q, e.target.value)}
+        >
+          <option value="">Her own (picked for her)</option>
+          <option value="=">The voice Rehearse is set to</option>
+          {!known && <option value={now}>{now}</option>}
+          {list.map((x) => (
+            <option key={x.name} value={x.name}>
+              {x.name} ({x.locale}){x.network ? ", needs a network" : ""}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="btn px-2!"
+          onClick={() => game()?.courtVoiceTry(q)}
+          aria-label={`Hear ${name}'s voice`}
+          title={`Hear ${name}'s voice`}
+        >
+          <Volume2 className="size-4" aria-hidden />
+        </button>
+      </div>
+      <p className="mt-1 text-[0.65rem] text-muted">
+        {rehearseState().settings.voice
+          ? "The main voice when you recite for her, and when she speaks. The background voices stay as Rehearse has them."
+          : "Heard once Rehearse's Robot voice is on (Recitation drill, Rehearse, Sound and picture)."}
+      </p>
+    </div>
+  );
+}
+
 function QueenSheet({ q, v }: { q: QueenKey; v: CourtView }) {
   const spec = C.queens[q];
   const ok = meetsNeed(q, v.save.skills);
@@ -822,8 +917,17 @@ function QueenSheet({ q, v }: { q: QueenKey; v: CourtView }) {
           <div className="mt-2">
             <Hearts q={q} affection={affection} />
           </div>
+          <button
+            type="button"
+            className="btn btn-tab mt-2"
+            onClick={() => game()?.courtOpen({ kind: "atelier", who: q, from: "queen" })}
+          >
+            <Brush className="size-3.5" aria-hidden />
+            Change her look
+          </button>
         </div>
       </div>
+      {v.lifeNote && <p className="mt-2 text-xs text-muted">Just now: {v.lifeNote}</p>}
       {/* What she says when you walk up, give a gift or feed her shows here, where you are looking. */}
       {v.line && <LineBox v={v} className="mt-3" avatar={40} />}
       {v.out.includes(q) && (
@@ -848,6 +952,7 @@ function QueenSheet({ q, v }: { q: QueenKey; v: CourtView }) {
       )}
       {ok && <HeartStatus q={q} v={v} />}
       <Bonds q={q} />
+      <HerVoice q={q} v={v} />
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           type="button"
@@ -878,7 +983,34 @@ function QueenSheet({ q, v }: { q: QueenKey; v: CourtView }) {
               : `${C.datePhrases} phrases · ×${C.affection.dateMult} affection · ×${C.dateXpMult} XP`}
           </span>
         </button>
+        <button
+          type="button"
+          className="btn col-span-2 flex-col gap-0"
+          style={v.save.wine > 0 && ok && tier >= C.dateTier ? { borderColor: `${WINE_COLOR}99` } : undefined}
+          disabled={!ok || tier < C.dateTier || v.save.wine < 1}
+          onClick={() => game()?.courtDate(q, true)}
+        >
+          <span className="flex items-center gap-2">
+            <Wine className="size-4" aria-hidden style={{ color: WINE_COLOR }} />
+            Date night: {spec.date}
+          </span>
+          <span className="text-[0.65rem] tracking-normal normal-case opacity-80">
+            {tier < C.dateTier
+              ? `Opens at ${C.affectionTiers[C.dateTier]?.name}`
+              : v.save.wine < 1
+                ? "Needs a bottle of crystal wine"
+                : `pours a bottle · ×${Math.round(C.affection.dateMult * C.wine.dateMult * 10) / 10} affection · bonus ×${C.wine.dateMult}`}
+          </span>
+        </button>
       </div>
+      <p className="mt-2 text-xs text-muted">
+        <Wine className="mr-1 inline size-3.5 align-text-bottom" aria-hidden style={{ color: WINE_COLOR }} />
+        Crystal wine ×{v.save.wine}
+        {v.save.wineShared[q] > 0 ? ` · ${v.save.wineShared[q]} shared with her` : ""}.{" "}
+        {v.save.wine > 0
+          ? "Pour it when you talk to her, or on a date night."
+          : "Recite a whole text through to earn a bottle."}
+      </p>
       {ok && <Devotion q={q} v={v} />}
       <p className="mt-3 text-xs tracking-wider text-muted uppercase">Give a gift</p>
       {owned.length ? (
@@ -985,6 +1117,22 @@ function QueensSheet({ v }: { v: CourtView }) {
           <Newspaper className="size-4" aria-hidden />
           News{v.unread > 0 ? ` (${v.unread})` : ""}
         </button>
+        <button
+          type="button"
+          className="btn col-span-2 justify-start gap-3"
+          onClick={() => game()?.courtOpen({ kind: "atelier", who: "you", from: "queens" })}
+        >
+          <YouAvatar size={32} />
+          <span className="flex min-w-0 flex-col items-start gap-0.5 text-left">
+            <span className="flex items-center gap-1.5">
+              <Brush className="size-3.5" aria-hidden />
+              Atelier
+            </span>
+            <span className="text-[0.65rem] tracking-normal normal-case opacity-80">
+              Change your own look, and any queen's: face, hair, body, dress
+            </span>
+          </span>
+        </button>
       </div>
       {REGION_KEYS.map((region) => (
         <section key={region} className="mb-3">
@@ -1065,7 +1213,8 @@ function PassBar({
   waiting: boolean;
   color: string;
 }) {
-  const held = useGame((st) => st.paused || st.tomeOpen || st.menu);
+  const away = useGame((st) => st.courtView?.away ?? false);
+  const held = useGame((st) => st.paused || st.tomeOpen || st.menu) || away;
   const [delay] = useState(() => -progress * passMs);
   return (
     <div
@@ -1480,29 +1629,6 @@ function BonusRound({ v, color }: { v: CourtView; color: string }) {
 }
 
 /**
- * A speaker button: Rehearse's sound in the Court, on or off. One for the phrase
- * you recite (it sounds as Rehearse is set), one for the queens' lines (said
- * aloud in Rehearse's robot voice).
- */
-function SoundSwitch({ v, part }: { v: CourtView; part: "phrase" | "lines" }) {
-  const on = v.save.sound[part];
-  const what = part === "phrase" ? "The phrase's sound, as Rehearse is set" : "Queens speak aloud, in Rehearse's voice";
-  return (
-    <button
-      type="button"
-      className="btn px-2!"
-      data-on={on}
-      aria-pressed={on}
-      onClick={() => game()?.courtSoundToggle(part)}
-      aria-label={`${what}: ${on ? "on" : "off"}`}
-      title={`${what}: ${on ? "on" : "off"}`}
-    >
-      {on ? <Volume2 className="size-4" aria-hidden /> : <VolumeX className="size-4" aria-hidden />}
-    </button>
-  );
-}
-
-/**
  * The line being said (a queen's, or yours). A tap on it means read: the next
  * one waiting shows at once, and with none waiting the line goes.
  */
@@ -1558,9 +1684,14 @@ const TASTE_MARK: Record<string, { mark: string; say: string; color: string }> =
   disliked: { mark: "✕", say: "she dislikes this", color: "#ff4d6d" },
 };
 
+/** Crystal wine's colour: the bottle's choice, and the deeper questions over it. */
+const WINE_COLOR = "#e08cff";
+
 /** What a choice is, in a word, before it. */
 function choiceTag(c: { kind: string; tone?: string }): string {
   if (c.tone) return TONE_NAME[c.tone as Tone] ?? "Say";
+  if (c.kind === "pour") return "Pour";
+  if (c.kind === "exotic") return "Sip";
   return c.kind === "bye" ? "Leave" : "Ask";
 }
 
@@ -1571,7 +1702,8 @@ function TalkLine({ e, color, big }: { e: CourtTalkEntry; color: string; big: bo
   const mine = e.who === "you";
   const mark = e.taste ? TASTE_MARK[e.taste] : undefined;
   return (
-    <li className={`court-say flex ${mine ? "justify-end" : "justify-start"}`}>
+    <li className={`court-say flex items-end gap-1.5 ${mine ? "flex-row-reverse" : "justify-start"}`}>
+      {mine && <YouAvatar size={26} />}
       <p
         className={`max-w-[88%] rounded-lg border px-3 py-1.5 leading-snug ${big ? "text-base" : "text-sm"}`}
         style={
@@ -1589,7 +1721,8 @@ function TalkLine({ e, color, big }: { e: CourtTalkEntry; color: string; big: bo
         {(mark || e.gain) && (
           <span className="ml-2 text-xs whitespace-nowrap" style={{ color: mark?.color ?? color }}>
             {mark ? <span title={mark.say}>{mark.mark}</span> : null}
-            {e.gain ? ` ${e.gain > 0 ? "+" : ""}${e.gain} ♥` : ""}
+            {/* Her taste's mark is a heart already: the number alone after it. */}
+            {e.gain ? ` ${e.gain > 0 ? "+" : ""}${e.gain}${mark ? "" : " ♥"}` : ""}
           </span>
         )}
       </p>
@@ -1629,6 +1762,8 @@ function TalkScreen({ v }: { v: CourtView }) {
       role="dialog"
       aria-label={`Talking with ${spec.name}`}
     >
+      {/* Curtains of her colour behind the talk. */}
+      <ShaderBackdrop look={queenLook(spec.color)} className="-z-10" maxOpacity={0.9} />
       <header className="glass flex items-center justify-between gap-2 px-3 py-2">
         <div className="min-w-0 flex-1">
           <p className="truncate font-display text-xs tracking-[0.14em]" style={{ color: spec.color }}>
@@ -1639,7 +1774,7 @@ function TalkScreen({ v }: { v: CourtView }) {
           </div>
         </div>
         <div className="flex shrink-0 gap-1.5">
-          <SoundSwitch v={v} part="lines" />
+          <SoundButton v={v} />
           <button
             type="button"
             className="btn px-2!"
@@ -1690,17 +1825,27 @@ function TalkScreen({ v }: { v: CourtView }) {
           <div className="space-y-1.5" role="group" aria-label="What you can say">
             {t.choices.map((c) => {
               const mark = c.taste ? TASTE_MARK[c.taste] : undefined;
+              const wine = c.kind === "pour" || c.kind === "exotic";
               return (
                 <button
                   key={c.id}
                   type="button"
                   className="btn court-choice w-full"
+                  style={wine ? { borderColor: `${WINE_COLOR}99`, boxShadow: `0 0 12px ${WINE_COLOR}33` } : undefined}
                   onClick={() => game()?.courtSay(c.id)}
                   aria-label={`${choiceTag(c)}: ${c.text}${mark ? ` (${mark.say})` : ""}`}
                 >
                   <span
                     className="w-14 shrink-0 font-display text-[0.6rem] tracking-wider"
-                    style={{ color: c.kind === "bye" ? "#9aa3b8" : c.tone ? "#e8c872" : "#5cc8ff" }}
+                    style={{
+                      color: wine
+                        ? WINE_COLOR
+                        : c.kind === "bye"
+                          ? "#9aa3b8"
+                          : c.tone
+                            ? "#e8c872"
+                            : "#5cc8ff",
+                    }}
                   >
                     {choiceTag(c).toUpperCase()}
                   </span>
@@ -1718,7 +1863,9 @@ function TalkScreen({ v }: { v: CourtView }) {
         <p className="mt-1.5 text-center text-[0.65rem] text-muted">
           {t.locked
             ? `She wants ${needText(q)} before more than hello.`
-            : t.left > 0
+            : t.wine > 0
+              ? `🍷 Crystal wine glows between you: ${t.wine} ${t.wine === 1 ? "sip" : "sips"} left. Ask a deeper question, recite a phrase for her, and she tells you; it wins her heart whatever today's exchanges are.`
+              : t.left > 0
               ? `${t.left} of ${t.perDay} exchanges today still win her heart. Each queen loves one tone, likes one, dislikes one.`
               : "Talk as long as you like: today's exchanges have given all the ♥ they can."}
         </p>
@@ -1726,6 +1873,9 @@ function TalkScreen({ v }: { v: CourtView }) {
     </div>
   );
 }
+
+/** "1 phrase", "3 phrases". */
+const phrasesLabel = (n: number) => `${n} phrase${n === 1 ? "" : "s"}`;
 
 function ReciteScreen({ v }: { v: CourtView }) {
   const s = v.session;
@@ -1748,14 +1898,19 @@ function ReciteScreen({ v }: { v: CourtView }) {
             : "radial-gradient(ellipse at 50% 30%, rgba(200,80,30,0.32), rgba(200,80,30,0) 70%), rgba(2,0,5,0.9)",
       }}
     >
-      {/* The current phrase in raw binary, standing still behind it all. */}
+      {/* Flowing colour of the style (embers for Fire, water for Water), then the phrase in raw binary, standing still, behind it all. */}
+      <ShaderBackdrop look={elementLook(element)} className="-z-10" />
       <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
         <BinaryWall text={s.phrase} color={color} spec={C.wall} />
       </div>
       <header className="glass flex items-center justify-between gap-2 px-3 py-2">
         <div className="min-w-0">
           <p className="font-display text-xs tracking-[0.14em]" style={{ color }}>
-            {s.date && q ? `DATE · ${q.name.toUpperCase()}` : C.places[s.place].name.toUpperCase()}{" "}
+            {s.date && q
+              ? `${s.wine ? "DATE 🍷" : "DATE"} · ${q.name.toUpperCase()}`
+              : s.toast && q
+                ? `WINE 🍷 · ${q.name.toUpperCase()}`
+                : C.places[s.place].name.toUpperCase()}{" "}
             · {skill.name.toUpperCase()} {skillLevel(xp)}
           </p>
           <div className="mt-1 h-1 w-40 max-w-full rounded bg-cyan/10">
@@ -1763,7 +1918,7 @@ function ReciteScreen({ v }: { v: CourtView }) {
           </div>
         </div>
         <div className="flex shrink-0 gap-1.5">
-          <SoundSwitch v={v} part="phrase" />
+          <SoundButton v={v} />
           <button
             type="button"
             className="btn px-2"
@@ -1778,10 +1933,10 @@ function ReciteScreen({ v }: { v: CourtView }) {
             type="button"
             className="btn px-2"
             onClick={() => game()?.courtEndSession()}
-            aria-label="Leave"
+            aria-label={s.toast ? "Back to the talk" : "Leave"}
           >
             <LogOut className="size-4" aria-hidden />
-            <span className="max-[400px]:sr-only">Leave</span>
+            <span className="max-[400px]:sr-only">{s.toast ? "Back" : "Leave"}</span>
           </button>
         </div>
       </header>
@@ -1864,12 +2019,14 @@ function ReciteScreen({ v }: { v: CourtView }) {
           <span className="mr-2 font-display tracking-wider">
             PHRASE {Math.min(s.roundPhrases + 1, s.round)}/{s.round}
           </span>
-          {v.deck.total > 1 && (
+          {v.deck.total > 0 && (
             <span
-              className="mr-2 tabular-nums"
-              title="Phrases of your texts so far: none comes again until all have"
+              className="mr-2 inline-block max-w-full tabular-nums"
+              title="Phrases recited through so far, of the text: they come at random, none twice; when every one is done the text is checked, and a fresh round begins"
             >
-              {v.deck.done.toLocaleString()}/{v.deck.total.toLocaleString()} of your texts
+              {v.deck.done.toLocaleString()}/{v.deck.total.toLocaleString()} · {v.deck.percent}% of{" "}
+              <span className="inline-block max-w-[9rem] truncate align-bottom">{v.deck.name}</span>
+              {v.deck.rounds > 0 ? ` · ✓${v.deck.rounds}×` : ""}
             </span>
           )}
           {Array.from({ length: s.reps }, (_, i) => (
@@ -1929,25 +2086,6 @@ function ReciteScreen({ v }: { v: CourtView }) {
               phrases
             </p>
             <BonusRound v={v} color={color} />
-            <div className="mt-2 flex items-center justify-center gap-1 text-xs">
-              <button
-                type="button"
-                className="btn stepper"
-                aria-label="Fewer phrases per round"
-                onClick={() => game()?.courtRound(-1)}
-              >
-                <Minus className="size-4" aria-hidden />
-              </button>
-              <span className="text-muted">{v.save.phrasesPerRound} phrases a round</span>
-              <button
-                type="button"
-                className="btn stepper"
-                aria-label="More phrases per round"
-                onClick={() => game()?.courtRound(1)}
-              >
-                <Plus className="size-4" aria-hidden />
-              </button>
-            </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -2030,15 +2168,41 @@ function ReciteScreen({ v }: { v: CourtView }) {
               <Plus className="size-4" aria-hidden />
             </button>
           </div>
+          <div className="flex items-center justify-center gap-1">
+            <button
+              type="button"
+              className="btn stepper"
+              aria-label="Fewer phrases per round"
+              disabled={s.date || s.toast}
+              onClick={() => game()?.courtRound(-1)}
+            >
+              <Minus className="size-4" aria-hidden />
+            </button>
+            <span className="text-center text-muted">
+              {phrasesLabel(s.date || s.toast ? s.round : v.save.phrasesPerRound)}
+            </span>
+            <button
+              type="button"
+              className="btn stepper"
+              aria-label="More phrases per round"
+              disabled={s.date || s.toast}
+              onClick={() => game()?.courtRound(1)}
+            >
+              <Plus className="size-4" aria-hidden />
+            </button>
+          </div>
+          <SourcePicker v={v} />
         </div>
         <p className="mt-2 text-center text-xs text-muted [@media(max-height:720px)]:hidden">
           This session: +{Math.round(s.totals.xp).toLocaleString()} XP · +{s.totals.gold} gold ·{" "}
           {s.totals.reps} reps
         </p>
         <p className="mt-1 text-center text-[0.65rem] text-muted [@media(max-height:640px)]:hidden">
-          {v.save.sound.phrase
-            ? `Sound as set in Rehearse: ${courtSoundNote()}.`
-            : "The phrase's sound is off (the speaker button, top right)."}
+          {!v.save.sound.phrase
+            ? "The phrase's sound is off (the Sound button, top right)."
+            : v.soundMuted
+              ? "The recite's sound is paused (the Sound button, top right)."
+              : `Sound as set in Rehearse: ${courtSoundNote()}.`}
         </p>
       </div>
       <Drops v={v} />
@@ -2068,6 +2232,49 @@ function Drops({ v }: { v: CourtView }) {
           {d.text}
         </span>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Which text the phrases come from: all of Rehearse's texts (the .txt files of
+ * input_pertext: your own, each .zip folder's, or the built-in one) mixed, or one.
+ * Chosen, it is also the text the voices set to read a whole text read.
+ */
+function SourcePicker({ v }: { v: CourtView }) {
+  const texts = v.sources.slice(1);
+  const now = texts.some((t) => t.key === v.save.source) ? v.save.source : "";
+  const here = v.sources.find((t) => t.key === now) ?? v.sources[0];
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      <select
+        aria-label="Recite phrases from"
+        title="Where the phrases come from, and how far through each text you are"
+        className="min-w-0 flex-1 rounded-md border border-cyan/40 bg-black/60 px-1.5 py-1.5 font-mono text-[0.7rem] text-fg"
+        value={now}
+        disabled={texts.length < 2}
+        onChange={(e) => game()?.courtSource(e.target.value)}
+      >
+        {texts.length < 2 ? (
+          <option value="">{texts[0]?.label ?? "Built-in text"}</option>
+        ) : (
+          v.sources.map((t) => (
+            <option key={t.key || "all"} value={t.key}>
+              {t.label} · {t.done}/{t.total}
+            </option>
+          ))
+        )}
+      </select>
+      <button
+        type="button"
+        className="btn stepper shrink-0"
+        disabled={!here || here.done < 1}
+        onClick={() => game()?.courtFresh(now)}
+        aria-label={`Start ${now ? "this text" : "every text"} again from nothing counted`}
+        title="Start again: nothing counted"
+      >
+        <RotateCcw className="size-4" aria-hidden />
+      </button>
     </div>
   );
 }
@@ -2165,6 +2372,21 @@ export function CourtHud() {
 
       <footer ref={footerRef} className={`pointer-events-auto mx-auto w-full max-w-xl ${hide}`}>
         <FeedCard v={v} />
+        {/* Sound in one place: play, pause, the switches, and all of Rehearse behind it. */}
+        <div className="mb-1 flex justify-end gap-1.5">
+          <button
+            type="button"
+            className="btn px-2!"
+            data-on={v.save.near}
+            aria-pressed={v.save.near}
+            onClick={() => game()?.courtNear()}
+            title="Near: the map larger, following you. Far: the whole region."
+          >
+            {v.save.near ? "Near" : "Far"}
+          </button>
+          <KeyButton />
+          <SoundButton v={v} label />
+        </div>
         <LineBox v={v} empty={<p className="flex min-h-10 items-center text-sm text-muted">{v.message}</p>} />
         {v.line && <p className="mt-1 text-center text-xs text-gold">{v.message}</p>}
       </footer>
@@ -2172,6 +2394,18 @@ export function CourtHud() {
       {panel?.kind === "place" && <PlaceSheet place={panel.place} v={v} />}
       {panel?.kind === "queen" && <QueenSheet q={panel.queen} v={v} />}
       {panel?.kind === "talk" && <TalkScreen v={v} />}
+      {panel?.kind === "atelier" && (
+        <Atelier
+          who={panel.who}
+          onLeave={(who) =>
+            game()?.courtOpen(
+              panel.from === "queen" && who !== "you"
+                ? { kind: "queen", queen: who }
+                : { kind: "queens" },
+            )
+          }
+        />
+      )}
       {panel?.kind === "shop" && <ShopSheet v={v} />}
       {panel?.kind === "skills" && <SkillsSheet v={v} />}
       {panel?.kind === "queens" && <QueensSheet v={v} />}
@@ -2179,7 +2413,7 @@ export function CourtHud() {
       {panel?.kind === "news" && <NewsSheet v={v} since={panel.since ?? 0} />}
       <ReciteScreen v={v} />
       {/* Face to face, what the Court notices is a note in the conversation instead. */}
-      {!v.session && panel?.kind !== "talk" && (
+      {!v.session && panel?.kind !== "talk" && panel?.kind !== "atelier" && (
         <Notices
           v={v}
           className="absolute inset-x-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-40 px-3"

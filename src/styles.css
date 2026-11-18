@@ -16,6 +16,7 @@
   --color-danger: #ff5c8a;
   /* ATP, the tower defense's third currency, and the wake core's stages. */
   --color-atp: #7dffb2;
+  --color-de: #b8ff2e;
   --color-panel: #100c18;
   --font-display: "Orbitron", "Arial Narrow", Impact, sans-serif;
   --font-mono: "Share Tech Mono", ui-monospace, monospace;
@@ -527,6 +528,76 @@
   .court-say {
     animation-name: none;
   }
+}
+
+/*
+ * The Atelier (looks changed by hand): small buttons for a trait's choices, round
+ * swatches for a colour, the row of faces to choose whose look, and its sliders.
+ */
+.btn.atelier-chip {
+  min-height: 2rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.atelier-swatch {
+  position: relative;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  border-radius: 9999px;
+  border: 2px solid rgb(255 255 255 / 0.22);
+  overflow: hidden;
+}
+
+.atelier-swatch[data-on="true"] {
+  border-color: var(--color-fg);
+  box-shadow: 0 0 0 2px var(--color-cyan);
+}
+
+/* Any colour at all: the phone's own colour picker, under a rainbow. */
+.atelier-any {
+  background: conic-gradient(#ff4d6d, #f5a623, #ffd24a, #3fae5a, #5cc8ff, #a855f7, #ff4d6d);
+}
+
+.atelier-any input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.atelier-who {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  width: 3.4rem;
+  padding: 0.2rem 0.1rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  font-family: var(--font-display);
+  font-size: 0.5rem;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.atelier-who[data-on="true"] {
+  border-color: var(--color-cyan);
+  color: var(--color-fg);
+  background: color-mix(in oklab, var(--color-cyan) 14%, transparent);
+}
+
+.atelier-range {
+  height: 2rem;
+  touch-action: pan-y;
 }
 
 @media (prefers-reduced-motion: reduce) {

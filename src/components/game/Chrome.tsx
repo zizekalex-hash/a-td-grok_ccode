@@ -6,6 +6,7 @@ import { useChromeInsets } from "@/components/game/useChromeInsets";
 import { TextFlashPanel } from "@/components/game/TextFlashPanel";
 import { ChessIntro } from "@/components/game/ChessHud";
 import { CourtIntro } from "@/components/game/CourtHud";
+import { ShaderBackdrop } from "@/components/game/ShaderBackdrop";
 import { MapPicker, TdStart } from "@/components/game/TdHud";
 import {
   FIELD_SPEC,
@@ -23,6 +24,7 @@ import { accentFor } from "@/game/council";
 import { coreDamageMultiplier, coreLevel } from "@/game/recite";
 import { getGame } from "@/game/registry";
 import { SLIDER_GROUPS, type SliderSpec } from "@/game/sliders";
+import { paletteOf, type ShaderLook } from "@/game/shaderart";
 import { POTIONS, UPGRADES } from "@/game/upgrades";
 import { useGame, type Settings } from "@/game/store";
 import { openOptions } from "@/game/menu";
@@ -120,6 +122,21 @@ export function SpeakerLine({ speaker, text, className }: { speaker: string; tex
   );
 }
 
+/** The title's picture: the theme's violet, with its cyan as the bright accent (the default ones when the theme's are not plain colours). */
+function titleLook(): ShaderLook {
+  const css = (name: string, fallback: string) =>
+    typeof document === "undefined"
+      ? fallback
+      : getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  return {
+    kind: "marble",
+    palette: paletteOf(css("--color-violet", "#8b5cf6"), css("--color-cyan", "#c4a5ff")),
+    speed: 0.7,
+    scale: 2.2,
+    warp: 4,
+  };
+}
+
 export function TitleScreen() {
   const speaker = useGame((s) => s.hud.speaker);
   const line = useGame((s) => s.hud.line);
@@ -134,6 +151,8 @@ export function TitleScreen() {
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex items-end justify-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:items-center">
+      {/* Marbled colour of the theme's own, softly, over the field and under the card. */}
+      <ShaderBackdrop look={titleLook()} className="-z-10" maxOpacity={0.7} />
       <section className="glass pointer-events-auto max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto p-4">
         <div className="mb-3 flex items-center gap-3">
           <AzsharaMark />
