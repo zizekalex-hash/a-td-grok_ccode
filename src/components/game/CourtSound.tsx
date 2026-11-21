@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ArrowLeft, ChevronRight, Minus, Pause, Play, Plus, SlidersHorizontal, X } from "lucide-react";
 import { RehearseTab } from "@/components/game/RehearseTab";
 import type { CourtGame } from "@/game/court/courtgame";
-import { clampVoiceRepeats, type RehearseSettings, type VoiceRaw } from "@/game/rehearse";
+import { clampVoiceRepeats, phraseSubject, type RehearseSettings, type VoiceRaw } from "@/game/rehearse";
 import { subscribeVoiceRaw, voiceRawLine } from "@/game/voiceRaw";
 import { courtSoundNote, rehearseState, rehearseUpdate, subscribeRehearse } from "@/game/rehearseRun";
 import { getGame } from "@/game/registry";
@@ -39,7 +39,11 @@ const VOICE_RAW_CHOICES: [VoiceRaw, string][] = [
 function VoiceRawRow({ set, phrase }: { set: RehearseSettings; phrase: string }) {
   const [, again] = useState(0);
   useEffect(() => subscribeVoiceRaw(() => again((n) => n + 1)), []);
-  const line = voiceRawLine(phrase, set);
+  useEffect(() => {
+    const id = window.setInterval(() => again((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const line = voiceRawLine(phraseSubject(phrase), set);
   return (
     <div className="rounded-md border border-cyan/30 px-3 py-1.5">
       <span className="block text-xs">The robot voices as raw binary too</span>

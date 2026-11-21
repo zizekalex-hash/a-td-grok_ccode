@@ -16,6 +16,7 @@ import {
   type Who,
 } from "./atelier.ts";
 import { setLook, type Look } from "./portrait.ts";
+import { readArts } from "./artkeep.ts";
 
 let looks: Looks | null = null;
 
@@ -33,6 +34,8 @@ export function readLooks(): Looks {
   looks = read;
   for (const q of Object.keys(read.queens) as CourtQueenKey[]) setLook(q, read.queens[q] ?? null);
   if (read.you) setLook("you", read.you);
+  // The pictures brought in go with them.
+  readArts();
   return read;
 }
 

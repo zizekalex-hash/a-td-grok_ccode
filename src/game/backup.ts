@@ -27,6 +27,7 @@ export const SAVE_NAMES: Record<string, string> = {
   "azshara-cfg-v1": "Advanced settings",
   "azshara-court-v1": "The Court",
   "azshara-court-bag-v1": "The Court's phrases already recited",
+  "azshara-court-art-v1": "The Court's picture art: pictures brought in for portraits",
   "azshara-court-looks-v1": "The Court's Atelier: your look, your name and any queen's look you changed",
   "azshara-reps-v1": "Reps and their history",
   "azshara-rehearse-v1":

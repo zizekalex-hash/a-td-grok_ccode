@@ -1,5 +1,6 @@
-import { useDeferredValue, useMemo, useState } from "react";
-import { Check, Dices, RotateCcw, Undo2, X } from "lucide-react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
+import { Check, Dices, ImagePlus, RotateCcw, Trash2, Undo2, X } from "lucide-react";
+import { applyArt, artFor, readArtFile } from "@/game/court/artkeep";
 import { CONFIG, type CourtQueenKey } from "@/game/config";
 import {
   COLOURS,
@@ -33,6 +34,8 @@ import {
 } from "@/game/court/portrait";
 
 const C = CONFIG.court;
+/** The page after the others: a picture brought in for the portrait. */
+const ART_PAGE = "art";
 const QUEENS = Object.keys(C.queens) as CourtQueenKey[];
 
 /** Whose look it is now: a queen's, or yours. */
@@ -144,6 +147,103 @@ function Choice({
   );
 }
 
+/**
+ * Picture art: a picture brought in (any style, any source) for someone's portrait.
+ * It sits over the drawn one in the round frame, which stays underneath; where it
+ * sits, how large and how much of it shows are set here, live. Kept on the device.
+ */
+function ArtPanel({ who }: { who: Who }) {
+  useLooks();
+  const file = useRef<HTMLInputElement>(null);
+  const [note, setNote] = useState("");
+  const art = artFor(who);
+  const hers = who === "you" ? "your" : "her";
+  const save = (next: typeof art) => {
+    const ok = applyArt(who, next);
+    setNote(ok ? "" : "It shows now but did not fit on this device to keep: a smaller picture, or fewer of them.");
+  };
+  const bring = async (list: FileList | null) => {
+    const f = list?.[0];
+    if (file.current) file.current.value = "";
+    if (!f) return;
+    try {
+      save(await readArtFile(f));
+    } catch (e) {
+      setNote(String((e as Error)?.message ?? e));
+    }
+  };
+  const set = (patch: Partial<NonNullable<typeof art>>) => art && save({ ...art, ...patch });
+  const slider = (id: string, label: string, v: number, min: number, max: number, step: number, put: (n: number) => void, text: string) => (
+    <div className="mb-2.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <label htmlFor={`art-${id}`} className="font-display text-[0.65rem] tracking-[0.14em] text-muted uppercase">
+          {label}
+        </label>
+        <span className="font-mono text-xs text-cyan">{text}</span>
+      </div>
+      <input
+        id={`art-${id}`}
+        type="range"
+        className="atelier-range w-full"
+        min={min}
+        max={max}
+        step={step}
+        value={v}
+        onChange={(e) => put(Number(e.target.value))}
+      />
+    </div>
+  );
+  return (
+    <div>
+      <p className="mb-2 text-xs leading-snug text-muted">
+        Bring a picture for {hers} portrait (a jpg, png or webp, from anywhere). It is made smaller, kept on this device and shown in the round frame everywhere {hers} portrait is, over the drawn one, which stays under it. Nothing is lost: Remove brings back the drawn portrait alone.
+      </p>
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <button type="button" className="btn" onClick={() => file.current?.click()}>
+          <ImagePlus className="size-4" aria-hidden />
+          {art ? "Change picture" : "Bring a picture"}
+        </button>
+        <button type="button" className="btn" disabled={!art} onClick={() => save(null)}>
+          <Trash2 className="size-4" aria-hidden />
+          Remove
+        </button>
+      </div>
+      <input
+        ref={file}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        aria-label={`Picture for ${whoName(who)}`}
+        onChange={(e) => void bring(e.target.files)}
+      />
+      {note && (
+        <p className="mb-2 text-xs text-danger" role="status">
+          {note}
+        </p>
+      )}
+      {art ? (
+        <>
+          {slider("fx", "Across: which part", art.fx, 0, 1, 0.01, (n) => set({ fx: n }), `${Math.round(art.fx * 100)}%`)}
+          {slider("fy", "Down: which part", art.fy, 0, 1, 0.01, (n) => set({ fy: n }), `${Math.round(art.fy * 100)}%`)}
+          {slider("zoom", "Closer", art.zoom, 1, 4, 0.05, (n) => set({ zoom: n }), `×${art.zoom.toFixed(2)}`)}
+          {slider(
+            "mix",
+            "Picture or drawn",
+            art.mix,
+            0,
+            1,
+            0.05,
+            (n) => set({ mix: n }),
+            art.mix >= 1 ? "picture" : art.mix <= 0 ? "drawn" : `${Math.round(art.mix * 100)}% picture`,
+          )}
+        </>
+      ) : (
+        <p className="text-xs text-muted">No picture yet: the drawn portrait is {hers} portrait.</p>
+      )}
+    </div>
+  );
+}
+
 /** One slider of her shape: its name, its two ends, and a tap to set it back to 0. */
 function Slider({ id, value, onSet }: { id: ShapeKey; value: number; onSet: (v: number) => void }) {
   const s = SLIDERS[id];
@@ -195,7 +295,7 @@ export function Atelier({
   /** Leaving: back to where it was opened from, for whoever is shown now. */
   onLeave: (who: Who) => void;
 }) {
-  useLooks();
+  const artRev = useLooks();
   const [who, setWho] = useState<Who>(first);
   const [draft, setDraft] = useState<Look>(() => lookNow(first));
   const [page, setPage] = useState(PAGES[0]!.id);
@@ -210,7 +310,8 @@ export function Atelier({
   const original = originalLook(who);
   const spec = who === "you" ? null : C.queens[who];
   const ring = spec?.color ?? draft.accent;
-  const picture = useMemo(() => {
+  const onArt = page === ART_PAGE;
+  const drawn = useMemo(() => {
     const region = spec
       ? (C.places as Record<string, { region: string }>)[spec.place]?.region
       : undefined;
@@ -222,6 +323,13 @@ export function Atelier({
       style: C.portraits.style,
     });
   }, [shown, mood, spec]);
+  // The picture page shows the portrait as it is in the game (the picture over the drawn one); it follows the pictures kept (artRev).
+  const picture =
+    onArt && artRev >= 0
+      ? who === "you"
+        ? youPortrait({ mood })
+        : queenPortrait(who, { mood, tier: 2 })
+      : drawn;
 
   // The Body and Dress pages show her whole, standing.
   const whole = page === "body" || page === "dress";
@@ -251,6 +359,7 @@ export function Atelier({
   };
   const set = (patch: Partial<Look>) => setDraft((d) => ({ ...d, ...patch }));
   const p = PAGES.find((x) => x.id === page) ?? PAGES[0]!;
+  const picturePage = page === ART_PAGE;
   const palettes = C.atelier.palettes;
   const hers = who === "you" ? "your" : "her";
 
@@ -340,7 +449,7 @@ export function Atelier({
       </div>
 
       <div className="mt-2 flex shrink-0 gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="What to change">
-        {PAGES.map((x) => (
+        {[...PAGES.map((x) => ({ id: x.id, name: x.name })), { id: ART_PAGE, name: "Picture" }].map((x) => (
           <button
             key={x.id}
             type="button"
@@ -355,8 +464,9 @@ export function Atelier({
         ))}
       </div>
 
-      <div className="glass mt-1 min-h-0 flex-1 overflow-y-auto p-3" role="tabpanel" aria-label={p.name}>
-        {who === "you" && p.id === "body" && (
+      <div className="glass mt-1 min-h-0 flex-1 overflow-y-auto p-3" role="tabpanel" aria-label={picturePage ? "Picture" : p.name}>
+        {picturePage && <ArtPanel who={who} />}
+        {!picturePage && who === "you" && p.id === "body" && (
           <div className="mb-3">
             <label htmlFor="atelier-name" className="mb-1 block font-display text-[0.65rem] tracking-[0.14em] text-muted uppercase">
               Your name, over your figure on the map
@@ -370,7 +480,7 @@ export function Atelier({
             />
           </div>
         )}
-        {p.colours.map((key: ColourKey) => (
+        {!picturePage && p.colours.map((key: ColourKey) => (
           <Swatches
             key={key}
             name={COLOURS[key].name}
@@ -381,7 +491,7 @@ export function Atelier({
             onPick={(v) => set(key === "hair" ? { hair: v, sheen: "" } : { [key]: v })}
           />
         ))}
-        {p.traits.map((key: TraitKey) => (
+        {!picturePage && p.traits.map((key: TraitKey) => (
           <Choice
             key={key}
             name={who === "you" ? TRAITS[key].name.replace("her", "your") : TRAITS[key].name}
@@ -390,7 +500,7 @@ export function Atelier({
             onPick={(v) => set({ [key]: v })}
           />
         ))}
-        {p.bg && (
+        {!picturePage && p.bg && (
           <div className="mb-3">
             <p className="mb-1 font-display text-[0.65rem] tracking-[0.14em] text-muted uppercase">Behind {who === "you" ? "you" : "her"}</p>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -412,7 +522,7 @@ export function Atelier({
             </div>
           </div>
         )}
-        {p.sliders.map((key) => (
+        {!picturePage && p.sliders.map((key) => (
           <Slider
             key={key}
             id={key}
@@ -420,7 +530,7 @@ export function Atelier({
             onSet={(v) => setDraft((d) => withShape(d, key, v))}
           />
         ))}
-        {p.sliders.includes("hornSize") && !draft.horns && (
+        {!picturePage && p.sliders.includes("hornSize") && !draft.horns && (
           <p className="text-xs text-muted">Horn size shows once a colour for horns is chosen.</p>
         )}
       </div>

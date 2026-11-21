@@ -24,6 +24,7 @@ import {
   waveSpec,
   type DifficultyKey,
   type TowerKey,
+  TRACK_COUNT,
 } from "./economy.ts";
 import { createGame, TARGETING, type Targeting, type TdState } from "./sim.ts";
 
@@ -135,6 +136,7 @@ export function restore(raw: string | null): TdState | null {
     const level = Math.max(1, Math.floor(t.level));
     const path = num(t.path) && pathsOf(t.key)[t.path] ? t.path : -1;
     const ascend = path >= 0 && num(t.ascend) && ascensionsOf(t.key)[t.ascend] ? t.ascend : -1;
+    const tracks = list(t.tracks).map((r) => (num(r) ? Math.max(0, Math.floor(r)) : 0)).slice(0, TRACK_COUNT);
     s.towers.push({
       id: t.id,
       key: t.key,
@@ -145,13 +147,14 @@ export function restore(raw: string | null): TdState | null {
       cooldown: num(t.cooldown) ? t.cooldown : 0,
       targeting: TARGETING.includes(t.targeting as Targeting) ? (t.targeting as Targeting) : "first",
       // Stats are worked out again, never read from the save.
-      stats: towerStats(t.key, level, s.perks, path, ascend, s.voidPerks, s.felPerks),
+      stats: towerStats(t.key, level, s.perks, path, ascend, s.voidPerks, s.felPerks, tracks),
       focusId: -1,
       focusStacks: 0,
       phrase: "",
       shots: num(t.shots) ? t.shots : 0,
       path,
       ascend,
+      tracks,
       dealt: num(t.dealt) ? t.dealt : 0,
       kills: num(t.kills) ? t.kills : 0,
       // A save from before refunds were tracked never counts as a fresh build.

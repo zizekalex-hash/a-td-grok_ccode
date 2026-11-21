@@ -271,34 +271,43 @@ async function sayAll(
   };
 }
 
-/** The longest a phrase's voice mix is made (s): copies that run on longer are cut there. */
-export const VOICE_MIX_MAX_SEC = 20;
-/** The rate the robot voices are mixed at to be read as raw bytes (the phone's own voices are about this). */
+/** The rate the robot voices are mixed at to be read as raw binary (the phone's own voices are about this). */
 export const VOICE_RAW_RATE = 24_000;
+/** The voices of a phrase or a text, mixed as one: its samples (mono), their rate and length (s). */
+export interface VoiceMix {
+  samples: Float32Array;
+  rate: number;
+  seconds: number;
+}
 
 /**
- * Every heard layer and copy saying one phrase, mixed as one (a single channel):
- * the phone says the phrase once for each voice (kept), and the copies, their
- * speeds, reversals and gains are laid out and mixed as in a .tts.wav. For the
- * voices as raw bytes. Throws why it could not (not in the app, every layer off).
+ * Every heard layer and copy saying a phrase, or a whole text, mixed as one (a
+ * single channel) as in its .tts.wav: the phone says each phrase once for each
+ * voice (kept), and the copies, their speeds, reversals and gains are laid out
+ * and mixed. A phrase: every layer says it, once round. A text: the main voice
+ * reads it phrase after phrase, every other voice reads it whole (as long as
+ * that takes). All of it, however long, at VOICE_RAW_RATE. Throws why it could not (not in the app, every layer
+ * off, too long), or TTS_STOPPED when `stopped` says so.
  */
 export async function voiceMix(
-  text: string,
+  job: Pick<TtsJob, "kind" | "phrases">,
   set: RehearseSettings,
-  rate = VOICE_RAW_RATE,
   deps: TtsDeps = phone,
   step: (note: string, part: number) => void = () => {},
-): Promise<Float32Array> {
-  const job: TtsJob = { kind: "phrase", phrases: [text], path: "", rate };
-  const vs = await sayAll(job, set, deps, step, () => false);
-  const plan = ttsPlan(vs.layers, vs.lens, false);
+  stopped: () => boolean = () => false,
+): Promise<VoiceMix> {
+  const vs = await sayAll({ ...job, path: "", rate: VOICE_RAW_RATE }, set, deps, step, stopped);
+  const plan = ttsPlan(vs.layers, vs.lens, job.kind === "text");
   if (!plan.plays.length || plan.total <= 0)
     throw new Error("Every copy is silent, or left out: nothing to make");
+  // Always at the full rate, whatever the length: nothing is cut or lowered.
+  const rate = VOICE_RAW_RATE;
   const mixing = vs.mixer(plan, rate);
-  const frames = Math.max(1, Math.min(mixing.mix.frames, Math.round(VOICE_MIX_MAX_SEC * rate)));
+  const frames = Math.max(1, mixing.mix.frames);
   const out = new Float32Array(frames);
   let at = 0;
   while (at < frames) {
+    if (stopped()) throw new Error(TTS_STOPPED);
     const len = Math.min(rate, frames - at);
     step("Mixing the voices into one…", at / frames);
     out.set(await mixing.pull(len), at);
@@ -306,7 +315,7 @@ export async function voiceMix(
     await pause();
   }
   guardAll(out);
-  return out;
+  return { samples: out, rate, seconds: frames / rate };
 }
 
 /**

@@ -23,6 +23,7 @@ import {
   summonRift,
   castSpell,
   chooseAscension,
+  upgradeTrack,
   choosePath,
   createGame,
   cycleTargeting,
@@ -70,6 +71,9 @@ import {
   ascendCost,
   ascensionsOf,
   pathCost,
+  tracksOf,
+  trackCost,
+  trackText,
   pathsOf,
   coreCost,
   CORE_STAGES,
@@ -99,7 +103,7 @@ import {
 } from "./economy.ts";
 import { restore, serialize, summarize } from "./save.ts";
 import { cancelSleep, resting, sleepFrames } from "@/game/rest";
-import { readReps, recordReps, writeReps } from "@/game/reps";
+import { readReps } from "@/game/reps";
 import { readRepUi } from "./repui.ts";
 
 const BEST_KEY = "azshara-td-v1";
@@ -210,6 +214,8 @@ export class TdGame implements GameBase {
   private view = -1;
   /** The part of the board on screen, in px: all of it, or what fits the field when one board is looked at. */
   private vis = { x: 0, y: 0, w: 1, h: 1 };
+  /** The free field above the controls: the banner fits this, not only the board in it. */
+  private field = { x: 0, y: 0, w: 1, h: 1 };
   /** The grid and the lane, drawn once per size. */
   private board: HTMLCanvasElement = document.createElement("canvas");
   private boardKey = "";
@@ -565,6 +571,18 @@ export class TdGame implements GameBase {
   }
 
   /** Takes one of the selected tower's two Ascensions. */
+  tdTrack(index: number) {
+    if (!this.selected) return;
+    const r = upgradeTrack(this.sim, this.selected.col, this.selected.row, index);
+    const t = towerAt(this.sim, this.selected.col, this.selected.row);
+    if (r.ok && t) {
+      sfx.bless();
+      const tr = tracksOf(t.key)[index];
+      this.note(this.write(`${tr?.name} · rank ${t.tracks[index]}.`));
+    } else if (!r.ok) this.note(r.reason);
+    this.pushView(true);
+  }
+
   tdAscend(index: number) {
     if (!this.selected) return;
     const r = chooseAscension(this.sim, this.selected.col, this.selected.row, index);
@@ -598,8 +616,8 @@ export class TdGame implements GameBase {
   /**
    * Reps for a phrase in Reps, count of them in one tap: they count only when
    * count x td.void.repSeconds have passed since the last tap (the simulation
-   * checks, by the clock), pay flux, and go into the Recitation drill too (every
-   * 100, and when the window closes or the run ends). True when they counted.
+   * checks, by the clock) and pay flux. They are not counted in the Recitation drill
+   * (no history, no experience). True when they counted.
    */
   tdRep(phraseId: string, count = 1): boolean {
     const now = Date.now();
@@ -647,11 +665,8 @@ export class TdGame implements GameBase {
 
   /** Writes the reps done here into the Recitation drill: totals and History, one set per phrase. */
   tdFlushReps() {
-    if (!this.repTally.size) return;
-    let reps = readReps();
-    const now = Date.now();
-    for (const [id, t] of this.repTally) reps = recordReps(reps, id, t.count, t.ms, now);
-    writeReps(reps);
+    // Reps done here pay flux and O/I and nothing else: they are not counted in the Reps tab or
+    // the drill's history (and earn no experience).
     this.repTally.clear();
   }
 
@@ -752,6 +767,7 @@ export class TdGame implements GameBase {
     const cols = sec ? COLS : map.cols;
     const rows = sec ? ROWS : map.rows;
     const cell = Math.max(sec ? 10 : 6, Math.min(box.w / cols, box.h / rows));
+    this.field = { x: box.x, y: box.y, w: Math.max(1, box.w), h: Math.max(1, box.h) };
     this.cell = cell;
     this.ox = Math.round(box.x + (box.w - cols * cell) / 2 - (sec ? sec.col * cell : 0));
     this.oy = Math.round(box.y + (box.h - rows * cell) / 2 - (sec ? sec.row * cell : 0));
@@ -1012,6 +1028,14 @@ export class TdGame implements GameBase {
             pathCost: pathCost(tower.key, sim.perks),
             ascend: tower.ascend,
             ascendCost: ascendCost(tower.key, sim.perks),
+            tracks: tracksOf(tower.key).map((tr, i) => ({
+              name: tr.name,
+              copy: tr.copy,
+              rank: tower.tracks[i] ?? 0,
+              now: trackText(tower.key, i, tower.tracks[i] ?? 0),
+              next: trackText(tower.key, i, (tower.tracks[i] ?? 0) + 1),
+              cost: trackCost(tower.key, tower.tracks[i] ?? 0, sim.perks),
+            })),
             dealt: tower.dealt,
             kills: tower.kills,
             currency: currencyOf(tower.key),
@@ -1804,20 +1828,30 @@ export class TdGame implements GameBase {
     ctx.globalAlpha = Math.max(0, Math.min(1, this.bannerLife));
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    // A phrase of the text is wrapped to the board, and smaller if it needs more than three rows.
-    const maxW = this.vis.w * 0.9;
+    // A phrase of the text is wrapped to the board and made smaller until all of it shows:
+    // every row inside the board's width, the rows inside its upper half. Never cut.
+    // The free field, down to wherever the controls start (a tall card of text may cover the board's lower part).
+    const f = { ...this.field };
+    const hud = typeof document !== "undefined" ? document.querySelector("[data-td-hud]") : null;
+    if (hud) {
+      const top = hud.getBoundingClientRect().top - this.canvas.getBoundingClientRect().top;
+      f.h = Math.max(40, Math.min(f.y + f.h, top - 6) - f.y);
+    }
+    const maxW = f.w * 0.94;
+    const maxH = f.h * 0.9;
     let size = Math.max(12, Math.min(22, this.cell * 0.5));
     let rows: string[] = [];
     for (;;) {
       this.font(ctx, `700 ${size}px ${DISPLAY}`);
       rows = wrapRows(this.banner, maxW, (s) => ctx.measureText(s).width);
-      if (rows.length <= 3 || size <= 9) break;
-      size -= 1;
+      const widest = rows.reduce((m, r) => Math.max(m, ctx.measureText(r).width), 0);
+      if ((widest <= maxW && rows.length * size * 1.3 <= maxH) || size <= 4) break;
+      size -= 0.5;
     }
     // Mid-board, a little above the middle, clear of the gate where bosses enter.
-    const x = this.vis.x + this.vis.w / 2;
+    const x = f.x + f.w / 2;
     const rowH = size * 1.3;
-    const y0 = this.vis.y + this.vis.h * 0.37 - ((rows.length - 1) * rowH) / 2;
+    const y0 = f.y + f.h * 0.5 - ((rows.length - 1) * rowH) / 2;
     ctx.lineWidth = 4;
     ctx.strokeStyle = "rgba(2, 0, 5, 0.85)";
     ctx.fillStyle = PAL.gold;

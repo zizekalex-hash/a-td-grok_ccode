@@ -1700,10 +1700,10 @@
       }
     },
     "write": {
-      "_about": "What the tower-defense game writes on screen. With only true, every message (the line under the board), banner and spoken line is a phrase of the loaded text instead of words of the game's: the text is cut into phrases (sentences, a long one in pieces of at most lineWords words for the line and bannerWords for the banner), shuffled and dealt one at a time, every phrase before any comes again, then shuffled again. Floating rewards stay numbers (+120, +40 DE) and a mistake (not enough O/I and the like) still says why. false: the game's own words.",
+      "_about": "What the tower-defense game writes on screen. With only true, every message (the line under the board), banner and spoken line is a phrase of the loaded text instead of words of the game's: the text is cut into phrases (sentences, only one longer than lineWords words for the line or bannerWords for the banner is cut in pieces (80: a whole sentence shows, in a smaller font if it is long)), shuffled and dealt one at a time, every phrase before any comes again, then shuffled again. Floating rewards stay numbers (+120, +40 DE) and a mistake (not enough O/I and the like) still says why. false: the game's own words.",
       "only": true,
-      "lineWords": 10,
-      "bannerWords": 9
+      "lineWords": 80,
+      "bannerWords": 80
     },
     "de": {
       "_about": "Dark energy (DE), the fourth currency: it buys the fel set of towers (the ten with fel: true), their levels, paths and Ascensions. It is made by sacrifice and trade, and earned by slaying the fel super bosses (see fel). Trade makes it from the other currencies: one DE costs cost.gold O/I, cost.flux flux or cost.atp ATP (the altar's buttons trade the amounts in trade, or as much as you have). Sacrificing a tower (its Sacrifice button, beside Sell) takes it away for offering of what was put into it, in DE (a sold tower gives back sellRefund, in its own currency): so it is the best way out of a tower you no longer want, and a fel tower is sold, not sacrificed. Sacrificing lives gives life DE for each, and never your last minLives. start: DE a run begins with.",

@@ -424,6 +424,7 @@ export function towerStats(
   ascend = -1,
   voidPerks: VoidPerks = noVoidPerks(),
   felPerks: FelPerks = noFelPerks(),
+  tracks: readonly number[] = [],
 ): TowerStats {
   const base = baseStats(key, level, perks);
   // Void towers also take the void perks: Dark energy (damage) and Event horizon (range).
@@ -443,8 +444,10 @@ export function towerStats(
   }
   const p = path >= 0 ? pathsOf(key)[path] : undefined;
   const a = ascend >= 0 ? ascensionsOf(key)[ascend] : undefined;
-  if (!p && !a) return base;
+  const ranked = tracks.some((r) => r > 0);
+  if (!p && !a && !ranked) return base;
   const out = { ...base };
+  if (ranked) applyTracks(out, key, tracks);
   if (p) applyMods(out, p);
   if (a) applyMods(out, a);
   out.slow = Math.min(0.85, out.slow);
@@ -462,6 +465,148 @@ export function towerStats(
   out.rend = Math.min(0.05, out.rend);
   out.corrode = Math.min(0.25, out.corrode);
   return out;
+}
+
+// ---- Signature upgrades: endless, each tower its own ----
+
+/** How many signature upgrades a tower has. */
+export const TRACK_COUNT = 3;
+
+export interface TrackSpec {
+  id: string;
+  /** The stat it raises, how (multiplies, or adds) and by how much a rank. */
+  stat: keyof TowerStats;
+  mode: "mult" | "add";
+  per: number;
+  name: string;
+  copy: string;
+}
+
+/** What each kind of upgrade is called, a few words for each so towers do not share them. */
+const TRACK_WORDS: Record<string, string[]> = {
+  income: ["Tithe", "Harvest", "Ledger", "Yield"],
+  fluxIncome: ["Wellspring", "Overflow", "Lode", "Tide"],
+  atpIncome: ["Mitochondria", "Charge", "Ferment", "Spark"],
+  chain: ["Forks", "Arcs", "Leaps", "Tendrils"],
+  splash: ["Bloom", "Shatter", "Burst", "Spread"],
+  burn: ["Embers", "Scorch", "Kindling", "Cinders"],
+  slowTime: ["Frost", "Lingering Chill", "Drag", "Cold Hold"],
+  aura: ["Halo", "Radiance", "Blessing", "Glow"],
+  haste: ["Cadence", "Metronome", "Tempo", "Drive"],
+  vuln: ["Exposure", "Weak Point", "Mark", "Sting"],
+  multi: ["Volley", "Split Shot", "Fan", "Salvo"],
+  spikeMult: ["Crescendo", "Crit", "Downbeat", "Hammer"],
+  block: ["Seal", "Gag", "Suture", "Choke"],
+  damage: ["Edge", "Might", "Force", "Bite"],
+  rate: ["Flurry", "Quickening", "Torrent", "Pulse"],
+  range: ["Reach", "Horizon", "Long View", "Stretch"],
+  bounty: ["Plunder", "Spoils", "Salvage", "Bounty"],
+  payout: ["Dividend", "Stipend", "Alms", "Coffer"],
+};
+
+/** What a rank of each adds, and the words for it. */
+const TRACK_RULES: Record<string, { mode: "mult" | "add"; per: number; text: (v: number) => string }> = {
+  income: { mode: "mult", per: 0.2, text: (v) => `+${Math.round(v * 100)}% O/I a wave` },
+  fluxIncome: { mode: "mult", per: 0.2, text: (v) => `+${Math.round(v * 100)}% flux a wave` },
+  atpIncome: { mode: "mult", per: 0.2, text: (v) => `+${Math.round(v * 100)}% ATP a wave` },
+  chain: { mode: "add", per: 0.5, text: (v) => `+${v} jump${v === 1 ? "" : "s"}` },
+  splash: { mode: "add", per: 0.1, text: (v) => `+${v.toFixed(1)} blast radius` },
+  burn: { mode: "mult", per: 0.15, text: (v) => `+${Math.round(v * 100)}% burn` },
+  slowTime: { mode: "add", per: 0.25, text: (v) => `+${v.toFixed(2)} s of slow` },
+  aura: { mode: "add", per: 0.04, text: (v) => `+${Math.round(v * 100)}% damage to towers` },
+  haste: { mode: "add", per: 0.02, text: (v) => `+${Math.round(v * 100)}% fire rate to towers` },
+  vuln: { mode: "add", per: 0.03, text: (v) => `+${Math.round(v * 100)}% damage taken` },
+  multi: { mode: "add", per: 0.34, text: (v) => `+${v} target${v === 1 ? "" : "s"}` },
+  spikeMult: { mode: "add", per: 0.4, text: (v) => `+${v.toFixed(1)}× on the big hit` },
+  block: { mode: "add", per: 0.1, text: (v) => `+${v.toFixed(1)} s no mending` },
+  damage: { mode: "mult", per: 0.15, text: (v) => `+${Math.round(v * 100)}% damage` },
+  rate: { mode: "mult", per: 0.08, text: (v) => `+${Math.round(v * 100)}% fire rate` },
+  range: { mode: "add", per: 0.12, text: (v) => `+${v.toFixed(1)} range` },
+  bounty: { mode: "add", per: 0.02, text: (v) => `kills pay +${Math.round(v * 100)}%` },
+  payout: { mode: "add", per: 4, text: (v) => `+${Math.round(v)} O/I a wave` },
+};
+
+/** The stat an upgrade raises, when it is not named for it. */
+const TRACK_STAT: Record<string, keyof TowerStats> = { payout: "income" };
+
+const hashOf = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+
+const trackMemo = new Map<string, TrackSpec[]>();
+
+/**
+ * A tower's own endless upgrades: the three it earns by what it is (its first ones
+ * the signature of its kind: a Muse's halo, a vault's yield, a chain's forks), then
+ * its damage, fire rate and range. Each is named for the tower, and each rank stacks
+ * on the last, with no top.
+ */
+export function tracksOf(key: TowerKey): TrackSpec[] {
+  const hit = trackMemo.get(key);
+  if (hit) return hit;
+  const spec = TOWERS[key];
+  const fires = spec.rate > 0;
+  const own: (string | false)[] = [
+    !!spec.income && "income",
+    !!spec.fluxIncome && "fluxIncome",
+    !!spec.atpIncome && "atpIncome",
+    !!spec.aura && "aura",
+    !!spec.haste && "haste",
+    !!spec.multi && "multi",
+    !!spec.chain && "chain",
+    !!spec.splash && "splash",
+    !!spec.burn && "burn",
+    !!spec.slow && "slowTime",
+    !!spec.vuln && "vuln",
+    !!spec.spikeEvery && "spikeMult",
+    !!spec.block && "block",
+    fires && spec.damage > 0 && "damage",
+    fires && "rate",
+    spec.range > 0 && "range",
+    "payout",
+    "bounty",
+  ];
+  const picks = [...new Set(own.filter((x): x is string => !!x))].slice(0, TRACK_COUNT);
+  const out = picks.map((id) => {
+    const r = TRACK_RULES[id]!;
+    const words = TRACK_WORDS[id]!;
+    const word = words[hashOf(key + id) % words.length]!;
+    return {
+      stat: TRACK_STAT[id] ?? (id as keyof TowerStats),
+      id,
+      mode: r.mode,
+      per: r.per,
+      name: `${spec.name} ${word}`,
+      copy: `${r.text(r.per)} a rank, with no end.`,
+    };
+  });
+  trackMemo.set(key, out);
+  return out;
+}
+
+/** The numbers an upgrade's ranks add up to, e.g. "+60% damage" at rank 4. */
+export function trackText(key: TowerKey, i: number, rank: number): string {
+  const tr = tracksOf(key)[i];
+  if (!tr) return "";
+  return TRACK_RULES[tr.id]!.text(tr.per * rank);
+}
+
+/** Price of a tower's signature upgrade's next rank: it rises a third each rank, with no top. */
+export function trackCost(key: TowerKey, rank: number, perks: Perks = noPerks()): number {
+  const cost = TOWERS[key].cost * 0.6 * thrift(perks) * (rank + 1) * 1.3 ** rank;
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.round(cost)));
+}
+
+function applyTracks(out: TowerStats, key: TowerKey, ranks: readonly number[]) {
+  tracksOf(key).forEach((tr, i) => {
+    const r = Math.max(0, Math.floor(ranks[i] ?? 0));
+    if (!r) return;
+    const f = tr.stat;
+    if (f === "range" && out.range <= 0) return;
+    const cur = out[f] as number;
+    if (tr.mode === "mult") {
+      out[f as "damage"] = cur * (1 + tr.per * r);
+      if (f === "damage") out.burn *= 1 + tr.per * r;
+    } else (out[f] as number) = cur + tr.per * r;
+  });
 }
 
 /** Limits on what levels, paths and Ascensions can add up to. */

@@ -66,6 +66,7 @@ import { voiceEngines, voiceHere, voiceList, type VoiceInfo } from "@/game/voice
 import {
   prepareVoiceRaw,
   subscribeVoiceRaw,
+  releaseVoiceRaw,
   voiceBytesFor,
   voiceRawKey,
   voiceRawLine,
@@ -94,6 +95,9 @@ import {
   playVoice,
   requestReader,
   playWav,
+  playWavs,
+  wavMix,
+  wavUrlsFor,
   playTts,
   renderStatus,
   subscribeRender,
@@ -106,11 +110,9 @@ import {
   showBubble,
   startRehearseBackground,
   subscribeRehearse,
-  wavGain,
   wavStyle as setWavStyle,
 } from "@/game/rehearseRun";
 import {
-  folderFileUrl,
   folderName,
   hasFolder,
   listFolder,
@@ -141,6 +143,19 @@ import {
   soundOf,
   soundRate,
   type VoiceRaw,
+  type VoiceSubject,
+  addWav,
+  removeWav,
+  setWavGain,
+  setAllWavGains,
+  applyRatios,
+  parseRatios,
+  ratiosText,
+  wavListFor,
+  wavKey,
+  MAX_WAV_GAIN,
+  phraseSubject,
+  textSubject,
   phrasesOf,
   cleanPhrase,
   rawSamples,
@@ -290,7 +305,7 @@ function drawPicture(c: HTMLCanvasElement, text: string, layers: Record<BytesMod
  * signal; the sound loops while held. Shown and stopped straight away, not
  * through React, so a short tap stays short.
  */
-function useEmitter(text: string, settings: RehearseSettings) {
+function useEmitter(text: string, settings: RehearseSettings, voicesOf: VoiceSubject | null) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const live = useRef<{ src: AudioBufferSourceNode; gain: GainNode } | null>(null);
   const made = useRef<{ key: string; buf: AudioBuffer } | null>(null);
@@ -306,10 +321,12 @@ function useEmitter(text: string, settings: RehearseSettings) {
   // The robot voices as raw bytes: made for this phrase while the sound asks for them, and taken in when ready.
   const [, voicesIn] = useState(0);
   useEffect(() => subscribeVoiceRaw(() => voicesIn((n) => n + 1)), []);
-  const voiceKey = settings.voiceRaw !== "off" && settings.voice ? voiceRawKey(text, settings) : "";
+  const voiceKey =
+    settings.voiceRaw !== "off" && settings.voice && voicesOf ? voiceRawKey(voicesOf, settings) : "";
   useEffect(() => {
-    if (voiceKey && settings.sound && text) prepareVoiceRaw(text, settings);
-    // The key stands for the text and every heard layer.
+    if (voiceKey && voicesOf && settings.sound) prepareVoiceRaw(voicesOf, settings);
+    else releaseVoiceRaw();
+    // The key stands for what the voices are of and every heard layer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceKey, settings.voiceRaw, settings.sound]);
 
@@ -332,7 +349,7 @@ function useEmitter(text: string, settings: RehearseSettings) {
 
   const signal = (ctx: AudioContext) => {
     const voices =
-      settings.voiceRaw !== "off" && settings.voice ? voiceBytesFor(text, settings) : null;
+      settings.voiceRaw !== "off" && settings.voice && voicesOf ? voiceBytesFor(voicesOf, settings) : null;
     const key = JSON.stringify([
       ctx.sampleRate,
       settings.signalMs,
@@ -601,10 +618,15 @@ function Ask({ text, title, info }: { text: string; title?: string; info: React.
  * phrase keeps its own count; reset one and the phrase stays.
  */
 /** How the phrase's voices as raw binary stand: being made by the phone, in, or why not. */
-function VoiceRawNote({ text, set }: { text: string; set: RehearseSettings }) {
+function VoiceRawNote({ of, set }: { of: VoiceSubject | null; set: RehearseSettings }) {
   const [, again] = useState(0);
   useEffect(() => subscribeVoiceRaw(() => again((n) => n + 1)), []);
-  const line = voiceRawLine(text, set);
+  // A timer: the note moves every second while the voices are being made.
+  useEffect(() => {
+    const id = window.setInterval(() => again((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const line = voiceRawLine(of, set);
   if (!line) return null;
   return (
     <p
@@ -664,7 +686,15 @@ export function RehearseTab() {
   const textSumNow = useMemo(() => (textNow ? textSum(textNow.lines) : ""), [textNow]);
   /** The phrase being repped now: a single phrase, or the text's phrase it is at. */
   const activeText = textsView ? (unit?.text ?? "") : (item?.text ?? "");
-  const emitter = useEmitter(activeText, set);
+  /** What the robot voices as raw binary are of: the phrase, or (Whole texts) the whole text, as its .tts.wav is. */
+  const voicesOf = useMemo(
+    () =>
+      textsView
+        ? textSubject(textKeyNow, units.map((u) => u.text))
+        : phraseSubject(item?.text ?? ""),
+    [textsView, textKeyNow, units, item?.text],
+  );
+  const emitter = useEmitter(activeText, set, voicesOf);
   // The screen's size (the whole app's, Options → Interface size), and the phrase's own.
   const uiScale = useGame((s) => s.settings.uiScale);
   const phraseBox = useRef<HTMLSpanElement>(null);
@@ -731,9 +761,9 @@ export function RehearseTab() {
   const phraseText = activeText;
   const { nonstop, sound, paused } = set;
   useEffect(() => {
-    if (nonstop && sound && phraseText && !paused) playNonstop(phraseText, set);
+    if (nonstop && sound && phraseText && !paused) playNonstop(phraseText, set, voicesOf);
     else playNonstop(null);
-  }, [nonstop, sound, phraseText, paused, set]);
+  }, [nonstop, sound, phraseText, paused, set, voicesOf]);
   // The robot voice: the current phrase said, over and over (on after the tab closes too, with Background on).
   const [voiceNote, setVoiceNote] = useState("");
   const voiceKey = JSON.stringify([
@@ -806,6 +836,9 @@ export function RehearseTab() {
   const [picked, setPicked] = useState<Map<string, string>>(() => new Map(pickedWavs));
   const [folderNote, setFolderNote] = useState("");
   const wavPick = useRef<HTMLInputElement>(null);
+  const wavAdd = useRef<HTMLInputElement>(null);
+  /** The .wav files in the azs-folder's folder for what is shown (lower case; not the made .tts ones), to add by name. */
+  const [folderWavNames, setFolderWavNames] = useState<string[]>([]);
   /** Both folders looked at: the number of .wav files in each. */
   const lookForWavs = async () => {
     const [ph, tx] = await Promise.all([listFolder(PHRASE_FOLDER), listFolder(TEXT_FOLDER)]);
@@ -1075,10 +1108,8 @@ export function RehearseTab() {
       setRefreshing(false);
     }
   };
-  const hasWav = (base: string, d = dir) => {
-    const key = `${base}.wav`.toLowerCase();
-    return wavs.has(`${d}/${key}`) || picked.has(key);
-  };
+  const hasWav = (base: string, d = dir) =>
+    wavListFor(st, d, base).some((w) => wavs.has(`${d}/${w.file}`) || picked.has(w.file));
   const hasTts = (base: string, d = dir) => {
     const key = `${base}.tts.wav`.toLowerCase();
     return ttsWavs.has(`${d}/${key}`) || picked.has(key);
@@ -1130,49 +1161,106 @@ export function RehearseTab() {
     if (wavPick.current) wavPick.current.value = "";
   };
 
-  // Choosing a phrase: its own .wav (next to its .txt) looked for right then, and looped as it is, at its gain.
+  /** Its own <name>.wav, not there and never set, is let go when a file is added: it was only the guess. */
+  const withoutMissingOwn = (s: RehearseState): RehearseState =>
+    s.wavSets[wavKey(dir, name)]
+      ? s
+      : wavFound.filter((w) => !w.url).reduce((acc, w) => removeWav(acc, dir, name, w.file), s);
+  // Files picked by hand are loaded for this visit and added to the mix of the phrase or text shown.
+  const addWavs = (list: FileList | null) => {
+    const files = Array.from(list ?? []).map((f) => [f.name.toLowerCase(), URL.createObjectURL(f)] as const);
+    if (!files.length || !name) return;
+    for (const [k, url] of files) pickedWavs.set(k, url);
+    setPicked(new Map(pickedWavs));
+    update((s) => files.reduce((acc, [k]) => addWav(acc, dir, name, k), withoutMissingOwn(s)));
+    setFolderNote(`${files.length} .wav file${files.length === 1 ? "" : "s"} added to ${name}.`);
+    if (wavAdd.current) wavAdd.current.value = "";
+  };
+  useEffect(() => {
+    if (!folder) {
+      setFolderWavNames([]);
+      return;
+    }
+    let live = true;
+    void listFolder(dir).then((l) => {
+      if (live)
+        setFolderWavNames(
+          l.map((f) => f.name.toLowerCase()).filter((f) => f.endsWith(".wav") && !/\.tts(\.[a-z]+)?\.wav$/.test(f)),
+        );
+    });
+    return () => {
+      live = false;
+    };
+  }, [folder, dir, tick]);
+
+  // Choosing a phrase: its .wav files (its own, next to its .txt, and any added to it) looked for right
+  // then, and looped together as they are, each at its ratio.
   const { wavLoop, wavVolume } = set;
   const wavStyle = wavStyleOf(set);
   const styleKey = JSON.stringify(wavStyle);
   const styleNow = useRef(wavStyle);
   styleNow.current = wavStyle;
+  const stNow = useRef(st);
+  stNow.current = st;
+  const wavRefs = name ? wavListFor(st, dir, name) : [];
+  const wavFiles = wavRefs.map((w) => w.file).join("|");
   const wavHere = !!name && hasWav(name);
   const [wavPlaying, setWavPlaying] = useState(false);
+  /** The files of this phrase or text, found or not, with their ratios. */
+  const [wavFound, setWavFound] = useState<{ file: string; gain: number; url: string | null }[]>([]);
+  const ratiosNow = useRef<number[]>([]);
   useEffect(() => {
     if (!name) {
       void playWav(null);
       setWavPlaying(false);
+      setWavFound([]);
       return;
     }
     let live = true;
     void (async () => {
-      const file = `${name}.wav`.toLowerCase();
-      const key = `${dir}/${file}`;
-      const url = picked.get(file) ?? (folder ? await folderFileUrl(`${dir}/${name}.wav`) : null);
+      const found = await wavUrlsFor(dir, name, stNow.current);
       if (!live) return;
+      setWavFound(found);
       // Found or not: the ♪ follows what is there now.
       setWavs((old) => {
-        if (old.has(key) === !!url || picked.has(file)) return old;
         const next = new Set(old);
-        if (url) next.add(key);
-        else next.delete(key);
-        return next;
+        for (const w of found) {
+          const key = `${dir}/${w.file}`;
+          if (w.url && !picked.has(w.file)) next.add(key);
+          else if (!w.url) next.delete(key);
+        }
+        return next.size === old.size && [...next].every((k) => old.has(k)) ? old : next;
       });
-      if (!url || !wavLoop || paused) {
+      const here = found.filter((w) => w.url);
+      ratiosNow.current = here.map((w) => w.gain);
+      if (!here.length || !wavLoop || paused) {
         void playWav(null);
         setWavPlaying(false);
         return;
       }
-      const ok = await playWav(url, wavVolume, styleNow.current);
+      const ok = await playWavs(
+        here.map((w) => ({ url: w.url!, ratio: w.gain })),
+        wavVolume,
+        styleNow.current,
+      );
       if (live) setWavPlaying(ok);
     })();
     return () => {
       live = false;
     };
-    // The gain alone changes without restarting it (below).
+    // The gains alone change without restarting them (below).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wavLoop, name, dir, picked, folder, tick, paused, set.ttsRate]);
-  useEffect(() => wavGain(wavVolume), [wavVolume]);
+  }, [wavLoop, name, dir, picked, folder, tick, paused, set.ttsRate, wavFiles]);
+  const gainsKey = wavRefs.map((w) => w.gain).join("|");
+  useEffect(() => {
+    const here = wavRefs
+      .map((w) => wavFound.find((f) => f.file === w.file && f.url))
+      .map((f, i) => (f ? wavRefs[i]!.gain : null))
+      .filter((g): g is number => g !== null);
+    ratiosNow.current = here;
+    wavMix(here, wavVolume);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wavVolume, gainsKey, wavFound]);
   // A new style: from the next loop (or the file again from its start, if that is far off).
   useEffect(() => setWavStyle(styleNow.current), [styleKey]);
 
@@ -1673,7 +1761,8 @@ export function RehearseTab() {
             )}
             {wavHere && (
               <span className="text-[0.65rem] text-violet">
-                ♪ {name}.wav{" "}
+                ♪ {wavFound.filter((w) => w.url).map((w) => w.file).join(" + ") || `${name}.wav`}
+                {wavFound.filter((w) => w.url).length > 1 ? ` (${ratiosText(wavFound.filter((w) => w.url))})` : ""}{" "}
                 {wavLoop
                   ? wavPlaying
                     ? `looping at ${Math.round(wavVolume * 100)}%${presetNow === "flat" ? "" : ` · ${presetName}`}`
@@ -2005,10 +2094,108 @@ export function RehearseTab() {
                 />
               </div>
             )}
+            {!!name && (
+              <div className="mt-2 space-y-1.5" role="group" aria-label={`.wav files of ${name}`}>
+                <p className="font-display text-[0.6rem] tracking-[0.14em] text-violet">
+                  .WAV FILES OF THIS {textsView ? "TEXT" : "PHRASE"}
+                </p>
+                {wavFound.length === 0 && (
+                  <p className="text-xs text-muted">
+                    None. Its own {name}.wav would be used if it were there: add files below.
+                  </p>
+                )}
+                {wavFound.map((w) => (
+                  <div key={w.file} className="flex items-center gap-1.5">
+                    <div className="min-w-0 flex-1">
+                      <Num
+                        label={`${w.url ? "♪" : "✗ missing:"} ${w.file}`}
+                        value={w.gain}
+                        step={0.001}
+                        digits={3}
+                        set={(v) => update((s) => setWavGain(s, dir, name, w.file, v))}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="btn stepper"
+                      onClick={() => update((s) => removeWav(s, dir, name, w.file))}
+                      aria-label={`Take ${w.file} out of this ${textsView ? "text" : "phrase"}'s mix`}
+                    >
+                      <X className="size-4" aria-hidden />
+                    </button>
+                  </div>
+                ))}
+                {wavFound.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="text-muted">Ratios</span>
+                      <input
+                        key={gainsKey}
+                        className="min-w-0 flex-1 rounded border border-cyan/40 bg-transparent px-1 py-2 text-center text-fg"
+                        defaultValue={ratiosText(wavRefs)}
+                        aria-label="Ratios of the .wav files, in order, like 0.999 / 0.999"
+                        onBlur={(e) => {
+                          const r = parseRatios(e.target.value);
+                          if (r) update((s) => applyRatios(s, dir, name, r));
+                          else e.target.value = ratiosText(wavRefs);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur();
+                        }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-1">
+                      {[0.999, 1.89, 1].map((g) => (
+                        <button
+                          key={g}
+                          type="button"
+                          className="btn px-1 text-[0.65rem] tracking-normal normal-case"
+                          onClick={() => update((s) => setAllWavGains(s, dir, name, g))}
+                          aria-label={`Every .wav at ${g}`}
+                        >
+                          All {g}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <p className="text-[0.65rem] text-muted">
+                  Mixed together as they are, each at its ratio (0 to {MAX_WAV_GAIN}; above 1 can clip).
+                </p>
+                {folderWavNames
+                  .filter((f) => !wavRefs.some((w) => w.file === f))
+                  .map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      className="btn w-full justify-start px-2 text-left tracking-normal normal-case"
+                      onClick={() => update((s) => addWav(withoutMissingOwn(s), dir, name, f))}
+                    >
+                      <Plus className="size-4" aria-hidden /> Add {f}
+                    </button>
+                  ))}
+                <button
+                  type="button"
+                  className="btn w-full tracking-normal normal-case"
+                  onClick={() => wavAdd.current?.click()}
+                >
+                  <Upload className="size-4" aria-hidden /> Pick .wav files for this {textsView ? "text" : "phrase"}
+                </button>
+                <input
+                  ref={wavAdd}
+                  type="file"
+                  accept=".wav,audio/wav,audio/x-wav"
+                  multiple
+                  className="hidden"
+                  aria-label="Pick .wav files for this phrase or text"
+                  onChange={(e) => addWavs(e.target.files)}
+                />
+              </div>
+            )}
             {wavHere && (
               <div className="mt-2 space-y-1.5">
                 <Toggle
-                  label={`Its .wav in a loop (${name}.wav)`}
+                  label={`Its .wav files in a loop (${wavFound.filter((w) => w.url).length})`}
                   on={wavLoop}
                   flip={() => setOpt({ wavLoop: !wavLoop })}
                 />
@@ -2227,7 +2414,7 @@ export function RehearseTab() {
               </button>
             ))}
           </div>
-          <VoiceRawNote text={activeText} set={set} />
+          <VoiceRawNote of={voicesOf} set={set} />
           {set.mode === "cycle" && (
             <>
               <Num

@@ -17,7 +17,7 @@ import { useGame } from "@/game/store";
 import { browserSay, voiceFile, voiceHere, voiceList, type VoiceInfo } from "@/game/voice";
 import { ownVoice, VOICE_REHEARSE } from "@/game/court/hervoice";
 import { swarmPlay, swarmStats, type SwarmPlay } from "@/game/swarm";
-import { prepareVoiceRaw, subscribeVoiceRaw, voiceBytesFor } from "@/game/voiceRaw";
+import { prepareVoiceRaw, releaseVoiceRaw, subscribeVoiceRaw, voiceBytesFor } from "@/game/voiceRaw";
 import { soundLog } from "@/game/soundLog";
 import {
   fileLoop,
@@ -59,7 +59,9 @@ import {
 } from "@/game/repBubble";
 import {
   activeOf,
+  activeVoices,
   applyBubble,
+  wavListFor,
   batchWaitMs,
   bubbleId,
   currentText,
@@ -71,6 +73,8 @@ import {
   voiceLayersOf,
   type RehearseSettings,
   type VoiceLayer,
+  type VoiceSubject,
+  phraseSubject,
   passedThrough,
   libraryOf,
   loadRehearse,
@@ -391,11 +395,15 @@ function applyRate(rate: number) {
 // ---- The sound ----
 
 let loop: PhraseLoop | null = null;
-let wav: FileLoop | null = null;
+/** The .wav loops: one player for each file of the phrase or text, the first also used by playWav. */
+const wavs: FileLoop[] = [];
+/** Each loop's ratio in the mix, and the overall gain they are all under. */
+let wavRatios: number[] = [];
 /** What plays now: the Nonstop phrase, and the .wav's address. */
 let loopText = "";
-/** The settings the Nonstop phrase was last given, so it can be given again when its voices are in. */
+/** The settings, and what the voices are of, the Nonstop phrase was last given, so it can be given again when its voices are in. */
 let loopSound: RehearseSettings | null = null;
+let loopVoices: VoiceSubject | null = null;
 let wavUrl = "";
 let alive = false;
 /** Whether the tab is open (it plays the sound itself then). */
@@ -456,62 +464,117 @@ async function askOnce() {
  * the moment they are ready. It takes the whole settings (the voice layers are in
  * them), never a part of them: a part cannot say which voices to make.
  */
-function withVoices(text: string, set: RehearseSettings): LoopSound {
-  if (set.voiceRaw === "off" || !set.voice) return set;
-  const v = voiceBytesFor(text, set);
+function withVoices(set: RehearseSettings, of: VoiceSubject | null): LoopSound {
+  if (set.voiceRaw === "off" || !set.voice) {
+    // Nothing of them is wanted: what the phone is saying for them stops.
+    releaseVoiceRaw();
+    return set;
+  }
+  if (!of) return set;
+  const v = voiceBytesFor(of, set);
   if (!v) {
-    prepareVoiceRaw(text, set);
+    prepareVoiceRaw(of, set);
     return set;
   }
   return { ...set, voiceBytes: v.bytes, voiceTag: v.tag };
 }
 
-/** A phrase's voices came in (or could not): the Nonstop phrase takes them. */
+/** The voices came in (or could not): the Nonstop phrase takes them. */
 subscribeVoiceRaw(() => {
-  if (loop && loopText && loopSound) loop.play(loopText, withVoices(loopText, loopSound));
+  if (loop && loopText && loopSound) loop.play(loopText, withVoices(loopSound, loopVoices));
 });
 
-/** The phrase's sound all the time (null: off). */
-export function playNonstop(text: string | null, set?: RehearseSettings) {
+/**
+ * The phrase's sound all the time (null: off). `of`: what the robot voices as raw
+ * binary are of (a phrase, or a whole text); the phrase itself when not said.
+ */
+export function playNonstop(
+  text: string | null,
+  set?: RehearseSettings,
+  of: VoiceSubject | null = text ? phraseSubject(text) : null,
+) {
   loop ??= phraseLoop();
   if (text && set) {
-    loop.play(text, withVoices(text, set));
+    loop.play(text, withVoices(set, of));
     loopText = text;
     loopSound = set;
+    loopVoices = of;
   } else {
     loop.stop();
     loopText = "";
     loopSound = null;
+    loopVoices = null;
   }
   keep();
 }
 
-/** A .wav looped as it is, in a style (null: off). */
-export async function playWav(url: string | null, gain = 1, style?: WavStyle): Promise<boolean> {
-  wav ??= fileLoop();
-  if (!url) {
-    wav.stop();
-    wavUrl = "";
-    keep();
-    return false;
-  }
-  wavUrl = url;
+/**
+ * The .wav files a phrase or text loops, found: each with its ratio (gain) in the mix and its address
+ * (null if the file is not there: not picked here, nor in the azs-folder's folder `dir`).
+ */
+export async function wavUrlsFor(
+  dir: string,
+  name: string,
+  s: Pick<RehearseState, "wavSets"> = rehearseState(),
+): Promise<{ file: string; gain: number; url: string | null }[]> {
+  const list = wavListFor(s, dir, name);
+  const inFolder = list.length ? !!(await folderName()) : false;
+  return Promise.all(
+    list.map(async (w) => ({
+      file: w.file,
+      gain: w.gain,
+      url: pickedWavs.get(w.file) ?? (inFolder ? await folderFileUrl(`${dir}/${w.file}`) : null),
+    })),
+  );
+}
+
+/**
+ * Several .wav files looped at once, each as it is, each at its ratio times `gain`, mixed
+ * (none: off). Gives back whether any plays.
+ */
+export async function playWavs(
+  items: { url: string; ratio: number }[],
+  gain = 1,
+  style?: WavStyle,
+): Promise<boolean> {
+  wavRatios = items.map((i) => i.ratio);
+  for (let i = items.length; i < wavs.length; i++) wavs[i]!.stop();
+  wavUrl = items.map((i) => i.url).join("|");
   keep();
-  const ok = await wav.play(url, gain, style);
-  if (ok && style) wav.style(style);
-  if (!ok && wavUrl === url) {
+  if (!items.length) return false;
+  const results = await Promise.all(
+    items.map(async (it, i) => {
+      wavs[i] ??= fileLoop();
+      const ok = await wavs[i]!.play(it.url, gain * it.ratio, style);
+      if (ok && style) wavs[i]!.style(style);
+      return ok;
+    }),
+  );
+  const ok = results.some(Boolean);
+  if (!ok && wavUrl === items.map((i) => i.url).join("|")) {
     wavUrl = "";
     keep();
   }
   return ok;
 }
 
+/** A .wav looped as it is, in a style (null: off). */
+export function playWav(url: string | null, gain = 1, style?: WavStyle): Promise<boolean> {
+  return playWavs(url ? [{ url, ratio: 1 }] : [], gain, style);
+}
+
 export function wavGain(gain: number) {
-  wav?.gain(gain);
+  wavs.forEach((w, i) => w.gain(gain * (wavRatios[i] ?? 1)));
+}
+
+/** The ratios of the files playing now (in order), at an overall gain: heard at once, the loops going on. */
+export function wavMix(ratios: number[], gain: number) {
+  wavRatios = ratios;
+  wavGain(gain);
 }
 
 export function wavStyle(style: WavStyle) {
-  wav?.style(style);
+  for (const w of wavs) w.style(style);
 }
 
 export function stopRehearseSound() {
@@ -991,19 +1054,21 @@ async function playClosed() {
   // The reader has the phrase player meanwhile.
   if (reading) {
     /* its phrase plays */
-  } else if (set.nonstop && set.sound && a.text && !set.paused) playNonstop(a.text, set);
+  } else if (set.nonstop && set.sound && a.text && !set.paused)
+    playNonstop(a.text, set, activeVoices(s, rehearseLibrary()));
   else playNonstop(null);
   void closedTts(a, set.ttsLoop && !set.paused, set.ttsVolume);
   if (!set.wavLoop || !a.name || set.paused) {
     void playWav(null);
     return;
   }
-  const file = `${a.name}.wav`.toLowerCase();
-  const url =
-    pickedWavs.get(file) ??
-    ((await folderName()) ? await folderFileUrl(`${a.dir}/${a.name}.wav`) : null);
+  const found = (await wavUrlsFor(a.dir, a.name, s)).filter((w) => w.url);
   if (ask !== playing || open) return;
-  await playWav(url, set.wavVolume, wavStyleOf(set));
+  await playWavs(
+    found.map((w) => ({ url: w.url!, ratio: w.gain })),
+    set.wavVolume,
+    wavStyleOf(set),
+  );
 }
 
 // ---- The Court: its phrase, and what its queens say, sounded as Rehearse is set ----

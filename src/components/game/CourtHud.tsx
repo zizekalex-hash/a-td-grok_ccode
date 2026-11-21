@@ -54,6 +54,7 @@ import {
 import {
   canBlink,
   lookOf,
+  artOf,
   placeBanner,
   queenAir,
   queenPortrait,
@@ -169,7 +170,7 @@ function LivePortrait({
         className={layer}
         draggable={false}
       />
-      {canBlink(lookOf(q), mood) && (
+      {canBlink(lookOf(q), mood) && !artOf(q) && (
         <img
           src={queenPortrait(q, { mood, tier, air: false, blink: true })}
           alt=""

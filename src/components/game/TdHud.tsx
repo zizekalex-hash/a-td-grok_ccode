@@ -1,3 +1,4 @@
+import { FitText } from "@/components/game/FitText";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
@@ -305,7 +306,7 @@ function TowerPanel() {
     tower.currency === "flux" ? flux : tower.currency === "atp" ? atp : tower.currency === "de" ? de : gold;
   const unit = CURRENCY_NAME[tower.currency];
   const spec = TOWERS[tower.key];
-  const stats = towerStats(tower.key, tower.level, perks, tower.path, tower.ascend, voidPerks, felPerks);
+  const stats = towerStats(tower.key, tower.level, perks, tower.path, tower.ascend, voidPerks, felPerks, tower.tracks.map((x) => x.rank));
   const paths = pathsOf(tower.key);
   const path = paths[tower.path];
   const ascensions = ascensionsOf(tower.key);
@@ -382,6 +383,28 @@ function TowerPanel() {
           ))}
         </div>
       )}
+      {/* This tower's own endless upgrades: each rank stacks on the last, with no top. */}
+      <div className="mt-1.5 grid grid-cols-3 gap-1.5" role="group" aria-label={`${spec.name}'s own upgrades, endless`}>
+        {tower.tracks.map((tr, i) => (
+          <button
+            key={tr.name}
+            type="button"
+            className="btn h-auto flex-col items-start gap-0 px-1.5 py-1 text-left"
+            disabled={money < tr.cost}
+            onClick={() => game()?.tdTrack(i)}
+            aria-label={`${tr.name}, rank ${tr.rank}, for ${tr.cost} ${unit}: ${tr.copy}`}
+            title={tr.copy}
+          >
+            <FitText className="h-[1.9em] w-full font-display leading-[1.05] text-cyan" max={11} min={6} as="span">
+              {tr.name} · {tr.rank}
+            </FitText>
+            <span className="text-[0.55rem] leading-tight tracking-normal normal-case opacity-90">
+              {tr.rank > 0 ? `${tr.now} → ` : ""}
+              {tr.next} · {short(tr.cost)} {unit}
+            </span>
+          </button>
+        ))}
+      </div>
       <div
         className={`mt-2 grid gap-1.5 ${tower.sacrifice > 0 ? "grid-cols-5 [&_svg]:hidden" : "grid-cols-4"}`}
       >
@@ -1222,9 +1245,9 @@ function RepWindow({
             >
               <ChevronLeft className="size-4" aria-hidden />
             </button>
-            <p className="line-clamp-2 min-w-0 flex-1 text-center text-sm leading-snug text-fg" aria-live="polite">
+            <FitText className="h-10 min-w-0 flex-1 text-center leading-[1.15] text-fg" max={14} aria-live="polite">
               {item.text}
-            </p>
+            </FitText>
             <button
               type="button"
               className="btn stepper"
@@ -1661,6 +1684,7 @@ export function TdHud() {
 
       <footer
         ref={footerRef}
+        data-td-hud
         className="pointer-events-auto mx-auto w-full max-w-xl lg:absolute lg:right-3 lg:bottom-[max(0.75rem,env(safe-area-inset-bottom))] lg:w-[22rem]"
       >
         <div className="glass h-[11.25rem] overflow-y-auto p-2">
@@ -1677,9 +1701,9 @@ export function TdHud() {
         </div>
 
         {/* A phrase of the text, two rows at most: a fixed height, so the board does not jump as it changes. */}
-        <p className="mt-1.5 h-8 overflow-hidden text-center text-xs leading-4 text-gold" role="status">
+        <FitText className="mt-1.5 h-8 text-center leading-[1.15] text-gold" max={12} role="status">
           {v.message}
-        </p>
+        </FitText>
 
         <TextFlashPanel className="mt-1.5 h-16" />
 

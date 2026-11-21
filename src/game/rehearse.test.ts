@@ -20,8 +20,20 @@ import {
   cycleSpeeds,
   loadRehearse as load,
   mixBytes,
-  MAX_BIT_BYTES,
   rawSamples,
+  rawSource,
+  voiceReadingFits,
+  wavListFor,
+  addWav,
+  removeWav,
+  setWavGain,
+  setAllWavGains,
+  applyRatios,
+  parseRatios,
+  ratiosText,
+  phraseSubject,
+  textSubject,
+  activeVoices,
   VOICE_RAWS,
   voiceReadings,
   voicesSignal,
@@ -346,11 +358,14 @@ describe("rehearse: the phrase as sound", () => {
 describe("rehearse: the robot voices as raw binary", () => {
   /** A stand-in for a voice mix: a swelling tone, a second of it at 24 kHz. */
   const voice = Float32Array.from({ length: 24_000 }, (_, i) => Math.sin((i / 24_000) * 2 * Math.PI * 220) * Math.sin((i / 24_000) * Math.PI));
+  const all = (s: { length: number; at(i: number): number }) => Array.from({ length: s.length }, (_, i) => s.at(i));
 
-  it("keeps the mix as its own bytes: 32-bit floats as they are, little-endian, nothing re-encoded or raised", () => {
-    const bytes = mixBytes(voice);
+  it("keeps the mix as its own bytes: 32-bit floats as they are, little-endian, nothing re-encoded, raised or copied", () => {
+    const own = Float32Array.from(voice);
+    const bytes = mixBytes(own);
     assert.equal(bytes.length, voice.length * 4);
-    const view = new DataView(bytes.buffer);
+    assert.equal(bytes.buffer, own.buffer, "the memory of the samples, not a copy of it");
+    const view = new DataView(bytes.buffer, bytes.byteOffset);
     for (const i of [0, 10, 1000, 9000, 23_999]) assert.equal(view.getFloat32(i * 4, true), voice[i]!, `sample ${i}`);
     // Quiet stays quiet (no peak is brought up to anything); silence is zero bytes; a broken sample is zero.
     const quiet = mixBytes(voice.map((v) => v * 0.01));
@@ -365,19 +380,25 @@ describe("rehearse: the robot voices as raw binary", () => {
 
   it("reads those bytes as raw bits (a bit each, the first bit of a byte first, 1 up and 0 down) or raw bytes (a byte each)", () => {
     // 1011 0000 then 0100 1111: eight of sixteen bits are 1, so nothing is taken off to centre them.
-    const bits = rawSamples(Uint8Array.from([0b10110000, 0b01001111]), "bits");
-    assert.deepEqual(Array.from(bits), [1, -1, 1, 1, -1, -1, -1, -1, -1, 1, -1, -1, 1, 1, 1, 1]);
+    const bits = rawSource(Uint8Array.from([0b10110000, 0b01001111]), "bits");
+    assert.deepEqual(all(bits), [1, -1, 1, 1, -1, -1, -1, -1, -1, 1, -1, -1, 1, 1, 1, 1]);
     // Centred: more ones than zeros shifts them down, so the wave swings about zero.
-    const lean = rawSamples(Uint8Array.from([0xff, 0xff, 0xff, 0x00]), "bits");
+    const lean = all(rawSource(Uint8Array.from([0xff, 0xff, 0xff, 0x00]), "bits"));
     assert.ok(Math.abs(lean.reduce((n, v) => n + v, 0)) < 1e-4);
-    const bytes = mixBytes(voice);
-    assert.equal(rawSamples(bytes, "u8").length, bytes.length);
-    assert.equal(rawSamples(bytes, "bits").length, Math.min(bytes.length, MAX_BIT_BYTES) * 8);
-    // A long one is read to a limit.
-    const long = Uint8Array.from({ length: MAX_BIT_BYTES + 500 }, (_, i) => (i * 37) & 255);
-    assert.equal(rawSamples(long, "bits").length, MAX_BIT_BYTES * 8);
-    // All the same bytes: still no empty or silent read.
-    assert.ok(rawSamples(new Uint8Array(0), "bits").length > 0);
+    // Bytes: as rawSamples reads them (a byte a sample about their middle).
+    const some = Uint8Array.from([0, 64, 128, 200, 255, 90, 13]);
+    const direct = rawSamples(some, "u8");
+    const src = rawSource(some, "u8");
+    assert.equal(src.length, some.length);
+    some.forEach((_, i) => assert.ok(Math.abs(src.at(i) - direct[i]!) < 1e-6, `byte ${i}`));
+    // All the same: still not silent as bytes would be (it is read as bits), and never empty.
+    assert.equal(rawSource(new Uint8Array(8).fill(7), "u8").length, 64);
+    const none = rawSource(new Uint8Array(0), "bits");
+    assert.ok(none.length >= 1);
+    assert.equal(none.at(0), 0);
+    // Off the end is silence, not a crash.
+    assert.equal(src.at(99), 0);
+    assert.equal(src.at(-1), 0);
     assert.deepEqual(voiceReadings("both"), ["bits", "u8"]);
     assert.deepEqual(voiceReadings("bits"), ["bits"]);
     assert.deepEqual(voiceReadings("bytes"), ["u8"]);
@@ -385,8 +406,64 @@ describe("rehearse: the robot voices as raw binary", () => {
     assert.deepEqual(voiceReadings(undefined), []);
   });
 
+  it("reads all of the voices, however long: nothing is cut, and nothing is copied to read it", () => {
+    // Ten minutes of voices at 24 kHz as bytes: 57.6 MB. Eight bits a byte: 461 million samples, never made.
+    const long = new Uint8Array(57_600_000);
+    long[0] = 200;
+    long[long.length - 1] = 99;
+    const bits = rawSource(long, "bits");
+    assert.equal(bits.length, long.length * 8);
+    assert.equal(rawSource(long, "u8").length, long.length);
+    // The very last bit is there to be read (01100011: its last bit is 1).
+    assert.ok(bits.at(bits.length - 1) > 0 && bits.at(bits.length - 2) > 0 && bits.at(bits.length - 3) < 0);
+    // A sound of it is made from all of it, soon.
+    const t0 = Date.now();
+    const s = voicesSignal(long, "both", 48_000, { signalMs: 100, amp: 0.5, rawRate: 999_999 });
+    assert.equal(s.length, 4800);
+    assert.ok(Math.abs(s.reduce((m, v) => Math.max(m, Math.abs(v)), 0) - 0.5) < 1e-6);
+    assert.ok(Date.now() - t0 < 4000, "a long mix is not slow to read");
+  });
+
+  it("goes through it all, and then round again", () => {
+    // 1000 quiet bytes then 1000 loud ones. At 24 kHz raw into 48 kHz: a pass is 4000 samples, the loud half its second.
+    const bytes = new Uint8Array(2000);
+    bytes.fill(128, 0, 1000);
+    for (let i = 1000; i < 2000; i++) bytes[i] = i % 2 ? 255 : 0;
+    const opts = { signalMs: 400, amp: 0.9, rawRate: 24_000 };
+    const out = voicesSignal(bytes, "bytes", 48_000, opts);
+    const peak = (a: number, b: number) => out.slice(a, b).reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+    for (const pass of [0, 1, 2, 3]) {
+      assert.ok(peak(pass * 4000 + 50, pass * 4000 + 1900) < 0.02, `pass ${pass}: the quiet part`);
+      assert.ok(peak(pass * 4000 + 2100, pass * 4000 + 3900) > 0.5, `pass ${pass}: the loud part, all of it read`);
+    }
+    // Bits: the same bytes, 0x00 then 0xFF, the first half down and the second up, every pass.
+    const steps = new Uint8Array(2000);
+    steps.fill(255, 1000);
+    const b = voicesSignal(steps, "bits", 48_000, { signalMs: 3000, amp: 0.9, rawRate: 128_000 });
+    assert.equal(b.length, 144_000);
+    // 16000 bits at 128 kHz is 125 ms: a pass of 6000 samples at 48 kHz, 3000 of them down, then 3000 up.
+    const mean = (a: number, z: number) => b.slice(a, z).reduce((n, v) => n + v, 0) / (z - a);
+    for (const pass of [0, 1, 2, 3]) {
+      assert.ok(mean(pass * 6000 + 100, pass * 6000 + 2900) < -0.8, `pass ${pass}: the first half is down`);
+      assert.ok(mean(pass * 6000 + 3100, pass * 6000 + 5900) > 0.8, `pass ${pass}: the second half is up`);
+    }
+  });
+
+  it("says how one pass of each reading lasts at the raw rate, and whether it is sped up to fit one play", () => {
+    const fits = voiceReadingFits(384_000, { voiceRaw: "both", rawRate: 999_999, signalMs: 60_000 });
+    assert.deepEqual(fits.map((f) => f.reading), ["bits", "u8"]);
+    assert.equal(fits[0]!.samples, 3_072_000);
+    assert.ok(Math.abs(fits[0]!.naturalMs - 3072) < 1, "3.07 s of bits at 999,999 a second");
+    assert.equal(fits[0]!.speed, 1, "it fits one play as it is");
+    assert.ok(fits[0]!.plays > 19 && fits[0]!.plays < 20, "round about 19.5 times a play");
+    // Slower raw rate: a pass is longer than one play, so it is sped up to go through in it.
+    const slow = voiceReadingFits(384_000, { voiceRaw: "bits", rawRate: 24_000, signalMs: 60_000 });
+    assert.ok(Math.abs(slow[0]!.speed - 128_000 / 60_000) < 1e-9);
+    assert.deepEqual(voiceReadingFits(1000, { voiceRaw: "off", rawRate: 24_000, signalMs: 1000 }), []);
+  });
+
   it("makes a sound of them like the phrase's own: its length, its peak, each reading its own", () => {
-    const bytes = mixBytes(voice);
+    const bytes = mixBytes(Float32Array.from(voice));
     const opts = { signalMs: 200, amp: 0.8, rawRate: 24_000 };
     const sounds = VOICE_RAWS.filter((m) => m !== "off").map((m) => voicesSignal(bytes, m, 48_000, opts));
     assert.equal(sounds.length, 3);
@@ -404,7 +481,7 @@ describe("rehearse: the robot voices as raw binary", () => {
   it("mixes into the phrase's own sound at one peak each, then to amp; off or no bytes is the sound as it was", () => {
     const base = { signalMs: 300, amp: 0.7, rawRate: 24_000 };
     const text = "The chloride gradient is reversed.";
-    const bytes = mixBytes(voice);
+    const bytes = mixBytes(Float32Array.from(voice));
     const plain = phraseSignal(text, 48_000, base);
     // No bytes, or "off": exactly as before.
     assert.deepEqual(phraseSignal(text, 48_000, { ...base, voiceRaw: "both" }), plain);
@@ -434,6 +511,27 @@ describe("rehearse: the robot voices as raw binary", () => {
     // The PCM ways it had are the raw bytes now; all three mixed are both.
     for (const old of ["u8", "pcm16", "pcm32"]) assert.equal(loadRehearse({ settings: { voiceRaw: old } }).settings.voiceRaw, "bytes", old);
     assert.equal(loadRehearse({ settings: { voiceRaw: "all" } }).settings.voiceRaw, "both");
+  });
+
+  it("is of a phrase, or (Whole texts) of the whole text, as its .tts.wav is", () => {
+    assert.equal(phraseSubject("  "), null);
+    assert.deepEqual(phraseSubject("Hold it."), { whole: false, phrases: ["Hold it."], id: "Hold it." });
+    assert.equal(textSubject("Long", []), null);
+    const a = textSubject("Long", ["One.", "Two."])!;
+    assert.equal(a.whole, true);
+    assert.deepEqual(a.phrases, ["One.", "Two."]);
+    assert.equal(textSubject("Long", ["One.", "Two."])!.id, a.id, "the same text is the same");
+    assert.notEqual(textSubject("Long", ["One.", "Two!"])!.id, a.id, "an edited one is another");
+    assert.notEqual(textSubject("Long", ["Two.", "One."])!.id, a.id, "an order changed is another");
+    assert.notEqual(textSubject("Other", ["One.", "Two."])!.id, a.id);
+    const lib = libraryOf([{ name: "Long", lines: ["One here now. Two here now. Three here now."] }], true, [], []);
+    let s = addPhrases(newRehearse(), ["Hold it."], 1, ids).state;
+    assert.deepEqual(activeVoices(s, lib), phraseSubject("Hold it."), "Single phrases: the phrase");
+    s = { ...s, view: "texts", text: "Long" };
+    const text = activeVoices(s, lib)!;
+    assert.equal(text.whole, true, "Whole texts: the whole text, whatever phrase it is at");
+    assert.equal(text.phrases.length, 3);
+    assert.deepEqual(activeVoices({ ...s, view: "texts", text: "Long" }, []), null, "no text: none");
   });
 });
 
@@ -1200,5 +1298,51 @@ describe("rehearse: when a whole text is read through", () => {
     assert.equal(p.settings.paused, true);
     const q = applyBubble(p, take(0, 6), lib, "").state;
     assert.equal(q.settings.paused, false);
+  });
+});
+
+describe("rehearse: several .wav files for a phrase or text", () => {
+  const s0 = newRehearse();
+  it("loops the phrase's own <name>.wav until others are set", () => {
+    assert.deepEqual(wavListFor(s0, "input_perphrase", "Hold it"), [{ file: "hold it.wav", gain: 1 }]);
+    assert.deepEqual(wavListFor(s0, "input_perphrase", ""), []);
+  });
+
+  it("adds, removes and ratios files, each phrase or text on its own", () => {
+    let s = addWav(s0, "input_perphrase", "Hold it", "Extra.WAV");
+    assert.deepEqual(wavListFor(s, "input_perphrase", "Hold it").map((w) => w.file), ["hold it.wav", "extra.wav"]);
+    assert.deepEqual(wavListFor(s, "input_pertext", "Hold it"), [{ file: "hold it.wav", gain: 1 }], "another folder is another");
+    s = addWav(s, "input_perphrase", "Hold it", "extra.wav", 0.5);
+    assert.equal(wavListFor(s, "input_perphrase", "Hold it").length, 2, "once");
+    assert.equal(wavListFor(s, "input_perphrase", "Hold it")[1]!.gain, 0.5);
+    assert.equal(addWav(s, "input_perphrase", "Hold it", "notes.txt"), s, "only .wav");
+    s = setAllWavGains(s, "input_perphrase", "Hold it", 0.999);
+    assert.equal(ratiosText(wavListFor(s, "input_perphrase", "Hold it")), "0.999 / 0.999");
+    s = setAllWavGains(s, "input_perphrase", "Hold it", 1.89);
+    assert.equal(ratiosText(wavListFor(s, "input_perphrase", "Hold it")), "1.89 / 1.89");
+    s = setWavGain(s, "input_perphrase", "Hold it", "extra.wav", 99);
+    assert.equal(wavListFor(s, "input_perphrase", "Hold it")[1]!.gain, 8, "up to 8");
+    s = removeWav(s, "input_perphrase", "Hold it", "EXTRA.wav");
+    assert.deepEqual(wavListFor(s, "input_perphrase", "Hold it").map((w) => w.file), ["hold it.wav"]);
+    s = removeWav(s, "input_perphrase", "Hold it", "hold it.wav");
+    assert.deepEqual(wavListFor(s, "input_perphrase", "Hold it"), [], "none left: none, not its own again");
+  });
+
+  it("reads ratios typed as 0.999/0.999 or 1.89 1.89, and keeps what is saved", () => {
+    assert.deepEqual(parseRatios("0.999/0.999"), [0.999, 0.999]);
+    assert.deepEqual(parseRatios("1.89 1.89"), [1.89, 1.89]);
+    assert.equal(parseRatios("a/b"), null);
+    assert.equal(parseRatios(""), null);
+    let s = addWav(addWav(s0, "input_pertext", "T", "a.wav"), "input_pertext", "T", "b.wav");
+    s = applyRatios(s, "input_pertext", "T", [2]);
+    assert.deepEqual(wavListFor(s, "input_pertext", "T").map((w) => w.gain), [2, 2, 2], "the last ratio goes on");
+    s = applyRatios(s, "input_pertext", "T", [0.5, 1.5]);
+    assert.deepEqual(wavListFor(s, "input_pertext", "T").map((w) => w.gain), [0.5, 1.5, 1.5]);
+    const back = loadRehearse(JSON.parse(JSON.stringify(s)));
+    assert.deepEqual(back.wavSets, s.wavSets);
+    assert.deepEqual(loadRehearse({ wavSets: { x: [{ file: "../evil.txt", gain: 1 }, { file: "ok.wav", gain: "z" }, 5] } }).wavSets, { x: [{ file: "ok.wav", gain: 1 }] });
+    assert.deepEqual(loadRehearse({ wavSets: 3 }).wavSets, {});
+    assert.deepEqual(loadRehearse({ wavSets: { y: [{ file: "../evil.wav", gain: 1 }] } }).wavSets, { y: [] }, "no way out of the folder");
+    assert.equal(addWav(s0, "input_perphrase", "T", "a/b.wav"), s0);
   });
 });

@@ -255,6 +255,106 @@ export interface RehearseState {
   sitting: TextSitting | null;
   /** Sittings over, not yet in the History (it takes them at once). */
   sat: TextSitting[];
+  /**
+   * The .wav files looped for each phrase or text, by "<folder>/<name>": each file's name
+   * and its ratio (gain) in the mix. None kept for a phrase or text: just its own <name>.wav.
+   */
+  wavSets: Record<string, WavRef[]>;
+}
+
+/** A .wav in a phrase's or text's mix: its file name (lower case, with .wav) and its gain. */
+export interface WavRef {
+  file: string;
+  gain: number;
+}
+
+/** The most a .wav's ratio can be (it may be above 1: the mix can clip then). */
+export const MAX_WAV_GAIN = 8;
+export const clampWavGain = (v: number) =>
+  Math.round(Math.min(MAX_WAV_GAIN, Math.max(0, Number.isFinite(v) ? v : 1)) * 1000) / 1000;
+
+/** Where a phrase's or text's .wav files are kept in the state. */
+export const wavKey = (dir: string, name: string) => `${dir}/${name}`.toLowerCase();
+
+/** The .wav files a phrase or text loops: what was set for it, else its own <name>.wav alone. */
+export function wavListFor(s: Pick<RehearseState, "wavSets">, dir: string, name: string): WavRef[] {
+  if (!name) return [];
+  return s.wavSets[wavKey(dir, name)] ?? [{ file: `${name}.wav`.toLowerCase(), gain: 1 }];
+}
+
+const withWavs = <T extends Pick<RehearseState, "wavSets">>(s: T, key: string, list: WavRef[]): T => ({
+  ...s,
+  wavSets: { ...s.wavSets, [key]: list },
+});
+
+/** A .wav added to what a phrase or text loops (once: again only sets its gain). */
+export function addWav<T extends Pick<RehearseState, "wavSets">>(
+  s: T,
+  dir: string,
+  name: string,
+  file: string,
+  gain = 1,
+): T {
+  const f = file.toLowerCase();
+  if (!name || !/\.wav$/.test(f) || /[\\/]/.test(f)) return s;
+  const list = wavListFor(s, dir, name);
+  const g = clampWavGain(gain);
+  return withWavs(
+    s,
+    wavKey(dir, name),
+    list.some((w) => w.file === f) ? list.map((w) => (w.file === f ? { ...w, gain: g } : w)) : [...list, { file: f, gain: g }],
+  );
+}
+
+/** A .wav taken out of what a phrase or text loops (the file stays where it is). */
+export function removeWav<T extends Pick<RehearseState, "wavSets">>(s: T, dir: string, name: string, file: string): T {
+  return withWavs(s, wavKey(dir, name), wavListFor(s, dir, name).filter((w) => w.file !== file.toLowerCase()));
+}
+
+/** One .wav's ratio in the mix. */
+export function setWavGain<T extends Pick<RehearseState, "wavSets">>(
+  s: T,
+  dir: string,
+  name: string,
+  file: string,
+  gain: number,
+): T {
+  const g = clampWavGain(gain);
+  return withWavs(
+    s,
+    wavKey(dir, name),
+    wavListFor(s, dir, name).map((w) => (w.file === file.toLowerCase() ? { ...w, gain: g } : w)),
+  );
+}
+
+/** Every .wav of a phrase or text at one ratio (0.999 each, 1.89 each). */
+export function setAllWavGains<T extends Pick<RehearseState, "wavSets">>(s: T, dir: string, name: string, gain: number): T {
+  const g = clampWavGain(gain);
+  return withWavs(s, wavKey(dir, name), wavListFor(s, dir, name).map((w) => ({ ...w, gain: g })));
+}
+
+/** The ratios as text: "0.999 / 0.999". */
+export const ratiosText = (list: WavRef[]) => list.map((w) => String(w.gain)).join(" / ");
+
+/**
+ * The ratios typed as "0.999/0.999" or "1.89 1.89" (a number each, in order): a list
+ * of ratios, the files not named. null if there is a thing in it that is not a number.
+ */
+export function parseRatios(text: string): number[] | null {
+  const parts = text.split(/[\s/,;:]+/).filter(Boolean);
+  if (!parts.length) return null;
+  const out = parts.map(Number);
+  return out.every((n) => Number.isFinite(n) && n >= 0) ? out.map(clampWavGain) : null;
+}
+
+/** The ratios given, in order, to the files of a phrase or text (more files than ratios: the last ratio goes on). */
+export function applyRatios<T extends Pick<RehearseState, "wavSets">>(s: T, dir: string, name: string, ratios: number[]): T {
+  if (!ratios.length) return s;
+  return withWavs(
+    s,
+    wavKey(dir, name),
+    wavListFor(s, dir, name).map((w, i) => ({ ...w, gain: clampWavGain(ratios[Math.min(i, ratios.length - 1)]!) })),
+  );
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -380,6 +480,7 @@ export function newRehearse(): RehearseState {
     done: {},
     sitting: null,
     sat: [],
+    wavSets: {},
   };
 }
 
@@ -437,6 +538,16 @@ export function loadRehearse(data: unknown): RehearseState {
   }
   for (const [key, when] of Object.entries(obj(d.done))) {
     if (key && typeof when === "number" && Number.isFinite(when) && when > 0) s.done[key] = when;
+  }
+  for (const [key, raw] of Object.entries(obj(d.wavSets))) {
+    if (!key || !Array.isArray(raw)) continue;
+    const list: WavRef[] = [];
+    for (const w of raw.slice(0, 64)) {
+      const r = obj(w);
+      const file = typeof r.file === "string" ? r.file.toLowerCase().slice(0, 300) : "";
+      if (/\.wav$/.test(file) && !/[\\/]/.test(file) && !list.some((x) => x.file === file)) list.push({ file, gain: clampWavGain(num(r.gain, 1)) });
+    }
+    s.wavSets[key.slice(0, 600)] = list;
   }
   s.sitting = loadSitting(d.sitting);
   s.sat = (Array.isArray(d.sat) ? d.sat : [])
@@ -649,9 +760,6 @@ export function phraseBytes(text: string): Uint8Array {
   return new TextEncoder().encode(text.trim() || "·");
 }
 
-/** The most bytes read bit by bit (a bit a sample: 8 floats a byte), the first of a long sound. */
-export const MAX_BIT_BYTES = 262_144;
-
 /**
  * The bytes as raw samples, -1 to 1, around their own middle (their average
  * taken off, so the wave swings both ways). 8-bit: each byte a sample; bytes all
@@ -662,17 +770,8 @@ export const MAX_BIT_BYTES = 262_144;
  */
 export function rawSamples(
   bytes: Uint8Array,
-  encoding: Exclude<SoundEncoding, "both"> | "bits" = "u8",
+  encoding: Exclude<SoundEncoding, "both"> = "u8",
 ): Float32Array<ArrayBuffer> {
-  if (encoding === "bits") {
-    // Each bit a sample, the first bit of a byte first: 1 up and 0 down, centred. Long ones are read to a limit.
-    const n = Math.min(bytes.length, MAX_BIT_BYTES);
-    const raw = new Float32Array(n * 8);
-    for (let i = 0; i < n; i++) for (let k = 0; k < 8; k++) raw[i * 8 + k] = (bytes[i]! >> (7 - k)) & 1 ? 1 : -1;
-    const mean = raw.reduce((m, x) => m + x, 0) / Math.max(1, raw.length);
-    for (let i = 0; i < raw.length; i++) raw[i] = raw[i]! - mean;
-    return raw.length ? raw : new Float32Array(8);
-  }
   if (encoding === "pcm32") {
     const n = Math.ceil(bytes.length / 4);
     const padded = new Uint8Array(n * 4);
@@ -700,6 +799,64 @@ export function rawSamples(
   return raw;
 }
 
+/** Raw samples read straight from bytes, nothing copied: how many there are, and the one at an index. */
+export interface RawSource {
+  readonly length: number;
+  at(i: number): number;
+}
+
+/** How many bits are set in a byte. */
+const ONES = Uint8Array.from({ length: 256 }, (_, b) => {
+  let n = 0;
+  for (let k = 0; k < 8; k++) n += (b >> k) & 1;
+  return n;
+});
+
+/** What a long run of bytes adds up to, found once (a reading of it only needs these to be centred). */
+const tally = new WeakMap<Uint8Array, { sum: number; ones: number; same: boolean }>();
+function tallyOf(bytes: Uint8Array) {
+  let t = tally.get(bytes);
+  if (!t) {
+    let sum = 0;
+    let ones = 0;
+    let same = true;
+    const first = bytes[0];
+    for (let i = 0; i < bytes.length; i++) {
+      const b = bytes[i]!;
+      sum += b;
+      ones += ONES[b]!;
+      if (b !== first) same = false;
+    }
+    t = { sum, ones, same };
+    tally.set(bytes, t);
+  }
+  return t;
+}
+
+/**
+ * Bytes read as raw samples without making them again as samples, so any length
+ * is read, all of it (the voices of a whole text are millions of bytes, and a bit a
+ * sample is eight times that): "u8" a byte a sample, -1 to 1 around the bytes' own
+ * middle (as rawSamples); "bits" a bit a sample, the first bit of a byte first, 1
+ * up and 0 down, around their own middle. Bytes all the same would be silence as
+ * bytes, so then they are read as bits (as rawSamples does).
+ */
+export function rawSource(bytes: Uint8Array, reading: "u8" | "bits"): RawSource {
+  const n = bytes.length;
+  const t = tallyOf(bytes);
+  if (reading === "u8" && n > 0 && !t.same) {
+    const mean = (t.sum / n - 128) / 128;
+    return { length: n, at: (i) => (i >= 0 && i < n ? (bytes[i]! - 128) / 128 - mean : 0) };
+  }
+  const total = n * 8;
+  const mean = total ? (2 * t.ones - total) / total : 0;
+  return {
+    length: Math.max(1, total),
+    at: (i) =>
+      i >= 0 && i < total ? ((bytes[i >> 3]! >> (7 - (i & 7))) & 1 ? 1 : -1) - mean : 0,
+  };
+}
+
 /**
  * How the raw sound is fitted to signalMs: its own length (ms, at rawRate), the
  * speed it plays at (1 as it is, above 1 sped up), and how many times it plays
@@ -725,12 +882,13 @@ export type VoiceOpts = { voiceRaw?: VoiceRaw; voiceBytes?: Uint8Array | null };
  * higher: faster still folds back down (aliasing).
  */
 export function fitRaw(
-  raw: Float32Array,
+  raw: Float32Array | RawSource,
   rate: number,
   opts: Pick<RehearseSettings, "signalMs" | "amp" | "rawRate">,
   faster = 1,
 ): Float32Array<ArrayBuffer> {
   const len = raw.length;
+  const at = raw instanceof Float32Array ? (k: number) => raw[k] ?? 0 : (k: number) => raw.at(k);
   const { speed } = signalFit(len, opts.rawRate, opts.signalMs);
   const out = new Float32Array(Math.max(1, Math.round((rate * opts.signalMs) / 1000)));
   // Raw samples a sample of the output: past the end it starts again.
@@ -740,8 +898,8 @@ export function fitRaw(
     const p = i * stride;
     const k = Math.floor(p);
     const f = p - k;
-    const a = raw[k % len] ?? 0;
-    const b = raw[(k + 1) % len] ?? 0;
+    const a = at(k % len);
+    const b = at((k + 1) % len);
     const v = a + (b - a) * f;
     out[i] = v;
     peak = Math.max(peak, Math.abs(v));
@@ -783,26 +941,75 @@ export function voicesSignal(
   faster = 1,
 ): Float32Array<ArrayBuffer> {
   const readings = voiceReadings(mode);
-  const parts = readings.map((r) =>
-    fitRaw(rawSamples(bytes, r), rate, { ...opts, amp: 1 }, faster),
-  );
+  const parts = readings.map((r) => fitRaw(rawSource(bytes, r), rate, { ...opts, amp: 1 }, faster));
   if (!parts.length) return new Float32Array(Math.max(1, Math.round((rate * opts.signalMs) / 1000)));
   return mixSignals(parts, opts.amp);
 }
 
+/** Whether this machine keeps a float's bytes lowest first (every phone does). */
+const LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
+
 /**
  * The robot voices' mix as raw binary: its samples' own bytes, as they are in
  * memory (32-bit floats, little-endian), nothing re-encoded and nothing raised or
- * lowered. A sample that is not a number is 0.
+ * lowered. The very memory of the samples, not a copy (the voices of a whole text
+ * are tens of MB); a sample that is not a number is made 0 in it.
  */
 export function mixBytes(samples: Float32Array): Uint8Array {
-  const out = new Uint8Array(samples.length * 4);
-  const view = new DataView(out.buffer);
-  for (let i = 0; i < samples.length; i++) {
-    const v = samples[i]!;
-    view.setFloat32(i * 4, Number.isFinite(v) ? v : 0, true);
+  for (let i = 0; i < samples.length; i++) if (!Number.isFinite(samples[i]!)) samples[i] = 0;
+  const bytes = new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength);
+  if (LITTLE_ENDIAN) return bytes;
+  const out = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i += 4) {
+    out[i] = bytes[i + 3]!;
+    out[i + 1] = bytes[i + 2]!;
+    out[i + 2] = bytes[i + 1]!;
+    out[i + 3] = bytes[i]!;
   }
   return out;
+}
+
+/**
+ * How each way of reading the voices' bytes lasts: its samples, how long one pass
+ * of it is at the raw rate (ms), and how much it is sped up (1: not) to fit one
+ * play, else how many times it goes round in one play.
+ */
+export function voiceReadingFits(
+  byteCount: number,
+  set: Pick<RehearseSettings, "voiceRaw" | "rawRate" | "signalMs">,
+): { reading: "bits" | "u8"; samples: number; naturalMs: number; speed: number; plays: number }[] {
+  return voiceReadings(set.voiceRaw).map((reading) => {
+    const samples = Math.max(1, reading === "bits" ? byteCount * 8 : byteCount);
+    return { reading, samples, ...signalFit(samples, set.rawRate, set.signalMs) };
+  });
+}
+
+/**
+ * What the robot voices are of: one phrase (every layer says it), or a whole text
+ * (the main voice reads it phrase after phrase, every other voice reads it whole,
+ * as in the text's .tts.wav). `id` names it cheaply, so the same one is not made twice.
+ */
+export interface VoiceSubject {
+  whole: boolean;
+  phrases: string[];
+  id: string;
+}
+
+/** A phrase as what the voices are of (none for an empty one). */
+export function phraseSubject(text: string): VoiceSubject | null {
+  return text.trim() ? { whole: false, phrases: [text], id: text } : null;
+}
+
+/** A text's phrases as what the voices are of (none for no phrases). */
+export function textSubject(key: string, phrases: string[]): VoiceSubject | null {
+  if (!phrases.length) return null;
+  // A cheap fingerprint of every character, so an edited text is another one.
+  let h = 5381;
+  for (const p of phrases) {
+    for (let i = 0; i < p.length; i++) h = (Math.imul(h, 33) + p.charCodeAt(i)) | 0;
+    h = (Math.imul(h, 33) + 10) | 0;
+  }
+  return { whole: true, phrases, id: `${key}|${phrases.length}|${h >>> 0}` };
 }
 
 /**
@@ -1012,6 +1219,20 @@ export function activeOf(
   if (!it) return { text: "", dir: PHRASE_FOLDER, name: "" };
   const name = phraseFileNames(s.items.map((i) => i.text))[s.items.indexOf(it)] ?? "";
   return { text: it.text, dir: PHRASE_FOLDER, name };
+}
+
+/**
+ * What the robot voices are of now: the current phrase (Single phrases), or the
+ * current text, whole (Whole texts): the sound's voices follow what a .tts.wav of it
+ * would be. None while there is nothing to say.
+ */
+export function activeVoices(s: RehearseState, library: LibText[]): VoiceSubject | null {
+  if (s.view === "texts") {
+    const t = currentText(s, library);
+    return t ? textSubject(t.key, readUnits(t.lines).map((u) => u.text)) : null;
+  }
+  const it = currentPhrase(s);
+  return it ? phraseSubject(it.text) : null;
 }
 
 /** The text being repped: the current one, or the first. */

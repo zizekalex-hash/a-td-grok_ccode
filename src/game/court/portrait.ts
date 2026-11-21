@@ -27,6 +27,7 @@ import {
   spikeCrown,
   wildHair,
 } from "./darkstyle.ts";
+import { artUrl, type Art } from "./artwork.ts";
 import {
   adornment,
   closedOutfit,
@@ -1301,6 +1302,24 @@ let yours: Look | null = null;
 let looksNow = 0;
 const lookSubs = new Set<() => void>();
 
+// ---- Picture art (artwork.ts): a picture brought in, over the drawn portrait ----
+
+const arts = new Map<string, Art>();
+
+/** A picture put in place for someone (null: the drawn portrait alone again). Every portrait is made again. */
+export function setArt(who: CourtQueenKey | "you", art: Art | null) {
+  if (art) arts.set(who, art);
+  else arts.delete(who);
+  cache.clear();
+  looksNow += 1;
+  for (const fn of lookSubs) fn();
+}
+
+/** The picture someone has, if any. */
+export function artOf(who: CourtQueenKey | "you"): Art | null {
+  return arts.get(who) ?? null;
+}
+
 /** A queen's look now: the one made in the Atelier, or config.json's. */
 export function lookOf(queen: CourtQueenKey): Look {
   return custom.get(queen) ?? CONFIG.court.queens[queen].look;
@@ -1339,11 +1358,13 @@ export function subscribeLooks(fn: () => void): () => void {
 /** Your own portrait, in a mood, ringed in your look's colour. Made once. */
 export function youPortrait(o: PortraitOptions = {}): string {
   const style = o.style ?? CONFIG.court.portraits.style;
-  const key = `you|${o.mood ?? "smile"}|${style}`;
+  const art = arts.get("you");
+  const key = `you|${o.mood ?? "smile"}|${style}${art ? "|art" : ""}`;
   let url = cache.get(key);
   if (!url) {
     const look = youLook();
-    url = portraitUrl(look, look.accent, "", { ...o, air: false, style });
+    const drawn = portraitUrl(look, look.accent, "", { ...o, air: false, style });
+    url = art ? artUrl(art, look.accent, art.mix < 1 ? drawn : "") : drawn;
     cache.set(key, url);
   }
   return url;
@@ -1353,18 +1374,24 @@ export function youPortrait(o: PortraitOptions = {}): string {
 export function queenPortrait(queen: CourtQueenKey, o: PortraitOptions = {}): string {
   const tier = Math.max(0, Math.min(5, Math.floor(o.tier ?? 0)));
   const style = o.style ?? CONFIG.court.portraits.style;
-  const key = `${queen}|${o.mood ?? "smile"}|${tier}|${o.air !== false}|${o.blink === true}|${style}`;
+  const art = arts.get(queen);
+  // A picture does not blink or change with the air: one for every mood (the drawn one under it, when it shows, changes).
+  const key = art
+    ? `${queen}|art|${art.mix < 1 ? `${o.mood ?? "smile"}|${tier}` : ""}`
+    : `${queen}|${o.mood ?? "smile"}|${tier}|${o.air !== false}|${o.blink === true}|${style}`;
   let url = cache.get(key);
   if (!url) {
     const q = CONFIG.court.queens[queen];
     const region = (CONFIG.court.places as Record<string, { region: string }>)[q.place]?.region;
-    url = portraitUrl(lookOf(queen), q.color, q.element, {
-      ...o,
-      tier,
-      scene: q.place,
-      region,
-      style,
-    });
+    const drawn = () =>
+      portraitUrl(lookOf(queen), q.color, q.element, {
+        ...o,
+        tier,
+        scene: q.place,
+        region,
+        style,
+      });
+    url = art ? artUrl(art, q.color, art.mix < 1 ? drawn() : "") : drawn();
     cache.set(key, url);
   }
   return url;

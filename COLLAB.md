@@ -19,6 +19,21 @@ left or needed.
 
 ## Notes
 
+### 2026-11-21 (picture art for portraits) · Claude
+
+The owner showed dark-violet, gold-filigree realistic queen art "for appearance" and asked to mix it with the current Court, discarding nothing. Done as an optional layer: `court/artwork.ts` (pure, tested: `cleanArt`, `loadArts`, `artFrame`, `artSvg`), `court/artkeep.ts` (kept in `azshara-court-art-v1`, `readArtFile` makes it 720 px jpeg), `portrait.ts` `setArt/artOf` (`queenPortrait`/`youPortrait` return the picture's SVG, with the drawn portrait under it when mix < 1), a **Picture** tab in `Atelier.tsx`. No images are in the repo. Checked in a browser with the owner's image at 390x844 and 360x640 (kept 264 KB, framing, mix, remove). Not done: real 3D models, a blinking picture; map bodies stay drawn.
+
+### 2026-11-20 (TD upgrades and fit, several wavs) · Claude
+
+(Later, the owner: the big yellow banner was still cut. Two causes: td.write.bannerWords/lineWords cut a long sentence into pieces of 9/10 words (now 80: a whole sentence shows), and the banner was fitted to the board, not the free space down to the controls (`drawBanner` now uses the field box and the top of the `[data-td-hud]` footer).)
+
+(Later, the owner: reps done in tower defense are not counted: `tdFlushReps` now only clears the tally, so no Reps history and no experience from them; flux and O/I are still paid.)
+
+The owner: TD centre text smaller but whole; every tower infinitely and uniquely upgradable (tower-specific, not Library); Rehearse loads several wavs with ratios like 0.999/0.999 or 1.89/1.89, picked by hand, shown per text.
+
+- TD: `economy.ts` `tracksOf/trackCost/trackText/applyTracks` (3 per tower from its spec, names unique per tower, `towerStats(..., tracks)`), `sim.ts` `upgradeTrack`, `TdTower.tracks` (saved), `tdgame.tdTrack`, buttons in `TdHud.tsx`; `tracks.test.ts` (in npm test). Banner in `tdgame.ts drawBanner` shrinks until it fits; `FitText.tsx` for the status line and phrase.
+- Rehearse: `rehearse.ts` `wavSets`, `WavRef`, `addWav/removeWav/setWavGain/setAllWavGains/parseRatios/applyRatios`; `rehearseRun.ts` `wavUrlsFor`, `playWavs` (one FileLoop each, ratio x volume), `wavMix`; panel in `RehearseTab.tsx`. Not a speed/pitch ratio: gains only. Checked in a browser (two picked wavs, ratios, remove); not on a phone.
+
 ### 2026-11-18 (voices as raw binary) · Claude
 
 The owner, first: in the Sound tab, "making whole tts copies mixtures/layers as one and then that gets encoded as pure raw into sound additional ... it has txt to raw and txt to ttses, but doesn't have text to ttses to raw ... can put that right there, as in img ... all 3 mixed ... per phrases / pertexts layers/copies, encode all those as one". Then, on the first build (1.0.129): "Is it even working? Not seeing anything change when switching buttons? Also why 16 bit pcm? Wanted raw binary?!? Pcm for text only not tts/sound/wav??"
@@ -36,6 +51,15 @@ The owner, first: in the Sound tab, "making whole tts copies mixtures/layers as 
 **Not checked on a real phone:** the real voices' length and how the bytes sound there.
 
 **One choice of mine, to say out loud:** "raw binary" is read as the mix's float bytes (what a `.tts.wav` here holds), not the 16-bit samples of the phone's own .wav files. If the 16-bit bytes of the mix are wanted instead, it is one function (`mixBytes`).
+
+**Follow-up (build after 1.0.130), the owner:** "But it should read all that is set to? Like whatever the voices lengths is?? And then when if through then loop untill it going on? Depends if per phrase or per text or how tts lengths/speeds is, depends??" I had answered that raw bits reads "the first 256 KB": that was a cut, and so was the 20 s the mix was made to. Both are gone.
+
+- **Nothing is cut.** `rehearse.ts` `rawSource(bytes, "u8" | "bits")` reads bytes as raw samples without making them again as samples (a bit a sample is 8 floats a byte: a long text's voices would be gigabytes); `fitRaw` takes a `RawSource` or a `Float32Array`; the bytes' sum and set bits are counted once (a `WeakMap`) to centre them. `MAX_BIT_BYTES` and `VOICE_MIX_MAX_SEC` are gone. `mixBytes` is the very memory of the mix (no copy; NaN made 0 in it). A test reads 57.6 MB (ten minutes of voices) as bits (461 million samples, none made) and builds a sound from it in well under a second; another checks that a pass goes through all of the bytes and then round again (bytes and bits).
+- **Per phrase or per text.** `VoiceSubject` (`rehearse.ts`, with `phraseSubject`, `textSubject`, `activeVoices(state, library)`): Single phrases: the phrase; **Whole texts: the whole text** (all of its phrases), so `voiceMix` plans it as the text's .tts.wav is (`ttsPlan(..., true)`: the main voice phrase after phrase, every other voice reading the whole text). `playNonstop(text, set, of)` takes what the voices are of (the phrase if not said: the Court and the Read tab say the phrase); the tab passes its `voicesOf`; `playClosed` uses `activeVoices`. The key has `whole` and an id of the phrases (a cheap fingerprint), so stepping through a text's phrases does not make the voices again.
+- **How long they are is how long they are.** (The owner, after: "dont drop below 24/48khz.. make it realtime timer.. just no cut offs/limits/downgrades!") `voiceMix` always mixes at 24 kHz, whatever the length: no lower rate, no memory cap, no refusal (the budget idea is gone). The note runs a timer while it is made (time so far, about how long is left). The kept mixes are at most 8.
+- **Let go.** `prepareVoiceRaw` makes the one thing wanted and stops any other still being made (`stop`, which `voiceMix` checks between sayings and pieces: `TTS_STOPPED`, not an error); `releaseVoiceRaw` when the row, Sound or the robot voice goes off. The phone's sayings stop being asked (checked: 36 sayings, row turned off, still 36 three seconds later).
+- **The note says it.** `voiceReadingFits` gives each reading's pass length at the raw rate and whether it is sped up to fit one play: "The voices of the whole text are in the sound: 17.6 s of them, 1.7 MB of raw binary, all of it read, then round again. One pass at the raw rate: bytes 1:11, sped up ×17.6 to fit one play." While it is made: "Saying phrase 4 of 27… 11%".
+- **Checked:** 59 rehearse tests (the new ones above, and the rate for the budget), lint, tsc; in the pretend phone at 390x844 and 360x640: a phrase (Raw bytes, bits, both, off each a different loop), **Whole texts with the 27-phrase built-in text** (the voices of the whole text, 17.6 s with three copies, in the sound; a changed number of copies is another mix; turned off while being made: it stops), and the Court's recite and sheet. **Not on a real phone**: how long a real text's voices take to say and mix there.
 
 ### 2026-11-18 (the text writes) · Claude
 

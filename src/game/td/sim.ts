@@ -36,6 +36,8 @@ import {
   ascendCost,
   ascensionsOf,
   pathCost,
+  tracksOf,
+  trackCost,
   pathsOf,
   perkCost,
   PERKS,
@@ -90,6 +92,8 @@ export interface TdTower {
   /** The path taken at the top level, and the Ascension taken later, or -1. */
   path: number;
   ascend: number;
+  /** Ranks of its signature upgrades (tracksOf), endless. */
+  tracks: number[];
   /** Damage dealt and creeps finished, for the tower panel. */
   dealt: number;
   kills: number;
@@ -338,7 +342,7 @@ export function towerAt(s: TdState, col: number, row: number): TdTower | undefin
 
 /** A tower's stats now, with every perk (the void and fel ones too). */
 export function statsOf(s: TdState, t: TdTower): TowerStats {
-  return towerStats(t.key, t.level, s.perks, t.path, t.ascend, s.voidPerks, s.felPerks);
+  return towerStats(t.key, t.level, s.perks, t.path, t.ascend, s.voidPerks, s.felPerks, t.tracks);
 }
 
 /** What the player has of a tower's currency: O/I, flux for a void tower, ATP for a wake tower, dark energy for a fel one. */
@@ -514,6 +518,7 @@ export function build(s: TdState, key: TowerKey, col: number, row: number): Resu
     shots: 0,
     path: -1,
     ascend: -1,
+    tracks: [],
     dealt: 0,
     kills: 0,
     builtWave: s.wave,
@@ -531,6 +536,22 @@ export function upgrade(s: TdState, col: number, row: number): Result {
   pay(s, t.key, cost);
   t.invested += cost;
   t.level += 1;
+  t.stats = statsOf(s, t);
+  return OK;
+}
+
+/** Raises one of the tower's own signature upgrades a rank (they have no top). */
+export function upgradeTrack(s: TdState, col: number, row: number, index: number): Result {
+  if (s.phase === "over") return fail("The rite is over");
+  const t = towerAt(s, col, row);
+  if (!t) return fail("No tower here");
+  if (!tracksOf(t.key)[index]) return fail("No such upgrade");
+  const rank = t.tracks[index] ?? 0;
+  const cost = trackCost(t.key, rank, s.perks);
+  if (purse(s, t.key) < cost) return fail(`Needs ${cost} ${unit(t.key)}`);
+  pay(s, t.key, cost);
+  t.invested += cost;
+  t.tracks[index] = rank + 1;
   t.stats = statsOf(s, t);
   return OK;
 }

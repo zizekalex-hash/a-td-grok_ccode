@@ -163,6 +163,8 @@ export type TdView = {
     /** The Ascension taken (-1 for none) and the price of one. */
     ascend: number;
     ascendCost: number;
+    /** Signature upgrades: each one's name, copy, rank, what it adds now and the price of the next rank. */
+    tracks: { name: string; copy: string; rank: number; now: string; next: string; cost: number }[];
     /** Damage dealt and creeps finished so far. */
     dealt: number;
     kills: number;
